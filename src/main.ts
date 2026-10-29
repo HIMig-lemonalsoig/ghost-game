@@ -13,6 +13,7 @@ function resize() {
   dpr = window.devicePixelRatio || 1;
   const w = window.innerWidth;
   const h = window.innerHeight;
+  if (w === 0 || h === 0) return; // ignore bad resize events
   canvas.width = Math.round(w * dpr);
   canvas.height = Math.round(h * dpr);
   canvas.style.width = `${w}px`;
@@ -47,7 +48,7 @@ function rarityColor(r: string) {
   return "#aaa";
 }
 
-function renderOverlay(stats: GameStats) {
+function renderGameOverlay(stats: GameStats) {
   if (!game) return;
 
   if (stats.state === "levelup" && stats.pendingChoices.length > 0) {
@@ -55,7 +56,7 @@ function renderOverlay(stats: GameStats) {
       <div onclick="window._pickPerk('${c.id}')" style="
         cursor:pointer; border:1px solid ${rarityColor(c.rarity)};
         border-radius:8px; padding:16px; width:200px; background:#111;
-        margin:0 8px; text-align:center; transition:background .15s;
+        margin:0 8px; text-align:center;
       " onmouseenter="this.style.background='#1e1e1e'" onmouseleave="this.style.background='#111'">
         <div style="font-size:32px;color:${rarityColor(c.rarity)}">${c.kanji}</div>
         <div style="font-size:14px;font-weight:bold;margin:6px 0">${c.name}</div>
@@ -66,7 +67,7 @@ function renderOverlay(stats: GameStats) {
     showOverlay(`
       <div style="text-align:center">
         <div style="font-size:20px;letter-spacing:2px;margin-bottom:20px;color:#c8a96e">⚔ LEVEL UP ⚔</div>
-        <div style="display:flex;justify-content:center">${cards}</div>
+        <div style="display:flex;justify-content:center;flex-wrap:wrap">${cards}</div>
       </div>
     `);
     (window as any)._pickPerk = (id: string) => { hideOverlay(); game?.selectPerk(id); };
@@ -78,11 +79,9 @@ function renderOverlay(stats: GameStats) {
     const slots = stats.equippedAbilities.map((id, i) => `
       <div onclick="window._swapAbility('${id}')" style="
         cursor:pointer; border:1px solid #a78bfa; border-radius:8px;
-        padding:16px; width:180px; background:#111; margin:0 8px;
-        text-align:center;
+        padding:16px; width:180px; background:#111; margin:0 8px; text-align:center;
       " onmouseenter="this.style.background='#1e1e1e'" onmouseleave="this.style.background='#111'">
         <div style="font-size:11px;color:#888;margin-bottom:4px">Replace slot ${i + 1}</div>
-        <div style="font-size:24px;color:#a78bfa">⚔</div>
         <div style="font-size:14px;font-weight:bold;margin:4px 0">${id}</div>
       </div>
     `).join("");
@@ -93,8 +92,7 @@ function renderOverlay(stats: GameStats) {
         <div style="display:flex;justify-content:center">${slots}</div>
         <button onclick="window._cancelSwap()" style="
           margin-top:20px; padding:8px 24px; background:transparent;
-          border:1px solid #555; color:#aaa; border-radius:6px; cursor:pointer;
-          font-size:13px;
+          border:1px solid #555; color:#aaa; border-radius:6px; cursor:pointer; font-size:13px;
         ">Keep current abilities</button>
       </div>
     `);
@@ -135,11 +133,11 @@ function renderOverlay(stats: GameStats) {
     `);
     (window as any)._buyItem = (id: string) => {
       game?.buyShopItem(id);
-      if (game) renderOverlay(game.stats);
+      if (game) renderGameOverlay(game.stats);
     };
     (window as any)._rerollShop = () => {
       game?.rerollShop();
-      if (game) renderOverlay(game.stats);
+      if (game) renderGameOverlay(game.stats);
     };
     (window as any)._leaveShop = () => { hideOverlay(); game?.closeShop(); };
     return;
@@ -185,45 +183,45 @@ function loop(ts: number) {
   if (!game) return;
   const dt = Math.min((ts - lastTime) / 1000, 0.05);
   lastTime = ts;
-  game.update(dt);
-  game.render();
+  try {
+    game.update(dt);
+    game.render();
+  } catch (err) {
+    console.error("Game error:", err);
+  }
   animId = requestAnimationFrame(loop);
 }
 
 function startGame(classId: ClassId) {
-  if (animId !== null) cancelAnimationFrame(animId);
+  if (animId !== null) { cancelAnimationFrame(animId); animId = null; }
   cleanupInput();
+  hideClassSelect();
 
   resize();
   game = new GhostGame(canvas);
   resize();
 
   game.onStatsChange = (stats: GameStats) => {
-    currentStats = stats;
+    currentStats = { ...stats };
     const blocking = stats.state === "levelup" || stats.state === "swap" ||
       stats.state === "shop" || stats.state === "victory" || stats.state === "defeat";
-    if (blocking) {
-      renderOverlay(stats);
-    } else {
-      hideOverlay();
-    }
+    if (blocking) renderGameOverlay(stats);
+    else hideOverlay();
   };
 
-  const [primary] = CLASS_WEAPON_OPTIONS[classId];
+  const [primary, secondary] = CLASS_WEAPON_OPTIONS[classId];
   game.start(classId, primary);
+  game.equipWeapons([primary, secondary]);
+
   setupInput();
   lastTime = performance.now();
   animId = requestAnimationFrame(loop);
 }
 
 // ─── Input ────────────────────────────────────────────────────────────────────
-function isPlaying() {
-  return game && (!currentStats || currentStats.state === "playing");
-}
-
 function onKeyDown(e: KeyboardEvent) {
   if (!game) return;
-  if (overlay.style.display !== "none") return; // let overlay handle its own clicks
+  if (overlay.style.display !== "none") return;
 
   switch (e.code) {
     case "KeyW": case "ArrowUp":    game.setInput({ up: true }); break;
@@ -274,7 +272,8 @@ function onKeyUp(e: KeyboardEvent) {
 }
 
 function onMouseMove(e: MouseEvent) {
-  if (!game || !isPlaying()) return;
+  if (!game) return;
+  if (currentStats && currentStats.state !== "playing") return;
   const rect = canvas.getBoundingClientRect();
   const x = (e.clientX - rect.left) * dpr;
   const y = (e.clientY - rect.top) * dpr;
@@ -282,7 +281,8 @@ function onMouseMove(e: MouseEvent) {
 }
 
 function onMouseDown(e: MouseEvent) {
-  if (!game || !isPlaying()) return;
+  if (!game) return;
+  if (currentStats && currentStats.state !== "playing") return;
   if (e.button === 0) game.triggerAttack();
   if (e.button === 2) game.triggerDash();
 }
@@ -305,122 +305,68 @@ function cleanupInput() {
   canvas.removeEventListener("contextmenu", onContextMenu);
 }
 
-// ─── Class-Select Screen ─────────────────────────────────────────────────────
+// ─── Class-Select Screen (HTML) ───────────────────────────────────────────────
+const classSelectEl = document.createElement("div");
+classSelectEl.id = "class-select";
+Object.assign(classSelectEl.style, {
+  position: "fixed", inset: "0", zIndex: "20",
+  background: "#0a0a0a", overflowY: "auto",
+  fontFamily: "serif", color: "#e8d9b0",
+  display: "none",
+});
+document.body.appendChild(classSelectEl);
+
+function hideClassSelect() {
+  classSelectEl.style.display = "none";
+}
+
 function showClassSelect() {
   if (animId !== null) { cancelAnimationFrame(animId); animId = null; }
   game = null;
   currentStats = null;
   hideOverlay();
+  cleanupInput();
 
-  dpr = window.devicePixelRatio || 1;
-  canvas.width = Math.round(window.innerWidth * dpr);
-  canvas.height = Math.round(window.innerHeight * dpr);
-  canvas.style.width = `${window.innerWidth}px`;
-  canvas.style.height = `${window.innerHeight}px`;
+  const COLS = Math.min(4, Math.floor((window.innerWidth - 32) / 180)) || 4;
 
-  const ctx = canvas.getContext("2d")!;
-  const W = canvas.width;
-  const H = canvas.height;
+  const cards = CLASSES.map(cls => {
+    const bonuses = cls.bonuses.slice(0, 3).map(b =>
+      `<div style="font-size:11px;color:#999;margin:2px 0">· ${b}</div>`
+    ).join("");
+    return `
+      <div onclick="window._selectClass('${cls.id}')" style="
+        cursor:pointer; border:1px solid #2a2a2a; border-radius:8px;
+        padding:14px 12px; width:170px; background:#0e0e0e; margin:6px;
+        text-align:center; transition:border-color .15s,background .15s;
+        flex-shrink:0;
+      "
+      onmouseenter="this.style.borderColor='${cls.accent}';this.style.background='#161414'"
+      onmouseleave="this.style.borderColor='#2a2a2a';this.style.background='#0e0e0e'">
+        <div style="font-size:28px;color:${cls.accent};margin-bottom:4px">${cls.kanji}</div>
+        <div style="font-size:13px;font-weight:bold;margin-bottom:2px">${cls.name}</div>
+        <div style="font-size:10px;color:#666;margin-bottom:8px">${cls.role}</div>
+        <hr style="border:none;border-top:1px solid #222;margin:6px 0">
+        ${bonuses}
+        <hr style="border:none;border-top:1px solid #222;margin:8px 0 4px">
+        <div style="font-size:10px;color:#c8a96e">${cls.ultName}</div>
+        <div style="font-size:10px;color:#666;margin-top:2px;line-height:1.3">${cls.ultDesc.slice(0, 60)}…</div>
+      </div>
+    `;
+  }).join("");
 
-  const COLS = 4;
-  const CARD_W = Math.min(180 * dpr, (W - 60 * dpr) / COLS);
-  const CARD_H = CARD_W * 1.35;
-  const PAD = 10 * dpr;
-  const ROWS = Math.ceil(CLASSES.length / COLS);
-  const totalW = COLS * (CARD_W + PAD) - PAD;
-  const totalH = ROWS * (CARD_H + PAD) - PAD;
-  const startX = (W - totalW) / 2;
-  const startY = H * 0.14;
-
-  const cards: { cls: typeof CLASSES[0]; x: number; y: number; w: number; h: number }[] = [];
-  CLASSES.forEach((cls, i) => {
-    const col = i % COLS;
-    const row = Math.floor(i / COLS);
-    cards.push({
-      cls,
-      x: startX + col * (CARD_W + PAD),
-      y: startY + row * (CARD_H + PAD),
-      w: CARD_W,
-      h: CARD_H,
-    });
-  });
-
-  let hovered = -1;
-
-  function draw() {
-    ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = "#0a0a0a";
-    ctx.fillRect(0, 0, W, H);
-
-    ctx.fillStyle = "#c8a96e";
-    ctx.font = `bold ${36 * dpr}px serif`;
-    ctx.textAlign = "center";
-    ctx.fillText("選択 — Choose Your Class", W / 2, startY - 28 * dpr);
-    ctx.font = `${13 * dpr}px sans-serif`;
-    ctx.fillStyle = "#555";
-    ctx.fillText("WASD to move  ·  Mouse to aim  ·  LMB / Space to attack  ·  Shift to dash  ·  Q / E for abilities  ·  R for ultimate", W / 2, startY - 10 * dpr);
-
-    cards.forEach(({ cls, x, y, w, h }, i) => {
-      const hot = i === hovered;
-      ctx.save();
-      ctx.strokeStyle = hot ? cls.accent : "#2a2a2a";
-      ctx.lineWidth = hot ? 2 * dpr : 1 * dpr;
-      ctx.fillStyle = hot ? "#1a1818" : "#0e0e0e";
-      ctx.beginPath();
-      ctx.roundRect(x, y, w, h, 6 * dpr);
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.font = `bold ${28 * dpr}px serif`;
-      ctx.fillStyle = cls.accent;
-      ctx.textAlign = "center";
-      ctx.fillText(cls.kanji, x + w / 2, y + 36 * dpr);
-
-      ctx.font = `bold ${11 * dpr}px sans-serif`;
-      ctx.fillStyle = hot ? "#fff" : "#ccc";
-      ctx.fillText(cls.name, x + w / 2, y + 54 * dpr);
-
-      ctx.font = `${9 * dpr}px sans-serif`;
-      ctx.fillStyle = "#777";
-      ctx.fillText(cls.role, x + w / 2, y + 68 * dpr);
-
-      ctx.font = `${8 * dpr}px sans-serif`;
-      ctx.fillStyle = "#999";
-      ctx.textAlign = "left";
-      cls.bonuses.slice(0, 3).forEach((b, bi) => {
-        const short = b.length > 30 ? b.slice(0, 28) + "…" : b;
-        ctx.fillText(`· ${short}`, x + 8 * dpr, y + 86 * dpr + bi * 14 * dpr);
-      });
-
-      ctx.restore();
-    });
-  }
-
-  draw();
-
-  function onMove(e: MouseEvent) {
-    const rect = canvas.getBoundingClientRect();
-    const mx = (e.clientX - rect.left) * dpr;
-    const my = (e.clientY - rect.top) * dpr;
-    const prev = hovered;
-    hovered = cards.findIndex(c => mx >= c.x && mx <= c.x + c.w && my >= c.y && my <= c.y + c.h);
-    if (hovered !== prev) draw();
-  }
-
-  function onClick(e: MouseEvent) {
-    const rect = canvas.getBoundingClientRect();
-    const mx = (e.clientX - rect.left) * dpr;
-    const my = (e.clientY - rect.top) * dpr;
-    const hit = cards.findIndex(c => mx >= c.x && mx <= c.x + c.w && my >= c.y && my <= c.y + c.h);
-    if (hit !== -1) {
-      canvas.removeEventListener("mousemove", onMove);
-      canvas.removeEventListener("click", onClick);
-      startGame(cards[hit].cls.id);
-    }
-  }
-
-  canvas.addEventListener("mousemove", onMove);
-  canvas.addEventListener("click", onClick);
+  classSelectEl.innerHTML = `
+    <div style="max-width:900px;margin:0 auto;padding:32px 16px">
+      <div style="text-align:center;margin-bottom:24px">
+        <div style="font-size:28px;color:#c8a96e;letter-spacing:3px;margin-bottom:6px">選択 — Choose Your Class</div>
+        <div style="font-size:12px;color:#444">
+          WASD move &nbsp;·&nbsp; Mouse aim &nbsp;·&nbsp; LMB / Space attack &nbsp;·&nbsp; Shift dash &nbsp;·&nbsp; Q / E abilities &nbsp;·&nbsp; R ultimate &nbsp;·&nbsp; Tab swap weapon
+        </div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;justify-content:center">${cards}</div>
+    </div>
+  `;
+  classSelectEl.style.display = "block";
+  (window as any)._selectClass = (id: string) => startGame(id as ClassId);
 }
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
