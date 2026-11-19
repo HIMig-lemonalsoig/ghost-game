@@ -855,9 +855,9 @@ export const SHOP_POOL: PoolEntry[] = [
   { effect: "hp_regen",      kanji: "息", name: "Steady Breath",     desc: "+0.5 HP/s passive regeneration.",          priceMin: 30, priceMax: 45, rarity: "rare"     },
   // ===== Stat upgrades (rarity-tiered) =====
   // Damage — Katana (always available).
-  { effect: "dmg_katana_common", kanji: "刃", name: "Whetstone",          desc: "+12% katana damage.",                       priceMin: 28, priceMax: 42, rarity: "common"    },
-  { effect: "dmg_katana_rare",   kanji: "刃", name: "Honed Whetstone",    desc: "+30% katana damage.",                       priceMin: 50, priceMax: 70, rarity: "rare"      },
-  { effect: "dmg_katana_leg",    kanji: "刃", name: "Masterforged Edge",  desc: "+75% katana damage.",                       priceMin: 95, priceMax: 130, rarity: "legendary" },
+  { effect: "dmg_katana_common", kanji: "刃", name: "Whetstone",          desc: "+12% damage with all weapons.",                       priceMin: 28, priceMax: 42, rarity: "common"    },
+  { effect: "dmg_katana_rare",   kanji: "刃", name: "Honed Whetstone",    desc: "+30% damage with all weapons.",                       priceMin: 50, priceMax: 70, rarity: "rare"      },
+  { effect: "dmg_katana_leg",    kanji: "刃", name: "Masterforged Edge",  desc: "+75% damage with all weapons.",                       priceMin: 95, priceMax: 130, rarity: "legendary" },
   // Dexterity (replaces flat attack-speed perks).
   { effect: "dex_common", kanji: "敏", name: "Light Hands",      desc: "+3 dexterity (attack speed scales with weapon).", priceMin: 28, priceMax: 42, rarity: "common"   },
   { effect: "dex_rare",   kanji: "敏", name: "Trained Reflexes", desc: "+6 dexterity.",                                     priceMin: 50, priceMax: 70, rarity: "rare"     },
@@ -876,18 +876,18 @@ export const SHOP_POOL: PoolEntry[] = [
   // ===== Per-weapon damage upgrades (only shown when equipped) =====
   ...buildWeaponDamagePool(),
   // ===== Phase A — 12 new purchasable perks =====
-  { effect: "perk_crimson_blade",   kanji: "紅", name: "Crimson Blade",      desc: "Each kill bloods your blade for 5s — your next hit applies a bonus bleed.",   priceMin: 35, priceMax: 50, rarity: "rare"      },
-  { effect: "perk_stone_stance",    kanji: "岩", name: "Stone Stance",       desc: "Stand still 1s or more to gain −20% damage taken and +15% damage dealt.",     priceMin: 40, priceMax: 55, rarity: "rare"      },
-  { effect: "perk_ghost_steps",     kanji: "歩", name: "Ghost Steps",        desc: "Move for 3s straight to gain +15% speed until you stop moving.",               priceMin: 30, priceMax: 45, rarity: "common"    },
-  { effect: "perk_void_shard",      kanji: "虚", name: "Void Shard",         desc: "Every 20th kill spawns a shard that blocks the next projectile to hit you.",   priceMin: 45, priceMax: 65, rarity: "rare"      },
-  { effect: "perk_hungry_blade",    kanji: "飢", name: "Hungry Blade",       desc: "+1 HP on every kill (per-kill heal capped at 6).",                                priceMin: 50, priceMax: 70, rarity: "rare"      },
-  { effect: "perk_war_paint",       kanji: "戦", name: "War Paint",          desc: "Start each wave with +20% damage for 10s, or until you take a hit.",           priceMin: 35, priceMax: 50, rarity: "common"    },
-  { effect: "perk_cursed_eye",      kanji: "眼", name: "Cursed Eye",         desc: "See every enemy's HP bar, and deal +5% damage to foes below half HP.",        priceMin: 40, priceMax: 55, rarity: "rare"      },
-  { effect: "perk_raging_current",  kanji: "波", name: "Raging Current",     desc: "+2% attack speed per enemy on screen, capped at +20%.",                        priceMin: 55, priceMax: 75, rarity: "legendary" },
-  { effect: "perk_twin_fang",       kanji: "牙", name: "Twin Fang",          desc: "Every 8th katana strike triggers a free secondary attack.",                    priceMin: 60, priceMax: 85, rarity: "legendary" },
-  { effect: "perk_bone_armor",      kanji: "骨", name: "Bone Armor",         desc: "Once per run, survive a lethal hit at 1 HP with 3s of invulnerability.",      priceMin: 70, priceMax: 95, rarity: "legendary" },
-  { effect: "perk_drifting_leaves", kanji: "葉", name: "Drifting Leaves",    desc: "Dashing leaves behind a 2s damaging leaf storm at your starting spot.",        priceMin: 45, priceMax: 60, rarity: "rare"      },
-  { effect: "perk_soul_collector",  kanji: "魂", name: "Soul Collector",     desc: "Every 25 kills permanently grants +2 max HP for the rest of this run.",        priceMin: 50, priceMax: 70, rarity: "rare"      },
+  { effect: "perk_crimson_blade",   kanji: "紅", name: "Crimson Blade",      desc: "+15% damage with all weapons.",   priceMin: 35, priceMax: 50, rarity: "rare"      },
+  { effect: "perk_stone_stance",    kanji: "岩", name: "Stone Stance",       desc: "−10% damage taken and +10% damage.",     priceMin: 40, priceMax: 55, rarity: "rare"      },
+  { effect: "perk_ghost_steps",     kanji: "歩", name: "Ghost Steps",        desc: "+10% movement speed.",               priceMin: 30, priceMax: 45, rarity: "common"    },
+  { effect: "perk_void_shard",      kanji: "虚", name: "Void Shard",         desc: "+0.25s of invulnerability after you're hit.",   priceMin: 45, priceMax: 65, rarity: "rare"      },
+  { effect: "perk_hungry_blade",    kanji: "飢", name: "Hungry Blade",       desc: "Heal 1 HP on every kill (max 6 HP per kill).",                                priceMin: 50, priceMax: 70, rarity: "rare"      },
+  { effect: "perk_war_paint",       kanji: "戦", name: "War Paint",          desc: "+8% damage with all weapons.",           priceMin: 35, priceMax: 50, rarity: "common"    },
+  { effect: "perk_cursed_eye",      kanji: "眼", name: "Cursed Eye",         desc: "+5% critical chance and +5% damage.",        priceMin: 40, priceMax: 55, rarity: "rare"      },
+  { effect: "perk_raging_current",  kanji: "波", name: "Raging Current",     desc: "+10% attack speed with the katana.",                        priceMin: 55, priceMax: 75, rarity: "legendary" },
+  { effect: "perk_twin_fang",       kanji: "牙", name: "Twin Fang",          desc: "+25% damage with every weapon except the katana.",                    priceMin: 60, priceMax: 85, rarity: "legendary" },
+  { effect: "perk_bone_armor",      kanji: "骨", name: "Bone Armor",         desc: "Survive one fatal blow each wave, at half HP.",      priceMin: 70, priceMax: 95, rarity: "legendary" },
+  { effect: "perk_drifting_leaves", kanji: "葉", name: "Drifting Leaves",    desc: "+20% knockback and +5% movement speed.",        priceMin: 45, priceMax: 60, rarity: "rare"      },
+  { effect: "perk_soul_collector",  kanji: "魂", name: "Soul Collector",     desc: "+30 max HP and heal 30 HP.",        priceMin: 50, priceMax: 70, rarity: "rare"      },
   // ===== Build-direction items =====
   { effect: "shop_lucky_coin",    kanji: "運", name: "Lucky Coin",      desc: "+20% coins from kills.",                                     priceMin: 40, priceMax: 55, rarity: "rare"      },
   { effect: "shop_bounty",        kanji: "賞", name: "Bounty Ledger",   desc: "Elite kills give +4 coins and heal 2 HP.",                   priceMin: 45, priceMax: 60, rarity: "rare"      },
@@ -1149,9 +1149,23 @@ export const CONSUMABLE_SLOTS = 3;
 const STORAGE_KEY = "tsushima.savedRun.v1";
 const SCHEMA_VERSION = 1;
 
+export type Difficulty = "easy" | "medium" | "normal" | "hard" | "death";
+
+export const DIFFICULTIES: Record<Difficulty, {
+  name: string; kanji: string; desc: string; color: string;
+  hp: number; dmg: number; speed: number; density: number; coins: number; tele: number;
+}> = {
+  easy:   { name: "Easy",   kanji: "楽", color: "hsl(140 55% 60%)", desc: "Weaker, slower, fewer foes, longer attack warnings, more coins.", hp: 0.65, dmg: 0.55, speed: 0.9,  density: 0.8,  coins: 1.25, tele: 1.25 },
+  medium: { name: "Medium", kanji: "中", color: "hsl(190 60% 60%)", desc: "A gentler fight: foes hit softer and there are fewer of them.",  hp: 0.82, dmg: 0.78, speed: 0.95, density: 0.9,  coins: 1.1,  tele: 1.1 },
+  normal: { name: "Normal", kanji: "常", color: "hsl(42 80% 62%)",  desc: "The intended challenge.",                                          hp: 1,    dmg: 1,    speed: 1,    density: 1,    coins: 1,    tele: 1 },
+  hard:   { name: "Hard",   kanji: "難", color: "hsl(20 85% 58%)",  desc: "Tougher, faster foes that hit harder and come in bigger numbers.", hp: 1.3,  dmg: 1.3,  speed: 1.06, density: 1.15, coins: 0.95, tele: 0.92 },
+  death:  { name: "Death",  kanji: "死", color: "hsl(358 80% 58%)", desc: "Brutal. Huge, fast, deadly hordes and barely any warning.",       hp: 1.75, dmg: 1.8,  speed: 1.12, density: 1.3,  coins: 0.9,  tele: 0.8 },
+};
+
 export interface SavedRun {
   v: number;
   savedAt: number;
+  difficulty?: Difficulty;
   classId: ClassId;
   secondaryId: SecondaryId | null;
   // Snapshot of the engine's mutable run-state. Anything not listed here
@@ -3734,7 +3748,7 @@ const MAX_HEAL_PER_KILL = 6;
 
 // All available perks. Some can stack.
 export const PERK_POOL: Omit<PerkChoice, never>[] = [
-  { id: "blade_edge", kanji: "刃", name: "Honed Edge", desc: "+15% base damage", rarity: "common" },
+  { id: "blade_edge", kanji: "刃", name: "Honed Edge", desc: "+15% damage with all weapons", rarity: "common" },
   { id: "swift_strike", kanji: "敏", name: "Light Hands", desc: "+5 dexterity (scales attack speed per weapon)", rarity: "common" },
   { id: "long_blade", kanji: "長", name: "Long Blade", desc: "+20% attack range", rarity: "common" },
   { id: "wide_arc", kanji: "弧", name: "Wide Arc", desc: "+25% attack arc", rarity: "common" },
@@ -3751,8 +3765,8 @@ export const PERK_POOL: Omit<PerkChoice, never>[] = [
   { id: "crit_strike", kanji: "斬", name: "Killing Edge", desc: "+20% chance to deal 3× damage", rarity: "rare" },
   { id: "barrage_master", kanji: "閃", name: "Barrage Mastery", desc: "−30% Sword Barrage cooldown", rarity: "rare" },
   { id: "flash_master", kanji: "瞬", name: "Flash Mastery", desc: "−30% Flash Step cooldown", rarity: "rare" },
-  { id: "kensei", kanji: "剣", name: "Way of the Kensei", desc: "+60% katana damage", rarity: "legendary" },
-  { id: "tempest", kanji: "嵐", name: "Tempest", desc: "Every katana swing strikes twice", rarity: "legendary" },
+  { id: "kensei", kanji: "剣", name: "Way of the Kensei", desc: "+60% damage with all weapons", rarity: "legendary" },
+  { id: "tempest", kanji: "嵐", name: "Tempest", desc: "Katana swings strike twice (katana only)", rarity: "legendary" },
   { id: "shadow_lord", kanji: "暗", name: "Shadow Lord", desc: "Stealth kills heal 6 HP", rarity: "legendary" },
   { id: "executioner", kanji: "首", name: "Executioner", desc: "+200% damage to foes below 30% HP", rarity: "legendary" },
   { id: "lifebloom", kanji: "生", name: "Lifebloom", desc: "Regenerate 1 HP per second", rarity: "legendary" },
@@ -4350,6 +4364,7 @@ export class GhostGame {
   quality = new QualityGuard();
   shakeScale = 1;
   fx = new Fx();
+  difficulty: Difficulty = "normal";
   bagFullWarnAt = -99;
   reaperCount = 0;
   foxTimer = 4;
@@ -4725,8 +4740,8 @@ export class GhostGame {
     const def = SECONDARIES[id];
     const base = this.perks.damage;
     const flat = this.perks.weaponDamageBonus[id] || 0;
+    // classDamageMul is applied once, in dealDamage.
     return ((base * def.damageMul * def.dmgScale) + flat)
-         * this.perks.classDamageMul
          * this.perks.secondaryDmgMul;
   }
 
@@ -4814,8 +4829,9 @@ export class GhostGame {
   // Used by maybeSpawnEnemies() to continuously replenish.
   computeTargetDensity(wave: number): number {
     const isBoss = wave % 5 === 0;
-    if (isBoss) return Math.min(14, 6 + Math.floor(wave / 5) * 2);
-    return Math.min(28, 5 + Math.floor(wave * 1.6) + Math.floor(wave / 2));
+    const dens = DIFFICULTIES[this.difficulty].density;
+    if (isBoss) return Math.round(Math.min(14, 6 + Math.floor(wave / 5) * 2) * dens);
+    return Math.round(Math.min(28, 5 + Math.floor(wave * 1.6) + Math.floor(wave / 2)) * dens);
   }
 
   pickSpawnAwayFromPlayer(minDist = 360): { x: number; y: number } {
@@ -4866,10 +4882,11 @@ export class GhostGame {
     // enemies need to keep up to remain a threat into the late waves.
     // Steeper HP curve so wave 5 grunts feel meaty (~10 HP) instead of
     // being two-shot trash. Bosses use computeBossHpScale separately.
-    const hpScale = 1 + (wave - 1) * 0.45;
-    const dmgScale = 1 + (wave - 1) * 0.10;
+    const D = DIFFICULTIES[this.difficulty];
+    const hpScale = (1 + (wave - 1) * 0.45) * D.hp;
+    const dmgScale = (1 + (wave - 1) * 0.10) * D.dmg;
     // Kept under the player's base speed so kiting stays possible late-game.
-    const speedScale = 1 + Math.min(0.25, (wave - 1) * 0.015);
+    const speedScale = (1 + Math.min(0.25, (wave - 1) * 0.015)) * D.speed;
     const isBigSpawn = kind === "boss" || kind === "final";
     const s = this.pickSpawnAwayFromPlayer(isBigSpawn ? 460 : 360);
 
@@ -6167,7 +6184,7 @@ export class GhostGame {
     if (type === "honor") this.stats.honor++;
     else this.stats.ghost++;
     // Mon coin drop — stealth kills (ghost) earn a 50% bonus.
-    const monGain = Math.max(0, Math.round(e.monReward * 0.75 * this.perks.monMul * (type === "ghost" ? 1.5 : 1)));
+    const monGain = Math.max(0, Math.round(e.monReward * 0.75 * this.perks.monMul * DIFFICULTIES[this.difficulty].coins * (type === "ghost" ? 1.5 : 1)));
     if (this.perks.eliteBounty > 0 && e.archetype !== "normal" && e.archetype !== "wisp") {
       this.stats.mon += this.perks.eliteBounty;
       this.player.hp = Math.min(this.player.maxHp, this.player.hp + 2);
@@ -6825,13 +6842,13 @@ export class GhostGame {
         if (e.bossPatternStep === 0) {
           e.bossPatternStep = 1;
           const tier = Math.floor((this.stats.wave - 1) / 5);
-          const scale = 1 + (this.stats.wave - 1) * 0.45;
+          const scale = (1 + (this.stats.wave - 1) * 0.45) * DIFFICULTIES[this.difficulty].hp;
           if (e.bossKind === "kitsune") {
             for (let i = 0; i < 5; i++) {
               const a = (i / 5) * Math.PI * 2;
               this.enemies.push(this.makeEnemy({
                 x: e.pos.x + Math.cos(a) * 50, y: e.pos.y + Math.sin(a) * 50, isBoss: false, archetype: "wisp",
-                hp: Math.max(0.5, 0.6 * scale), damage: Math.round(6 * (1 + (this.stats.wave - 1) * 0.1)),
+                hp: Math.max(0.5, 0.6 * scale), damage: Math.round(6 * (1 + (this.stats.wave - 1) * 0.1) * DIFFICULTIES[this.difficulty].dmg),
                 speed: 200, size: 9, xpReward: 2, monReward: 0,
               }));
             }
@@ -6840,7 +6857,7 @@ export class GhostGame {
               const a = (i / 3) * Math.PI * 2 + Math.random();
               this.enemies.push(this.makeEnemy({
                 x: e.pos.x + Math.cos(a) * 70, y: e.pos.y + Math.sin(a) * 70, isBoss: false, archetype: "normal",
-                hp: Math.max(1, Math.round(2 * scale)), damage: Math.round(12 * (1 + (this.stats.wave - 1) * 0.1)),
+                hp: Math.max(1, Math.round(2 * scale)), damage: Math.round(12 * (1 + (this.stats.wave - 1) * 0.1) * DIFFICULTIES[this.difficulty].dmg),
                 speed: 165, size: BASE.ENEMY_RADIUS, xpReward: 4 + tier, monReward: 0,
               }));
             }
@@ -7695,7 +7712,7 @@ export class GhostGame {
 
       const enemyAttackRange = e.isBoss ? BASE.ENEMY_ATTACK_RANGE + 16 : BASE.ENEMY_ATTACK_RANGE;
       // Half-second windup before every melee swing (bosses match).
-      const telegraph = 0.5;
+      const telegraph = 0.5 * DIFFICULTIES[this.difficulty].tele;
 
       let speedMul = this.timeSlowRemaining > 0 ? 0.25 : 1;
       const tough = e.isBoss || e.archetype === "final";
@@ -12359,6 +12376,7 @@ export class GhostGame {
     try {
       saveRun({
         classId: this.lastClassId,
+        difficulty: this.difficulty,
         secondaryId: this.lastSecondaryId,
         wave: this.stats.wave,
         level: this.stats.level,
@@ -12396,6 +12414,7 @@ export class GhostGame {
   resumeFromSave(s: SavedRun) {
     // Bring the engine up with the right class + starting secondary so all
     // class-conditional spawns (Kagebushi clone, Miko barrier) initialize.
+    this.difficulty = s.difficulty ?? "normal";
     this.start(s.classId, s.secondaryId);
     // Overlay numeric perks (captures shop-bought upgrades that aren't in
     // acquiredPerks). Spread carefully — keep keys we don't recognize so
@@ -13014,12 +13033,7 @@ export class GhostGame {
       // simplified implementations preserve the spirit (offense /
       // defense / utility) until full mechanics ship.
       case "perk_crimson_blade":
-        // "Bloods your blade" → +10% sword damage.
-        this.perks.damage = Math.min(
-          MAX_KATANA_DAMAGE,
-          Math.max(this.perks.damage, Math.round(this.perks.damage * 1.10)),
-        );
-        this.perks.classDamageMul *= 1.05;
+        this.perks.classDamageMul *= 1.15;
         this.flash("Crimson Blade");
         break;
       case "perk_stone_stance":

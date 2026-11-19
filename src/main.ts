@@ -1,9 +1,9 @@
 import {
   GhostGame, CLASSES, CLASS_WEAPON_OPTIONS, SECONDARIES, ABILITY_POOL, CONSUMABLES, PERK_POOL,
-  audio, loadRun, hasSavedRun, clearSavedRun, getClass, ABILITY_FX_HUE, SLASH_HUE, BOSS_INFO,
+  audio, loadRun, hasSavedRun, clearSavedRun, getClass, ABILITY_FX_HUE, SLASH_HUE, BOSS_INFO, DIFFICULTIES,
 } from "./GhostGame";
 import { hueOf } from "./fx";
-import type { ClassId, GameStats, SecondaryId } from "./GhostGame";
+import type { ClassId, GameStats, SecondaryId, Difficulty } from "./GhostGame";
 import { UI_CSS } from "./ui.css";
 
 // ─── Persistent settings & records ────────────────────────────────────────────
@@ -11,7 +11,8 @@ const SETTINGS_KEY = "ghostgame.settings.v1";
 const BEST_KEY = "ghostgame.best.v1";
 const LAST_KEY = "ghostgame.last.v1";
 
-interface Settings { sound: boolean; shake: boolean; tips: boolean; autoPause: boolean; }
+interface Settings { sound: boolean; shake: boolean; tips: boolean; autoPause: boolean; difficulty: Difficulty; }
+type ToggleKey = "sound" | "shake" | "tips" | "autoPause";
 interface LastPick { classId: ClassId; weapons: SecondaryId[]; }
 
 function readJSON<T>(key: string, fallback: T): T {
@@ -24,7 +25,10 @@ function writeJSON(key: string, value: unknown) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage blocked */ }
 }
 
-const settings: Settings = readJSON(SETTINGS_KEY, { sound: true, shake: true, tips: true, autoPause: true });
+const settings: Settings = readJSON(SETTINGS_KEY, { sound: true, shake: true, tips: true, autoPause: true, difficulty: "normal" as Difficulty });
+if (!(settings.difficulty in DIFFICULTIES)) settings.difficulty = "normal";
+// Best wave per class and difficulty (Normal keeps the original un-suffixed key).
+const bestKey = (cls: string, d: Difficulty) => (d === "normal" ? cls : `${cls}@${d}`);
 const best: Record<string, number> = readJSON(BEST_KEY, {});
 let lastPick: LastPick | null = readJSON<LastPick | null>(LAST_KEY, null);
 
@@ -220,7 +224,7 @@ function showMenu() {
 function renderMenu() {
   const saved = hasSavedRun() ? loadRun() : null;
   const cards = CLASSES.map(c => {
-    const b = best[c.id];
+    const b = best[bestKey(c.id, settings.difficulty)];
     const badge = b ? `<span class="best num">Best W${b}</span>` : "";
     return `<button class="class-card glow${c.id === currentClass ? " sel" : ""}" data-class="${c.id}" style="--accent:${c.accent}" aria-pressed="${c.id === currentClass}">
       <span class="watermark" aria-hidden="true">${c.ultKanji}</span>${badge}<div class="kanji">${c.kanji}</div><div class="name">${c.name}</div><div class="role">${c.role}</div>
@@ -261,8 +265,14 @@ function renderMenu() {
         <h3>Weapons · pick 2</h3>
         <div class="weapons">${weapons}</div>
         <p class="hint">Press ${K("swap")} in a fight to swap between your two weapons.</p>
+        <h3>Difficulty</h3>
+        <div class="diff-row" role="radiogroup" aria-label="Difficulty">${(Object.keys(DIFFICULTIES) as Difficulty[]).map(d => {
+          const D = DIFFICULTIES[d];
+          return `<button class="diff${d === settings.difficulty ? " on" : ""}" style="--c:${D.color}" data-diff="${d}" role="radio" aria-checked="${d === settings.difficulty}"><span class="kanji">${D.kanji}</span>${D.name}</button>`;
+        }).join("")}</div>
+        <p class="hint">${DIFFICULTIES[settings.difficulty].desc}</p>
         <div class="start-row">
-          <button class="btn primary" data-act="start" ${currentWeapons.length === 2 ? "" : "disabled"}>Begin · Enter</button>
+          <button class="btn primary" data-act="start" ${currentWeapons.length === 2 ? "" : "disabled"}>Begin · ${DIFFICULTIES[settings.difficulty].name} · Enter</button>
         </div>
         ${saved ? `<p class="hint">Starting a new run replaces your saved run.</p>` : ""}
       </aside>
@@ -295,6 +305,13 @@ menu.addEventListener("click", e => {
   const t = e.target as HTMLElement;
   const card = t.closest<HTMLElement>("[data-class]");
   if (card) { selectClass(card.dataset.class as ClassId); return; }
+  const diffBtn = t.closest<HTMLElement>("[data-diff]");
+  if (diffBtn) {
+    settings.difficulty = diffBtn.dataset.diff as Difficulty;
+    writeJSON(SETTINGS_KEY, settings);
+    renderMenu();
+    return;
+  }
   const chip = t.closest<HTMLElement>("[data-weapon]");
   if (chip) {
     const id = chip.dataset.weapon as SecondaryId;
@@ -373,6 +390,7 @@ function startGame(classId: ClassId, weapons: SecondaryId[]) {
   writeJSON(LAST_KEY, lastPick);
   clearSavedRun();
   const g = bootGame();
+  g.difficulty = settings.difficulty;
   g.start(classId, pick[0]);
   g.equipWeapons([pick[0], pick[1]]);
   stats = { ...g.stats };
@@ -453,6 +471,7 @@ function buildHud() {
     <div class="itemcard" data-h="itemcard"></div>
     <div class="hud-top">
       <div class="hud-wave" data-h="wave"></div>
+      <div class="diff-tag" data-h="difftag"></div>
       <div class="hud-sub num" data-h="sub"></div>
       <div class="bar timer"><i data-h="timer"></i></div>
       <div class="boss-bar" data-h="bosswrap"><div class="lbl" data-h="bossname">◆ BOSS ◆</div><div class="bar"><i data-h="boss"></i></div></div>
@@ -562,6 +581,15 @@ function updateHud(s: GameStats) {
   }
 
   setText(H("mon"), "mon", String(s.mon));
+  if (game) {
+    const D = DIFFICULTIES[game.difficulty];
+    const tag = H("difftag");
+    if (tag && cache.get("difftag") !== game.difficulty) {
+      cache.set("difftag", game.difficulty);
+      tag.style.setProperty("--c", D.color);
+      tag.innerHTML = `<span class="kanji">${D.kanji}</span> ${D.name.toUpperCase()}`;
+    }
+  }
 
   const toastOn = s.messageTimer > 0 && !!s.message;
   if (toastOn) setText(H("toast"), "toast", s.message);
@@ -667,8 +695,9 @@ function updateHud(s: GameStats) {
     `<span class="buff" style="--c:${c}"><b class="kanji">${k}</b>${label}${t >= 0 ? ` <i class="num">${Math.ceil(t)}s</i>` : ""}</span>`).join(""));
 
   // Records
-  if (s.wave > (best[s.classId] ?? 0) && (s.state === "defeat" || s.state === "victory" || s.state === "shop")) {
-    best[s.classId] = s.wave;
+  const bk = bestKey(s.classId, game?.difficulty ?? "normal");
+  if (s.wave > (best[bk] ?? 0) && (s.state === "defeat" || s.state === "victory" || s.state === "shop")) {
+    best[bk] = s.wave;
     writeJSON(BEST_KEY, best);
     if (s.state === "defeat" || s.state === "victory") recordSet = true;
   }
@@ -758,11 +787,11 @@ function renderPause(s: GameStats) {
   const perks = s.perks.length
     ? s.perks.map(p => { const l = perkLabel(p); return `<span class="perk-pill"><span class="kanji">${l.kanji}</span>${l.name}</span>`; }).join("")
     : `<span style="color:var(--dim);font-size:13px">No blessings yet. Level up to earn them.</span>`;
-  const sw = (k: keyof Settings, label: string) =>
+  const sw = (k: ToggleKey, label: string) =>
     `<button class="toggle" data-set="${k}" role="switch" aria-checked="${settings[k]}"><span>${label}</span><span class="switch${settings[k] ? " on" : ""}"></span></button>`;
   showOverlay(`<div class="panel" style="text-align:left">
     <div class="panel-title" style="text-align:center">PAUSED</div>
-    <div class="panel-sub" style="text-align:center">${s.className} · Wave ${s.wave} · Level ${s.level}</div>
+    <div class="panel-sub" style="text-align:center">${s.className} · ${DIFFICULTIES[game?.difficulty ?? "normal"].name} · Wave ${s.wave} · Level ${s.level}</div>
     <div class="pause-grid">
       <div class="pause-menu">
         <button class="btn primary" data-act="resume">Resume · Esc</button>
@@ -792,8 +821,8 @@ function renderEnd(s: GameStats) {
   showOverlay(`<div class="panel">
     <div class="end-kanji" style="color:${won ? "var(--gold)" : "var(--crimson)"}">${won ? "天" : "敗"}</div>
     <div class="panel-title" style="margin-top:8px">${won ? "VICTORY" : "YOU HAVE FALLEN"}</div>
-    <div class="panel-sub">${s.className}</div>
-    ${recordSet ? `<div class="record">NEW BEST · WAVE ${s.wave}</div>` : `<div class="panel-sub num">Best: wave ${best[s.classId] ?? s.wave}</div>`}
+    <div class="panel-sub">${s.className} · ${DIFFICULTIES[game?.difficulty ?? "normal"].name}</div>
+    ${recordSet ? `<div class="record">NEW BEST · WAVE ${s.wave}</div>` : `<div class="panel-sub num">Best on ${DIFFICULTIES[game?.difficulty ?? "normal"].name}: wave ${best[bestKey(s.classId, game?.difficulty ?? "normal")] ?? s.wave}</div>`}
     <div class="end-stats num">
       <div class="end-stat"><b>${s.wave}</b><span>Wave</span></div>
       <div class="end-stat"><b>${s.level}</b><span>Level</span></div>
@@ -826,7 +855,7 @@ overlay.addEventListener("click", e => {
   if (buy) { if (!buy.disabled) game.buyShopItem(buy.dataset.buy!); return; }
   const set = t.closest<HTMLElement>("[data-set]");
   if (set) {
-    const k = set.dataset.set as keyof Settings;
+    const k = set.dataset.set as ToggleKey;
     settings[k] = !settings[k];
     applySettings();
     if (k === "sound" && settings.sound) { try { audio.startMusic(); } catch { /* ignore */ } }

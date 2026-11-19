@@ -248,6 +248,17 @@ kbd {
 .keycap:hover { border-color: var(--gold); }
 .keycap.listening { border-color: var(--gold); background: rgba(217,173,91,.18); color: var(--gold); animation: listen 1s ease-in-out infinite; }
 @keyframes listen { 50% { box-shadow: 0 0 0 3px rgba(217,173,91,.35); } }
+.diff-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.diff {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 52px; padding: 6px 2px; border-radius: 8px;
+  font-size: 12px; font-weight: 700; color: var(--muted); background: rgba(0,0,0,.25); border: 1px solid var(--line);
+  transition: border-color .15s, background .15s, color .15s;
+}
+.diff .kanji { font-size: 18px; color: var(--c); }
+.diff:hover { border-color: var(--c); color: var(--bone); }
+.diff.on { border-color: var(--c); color: var(--bone); background: color-mix(in srgb, var(--c) 16%, transparent); box-shadow: 0 0 14px -6px var(--c); }
+.diff-tag { display: inline-block; margin-top: 2px; font-size: 10px; font-weight: 800; letter-spacing: 1.5px; color: var(--c); }
+.diff-tag .kanji { font-size: 12px; }
 .slot-label { position: absolute; top: -16px; left: 0; right: 0; text-align: center; font-size: 10px; color: var(--muted); white-space: nowrap; }
 .tips {
   position: absolute; bottom: 132px; left: 50%; transform: translateX(-50%);
