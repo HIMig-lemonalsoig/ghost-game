@@ -32,7 +32,11 @@ export type ClassId =
   | "kitsune"
   | "raijin"
   | "yukionna"
-  | "sohei";
+  | "sohei"
+  | "ashigaru"
+  | "kappa"
+  | "tengu"
+  | "kabuki";
 
 export interface ClassDef {
   id: ClassId;
@@ -279,6 +283,50 @@ export const CLASSES: ClassDef[] = [
     ultKanji: "輪",
     ultDesc: "Heal 35% of max HP, become immune for 2.5s and release a shockwave.",
     accent: "hsl(28, 55%, 58%)",
+  },
+  {
+    id: "ashigaru",
+    kanji: "足",
+    name: "Ashigaru",
+    role: "Spear Footsoldier",
+    bonuses: ["Starts with Flame Spear", "+15 max HP", "+25% knockback on hit"],
+    ultName: "Spear Wall",
+    ultKanji: "槍",
+    ultDesc: "Spectral spears thrust out in 8 directions, skewering and hurling back every foe in their path.",
+    accent: "hsl(12, 75%, 55%)",
+  },
+  {
+    id: "kappa",
+    kanji: "河",
+    name: "Kappa",
+    role: "River Trickster",
+    bonuses: ["+0.3 HP regen per second", "Every 4th hit splashes nearby foes for 60% damage"],
+    ultName: "Tidal Surge",
+    ultKanji: "潮",
+    ultDesc: "A tidal wave bursts out, blasting foes far away and slowing them for 4s.",
+    accent: "hsl(175, 65%, 50%)",
+  },
+  {
+    id: "tengu",
+    kanji: "天",
+    name: "Tengu",
+    role: "Mountain Goblin",
+    bonuses: ["+15% movement speed", "Dash recharges 40% faster"],
+    ultName: "Divine Wind",
+    ultKanji: "風",
+    ultDesc: "For 4s, razor winds slice the nearest foe 5 times a second.",
+    accent: "hsl(150, 45%, 60%)",
+  },
+  {
+    id: "kabuki",
+    kanji: "歌",
+    name: "Kabuki",
+    role: "Stage Performer",
+    bonuses: ["+15% critical hit chance", "Critical hits heal 1 HP (once every 0.5s)"],
+    ultName: "Grand Finale",
+    ultKanji: "幕",
+    ultDesc: "For 5s every hit is a critical hit, under a blazing spotlight.",
+    accent: "hsl(335, 80%, 65%)",
   },
 ];
 
@@ -556,12 +604,12 @@ export const SECONDARIES: Record<SecondaryId, SecondaryDef> = {
     id: "flame_spear",
     kanji: "焔",
     name: "Flame Spear (Hokiyari)",
-    desc: "Piercing thrust. Long melee range. Sets enemies ablaze for 4s.",
-    aim: "aim",
-    maxAmmo: 6,
-    startAmmo: 6,
-    regenTime: 4,
-    fireCooldown: 0.55,
+    desc: "Long piercing thrust that skewers every foe in a line and sets them ablaze for 4s.",
+    aim: "self",
+    maxAmmo: 0,
+    startAmmo: 0,
+    regenTime: 0,
+    fireCooldown: 0.5,
     damageMul: 2.2,
     projectiles: 1,
     spread: 0,
@@ -671,6 +719,10 @@ export const CLASS_WEAPON_OPTIONS: Record<ClassId, SecondaryId[]> = {
   raijin:     ["katana", "ono", "shuriken_wheel", "crossbow"],
   yukionna:   ["katana", "tessen", "yumi", "kunai"],
   sohei:      ["katana", "ono", "tate", "tetsubishi"],
+  ashigaru:   ["flame_spear", "yumi", "katana", "tate"],
+  kappa:      ["katana", "kusarigama", "blowgun", "tessen"],
+  tengu:      ["katana", "shuriken_wheel", "tessen", "kunai"],
+  kabuki:     ["katana", "tessen", "twin_sai", "odachi"],
 };
 
 // Back-compat alias. Old call sites take a tuple of two; new code uses
@@ -687,7 +739,7 @@ export const getSecondary = (id: SecondaryId): SecondaryDef => SECONDARIES[id];
 // (def.aim === "self" and handled via swingMeleeSecondary). All others
 // are ranged (projectile or thrown).
 const MELEE_SECONDARY_IDS: SecondaryId[] = [
-  "tessen", "jutte", "ono", "twin_sai", "odachi", "tate",
+  "tessen", "jutte", "ono", "twin_sai", "odachi", "tate", "flame_spear",
 ];
 
 export const isMeleeSecondary = (id: SecondaryId): boolean =>
@@ -3897,10 +3949,14 @@ const CLASS_META: Record<ClassId, {
   raijin:     { name: "Raijin",          kanji: "雷",  ultName: "Heaven's Drum",         ultKanji: "鼓" },
   yukionna:   { name: "Yuki-onna",       kanji: "雪",  ultName: "Eternal Winter",        ultKanji: "冬" },
   sohei:      { name: "Sohei",           kanji: "僧",  ultName: "Prayer Wheel",          ultKanji: "輪" },
+  ashigaru:   { name: "Ashigaru",        kanji: "足",  ultName: "Spear Wall",            ultKanji: "槍" },
+  kappa:      { name: "Kappa",           kanji: "河",  ultName: "Tidal Surge",           ultKanji: "潮" },
+  tengu:      { name: "Tengu",           kanji: "天",  ultName: "Divine Wind",           ultKanji: "風" },
+  kabuki:     { name: "Kabuki",          kanji: "歌",  ultName: "Grand Finale",          ultKanji: "幕" },
 };
 
 export const SLASH_HUE: Partial<Record<SecondaryId, number>> = {
-  katana: 40, tessen: 330, jutte: 200, ono: 18, twin_sai: 160, tate: 45, odachi: 265,
+  katana: 40, tessen: 330, jutte: 200, ono: 18, twin_sai: 160, tate: 45, odachi: 265, flame_spear: 22,
 };
 
 export const ABILITY_FX_HUE: Record<string, number> = {
@@ -4148,6 +4204,13 @@ export class GhostGame {
   fx = new Fx();
   fireAnim = 0;
   saiAnim: [number, number] = [0, 0];
+  autoSwapTimer = 0;
+  kappaHitChain = 0;
+  kappaSplashing = false;
+  ultWindTimer = 0;
+  ultWindTick = 0;
+  ultFinaleTimer = 0;
+  kabukiHealCd = 0;
   saiNext = 0;
   inkGrain = new InkGrain();
   parallax = new ParallaxLayer();
@@ -4253,6 +4316,10 @@ export class GhostGame {
     this.enemyProjectiles = [];
     this.cinematicTimer = 0;
     this.fx.clear();
+    this.kappaHitChain = 0;
+    this.ultWindTimer = 0;
+    this.ultFinaleTimer = 0;
+    this.kabukiHealCd = 0;
     this.raijinHitChain = 0;
     this.ultThunderTimer = 0;
     this.ultThunderTick = 0;
@@ -4434,6 +4501,19 @@ export class GhostGame {
         break;
       case "yukionna":
         this.perks.maxHpBonus += 10;
+        break;
+      case "ashigaru":
+        this.perks.maxHpBonus += 15;
+        this.perks.knockbackMul *= 1.25;
+        break;
+      case "kappa":
+        this.perks.hpRegen += 0.3;
+        break;
+      case "tengu":
+        this.perks.speedMul *= 1.15;
+        break;
+      case "kabuki":
+        this.perks.critChance += 0.15;
         break;
       case "sohei":
         this.perks.maxHpBonus += 35;
@@ -5645,7 +5725,7 @@ export class GhostGame {
       }
       p.dashAng = ang;
       p.dashTimer = BASE.DASH_DURATION;
-      p.dashCooldown = BASE.DASH_COOLDOWN;
+      p.dashCooldown = BASE.DASH_COOLDOWN * (this.stats.classId === "tengu" ? 0.6 : 1);
       p.invuln = Math.max(p.invuln, BASE.DASH_IFRAMES);
       p.dashHitIds.clear();
       this.cameraShake = Math.max(this.cameraShake, 0.15);
@@ -6000,9 +6080,13 @@ export class GhostGame {
     }
     // Crit
     let isCrit = false;
-    if (this.perks.critChance > 0 && Math.random() < this.perks.critChance) {
+    if (this.ultFinaleTimer > 0 || (this.perks.critChance > 0 && Math.random() < this.perks.critChance)) {
       dmg *= 3;
       isCrit = true;
+      if (this.stats.classId === "kabuki" && this.kabukiHealCd <= 0 && this.player.hp < this.player.maxHp) {
+        this.kabukiHealCd = 0.5;
+        this.player.hp = Math.min(this.player.maxHp, this.player.hp + 1);
+      }
     }
     e.hp -= dmg;
     // Floating damage number above the enemy.
@@ -6050,6 +6134,22 @@ export class GhostGame {
     }
     if (this.stats.classId === "yukionna") {
       e.slowRemaining = Math.max(e.slowRemaining, 1.5);
+    }
+    if (this.stats.classId === "kappa" && !this.kappaSplashing) {
+      this.kappaHitChain++;
+      if (this.kappaHitChain >= 4) {
+        this.kappaHitChain = 0;
+        this.kappaSplashing = true;
+        const splash = dmg * 0.6 / Math.max(0.01, this.perks.classDamageMul);
+        for (const o of this.enemies) {
+          if (o === e || o.state === "dead" || o.hp <= 0) continue;
+          const d = Math.hypot(o.pos.x - e.pos.x, o.pos.y - e.pos.y);
+          if (d <= 95 + o.size) this.dealDamage(o, splash, Math.atan2(o.pos.y - e.pos.y, o.pos.x - e.pos.x), 60);
+        }
+        this.kappaSplashing = false;
+        this.fx.shockwave(e.pos.x, e.pos.y, 95, { hue: 185, light: 70, life: 0.35, width: 6 });
+        this.fx.burst(e.pos.x, e.pos.y, { count: 10, hue: 190, sat: 80, light: 80, speed: 260, life: 0.35, grav: 300 });
+      }
     }
     if (this.stats.classId === "raijin" && !this.raijinZapping) {
       this.raijinHitChain++;
@@ -7994,6 +8094,7 @@ export class GhostGame {
     else if (weaponId === "twin_sai") { weaponRange = 88; weaponArc = Math.PI * 0.55; }
     else if (weaponId === "odachi") { weaponRange = 150; weaponArc = Math.PI * 1.5; }
     else if (weaponId === "tate") { weaponRange = 75; weaponArc = Math.PI * 0.5; }
+    else if (weaponId === "flame_spear") { weaponRange = 125; weaponArc = Math.PI * 0.2; }
     else {
       // Katana defaults — also used when idle.
       weaponRange = BASE.ATTACK_RANGE * this.perks.attackRangeMul;
@@ -8009,6 +8110,11 @@ export class GhostGame {
       this.drawRangedWeapon(rangedHeld);
     } else if (weaponId === "twin_sai") {
       this.drawTwinSai();
+    } else if (weaponId === "flame_spear") {
+      const ph = 1 - p.attackAnim;
+      const ext = p.attackAnim > 0 ? (ph < 0.25 ? ph / 0.25 : 1 - (ph - 0.25) / 0.75) : 0;
+      ctx.rotate(p.attackAnim > 0 ? 0 : 0.18 * swingDir);
+      this.drawSpear(ext * 46);
     } else {
       ctx.rotate(swingAng);
       this.drawPlayerWeapon(weaponId, p.attackAnim > 0, weaponRange);
@@ -8016,7 +8122,7 @@ export class GhostGame {
     ctx.restore();
 
     // Phase 1 — sample the swung weapon's tip into the ink-brush trail.
-    if (p.attackAnim > 0 && weaponId !== "twin_sai") {
+    if (p.attackAnim > 0 && weaponId !== "twin_sai" && weaponId !== "flame_spear") {
       const tipLen = weaponRange * 0.95;
       const total = p.facing + swingAng;
       const tipX = p.pos.x + Math.cos(total) * tipLen;
@@ -8304,6 +8410,35 @@ export class GhostGame {
     }
   }
 
+  // Hokiyari: long shaft, red tassel collar, steel head wreathed in flame.
+  private drawSpear(thrust: number) {
+    const ctx = this.ctx;
+    const t = this.elapsed;
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.translate(thrust - 6, 0);
+    ctx.strokeStyle = "hsl(20, 40%, 26%)";
+    ctx.lineWidth = 3.5;
+    ctx.beginPath(); ctx.moveTo(-10, 0); ctx.lineTo(44, 0); ctx.stroke();
+    ctx.strokeStyle = "hsl(42, 50%, 55%)";
+    ctx.lineWidth = 4.2;
+    ctx.beginPath(); ctx.moveTo(-10, 0); ctx.lineTo(-7, 0); ctx.stroke();
+    ctx.strokeStyle = "hsl(358, 65%, 40%)";
+    ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.moveTo(40, 0); ctx.lineTo(44, 0); ctx.stroke();
+    ctx.fillStyle = "hsl(20, 25%, 72%)";
+    ctx.beginPath(); ctx.moveTo(62, 0); ctx.lineTo(46, -4.5); ctx.lineTo(44, 0); ctx.lineTo(46, 4.5); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = "hsla(40, 80%, 92%, 0.9)";
+    ctx.lineWidth = 0.8;
+    ctx.beginPath(); ctx.moveTo(46, 0); ctx.lineTo(60, 0); ctx.stroke();
+    const fl = 4 + Math.sin(t * 22) * 1.5 + thrust * 0.05;
+    ctx.fillStyle = "hsla(25, 100%, 55%, 0.75)";
+    ctx.beginPath(); ctx.ellipse(55, 0, 9 + fl, 4 + fl * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "hsla(50, 100%, 75%, 0.9)";
+    ctx.beginPath(); ctx.ellipse(56, 0, 4, 2, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
   // Ranged / thrown weapon models. Drawn pointing along +X (the aim direction).
   private drawRangedWeapon(id: SecondaryId) {
     const ctx = this.ctx;
@@ -8394,21 +8529,7 @@ export class GhostGame {
         break;
       }
       case "flame_spear": {
-        const thrust = fa * 14;
-        ctx.translate(thrust - 4, 0);
-        ctx.strokeStyle = "hsl(20, 40%, 26%)";
-        ctx.lineWidth = 3.5;
-        ctx.beginPath(); ctx.moveTo(-8, 0); ctx.lineTo(40, 0); ctx.stroke();
-        ctx.strokeStyle = "hsl(358, 65%, 40%)";
-        ctx.lineWidth = 4.5;
-        ctx.beginPath(); ctx.moveTo(36, 0); ctx.lineTo(39, 0); ctx.stroke();
-        ctx.fillStyle = "hsl(20, 30%, 70%)";
-        ctx.beginPath(); ctx.moveTo(54, 0); ctx.lineTo(40, -4); ctx.lineTo(40, 4); ctx.closePath(); ctx.fill();
-        const fl = 4 + Math.sin(t * 22) * 1.5;
-        ctx.fillStyle = "hsla(25, 100%, 55%, 0.8)";
-        ctx.beginPath(); ctx.ellipse(48, 0, 8 + fl, 4 + fl * 0.4, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = "hsla(50, 100%, 75%, 0.9)";
-        ctx.beginPath(); ctx.ellipse(49, 0, 4, 2, 0, 0, Math.PI * 2); ctx.fill();
+        this.drawSpear(fa * 14);
         break;
       }
       case "kunai": {
@@ -9194,6 +9315,36 @@ export class GhostGame {
         }
       }
     }
+    if (this.kabukiHealCd > 0) this.kabukiHealCd = Math.max(0, this.kabukiHealCd - dt);
+    if (this.ultFinaleTimer > 0) {
+      this.ultFinaleTimer = Math.max(0, this.ultFinaleTimer - dt);
+      if (Math.random() < dt * 14) {
+        const a = Math.random() * Math.PI * 2;
+        this.fx.burst(this.player.pos.x + Math.cos(a) * 30, this.player.pos.y + Math.sin(a) * 30,
+          { count: 1, hue: 335 + Math.random() * 40, light: 75, speed: 120, life: 0.4 });
+      }
+    }
+    if (this.ultWindTimer > 0) {
+      this.ultWindTimer = Math.max(0, this.ultWindTimer - dt);
+      this.ultWindTick -= dt;
+      if (this.ultWindTick <= 0) {
+        this.ultWindTick = 0.2;
+        let best: Enemy | null = null;
+        let bestD = 340;
+        for (const e of this.enemies) {
+          if (e.state === "dead" || e.hp <= 0) continue;
+          const d = Math.hypot(e.pos.x - this.player.pos.x, e.pos.y - this.player.pos.y);
+          if (d < bestD) { bestD = d; best = e; }
+        }
+        if (best) {
+          const ang = Math.atan2(best.pos.y - this.player.pos.y, best.pos.x - this.player.pos.x);
+          this.fx.slash(best.pos.x, best.pos.y, ang + Math.PI / 2, best.size + 22, Math.PI * 0.8, Math.random() < 0.5 ? 1 : -1,
+            { hue: 150, sat: 60, light: 85, width: 6, life: 0.2 });
+          this.fx.streakLine(this.player.pos.x, this.player.pos.y, best.pos.x, best.pos.y, 150, 90, 3, 0.15);
+          this.dealDamage(best, 6, ang, 90);
+        }
+      }
+    }
     if (this.ultThunderTimer > 0) {
       this.ultThunderTimer = Math.max(0, this.ultThunderTimer - dt);
       this.ultThunderTick -= dt;
@@ -9235,7 +9386,9 @@ export class GhostGame {
         this.ultDeathWebTimer <= 0 &&
         this.ultDivineBeamTimer <= 0 &&
         this.ultShadowConsumeTimer <= 0 &&
-        this.ultThunderTimer <= 0) {
+        this.ultThunderTimer <= 0 &&
+        this.ultWindTimer <= 0 &&
+        this.ultFinaleTimer <= 0) {
       this.stats.ultActive = false;
     }
 
@@ -9773,7 +9926,16 @@ export class GhostGame {
     this.fx.ultimate(x, y, cls.ultKanji, cls.ultName, hue, this.player.pos);
     this.hitstop = Math.max(this.hitstop, 0.09);
     switch (this.stats.classId) {
-      case "tetsubo": case "sohei": case "hatamoto":
+      case "kappa":
+        this.fx.smoke(x, y, 10, 120, 70, 190, 50);
+        break;
+      case "tengu":
+        this.fx.burst(x, y, { count: 30, hue: 150, sat: 50, light: 88, speed: 560, life: 0.6, w: 1.6 });
+        break;
+      case "kabuki":
+        this.fx.glow(x, y, 260, 45, 100, 80, 0.8);
+        break;
+      case "tetsubo": case "sohei": case "hatamoto": case "ashigaru":
         this.fx.ground(x, y, 240, hue, 2);
         this.fx.smoke(x, y, 10, 120, 35, 30, 20);
         break;
@@ -10069,6 +10231,54 @@ export class GhostGame {
         this.screenFlashTimer = 0.5;
         break;
       }
+      case "ashigaru": {
+        const { x: px, y: py } = this.player.pos;
+        const len = 320;
+        for (let d = 0; d < 8; d++) {
+          const ang = (d / 8) * Math.PI * 2;
+          const ca = Math.cos(ang), sa = Math.sin(ang);
+          for (const e of this.enemies) {
+            if (e.state === "dead") continue;
+            const dx = e.pos.x - px, dy = e.pos.y - py;
+            const proj = dx * ca + dy * sa;
+            if (proj < 0 || proj > len) continue;
+            if (Math.abs(-dx * sa + dy * ca) > 30 + e.size) continue;
+            this.dealDamage(e, 16, ang, 240);
+            e.burnRemaining = Math.max(e.burnRemaining, 3);
+            e.burnDps = Math.max(e.burnDps, 4);
+          }
+          this.fx.streakLine(px + ca * 20, py + sa * 20, px + ca * len, py + sa * len, 18, 85, 14, 0.45);
+          this.fx.flames2(px + ca * len, py + sa * len, 5, 14);
+        }
+        this.player.invuln = Math.max(this.player.invuln, 0.8);
+        this.cameraShake = Math.max(this.cameraShake, 0.6);
+        break;
+      }
+      case "kappa": {
+        const { x: px, y: py } = this.player.pos;
+        for (const e of this.enemies) {
+          if (e.state === "dead") continue;
+          const dx = e.pos.x - px, dy = e.pos.y - py;
+          if (Math.hypot(dx, dy) > 420) continue;
+          this.dealDamage(e, 12, Math.atan2(dy, dx), e.isBoss ? 120 : 520);
+          e.slowRemaining = Math.max(e.slowRemaining, 4);
+        }
+        for (let i = 0; i < 3; i++) this.fx.shockwave(px, py, 420 - i * 60, { hue: 185, light: 65, life: 0.7, width: 16 - i * 4, delay: i * 0.1, lines: i === 0 ? 20 : 0 });
+        this.fx.burst(px, py, { count: 36, hue: 190, sat: 85, light: 80, speed: 620, life: 0.6, grav: 250 });
+        this.player.invuln = Math.max(this.player.invuln, 1);
+        break;
+      }
+      case "tengu": {
+        this.ultWindTimer = 4;
+        this.ultWindTick = 0;
+        this.player.invuln = Math.max(this.player.invuln, 0.8);
+        break;
+      }
+      case "kabuki": {
+        this.ultFinaleTimer = 5;
+        this.player.invuln = Math.max(this.player.invuln, 0.6);
+        break;
+      }
       case "sohei": {
         this.player.hp = Math.min(this.player.maxHp, this.player.hp + Math.round(this.player.maxHp * 0.35));
         this.player.invuln = Math.max(this.player.invuln, 2.5);
@@ -10290,6 +10500,19 @@ export class GhostGame {
     if (this.stats.secondaryCooldown > 0) {
       this.stats.secondaryCooldown = Math.max(0, this.stats.secondaryCooldown - dt);
     }
+    // Out of ammo → swap to the other weapon once the last shot has left.
+    if (this.autoSwapTimer > 0) {
+      this.autoSwapTimer -= dt;
+      if (this.autoSwapTimer <= 0) {
+        const cur = this.stats.secondaryActiveSlot;
+        const other = cur === 0 ? 1 : 0;
+        const curId = this.stats.secondaryIds[cur];
+        if (curId && !isMeleeSecondary(curId) && curId !== "katana" && this.stats.secondaryAmmo[cur] <= 0
+            && this.slotUsable(other)) {
+          this.swapSecondary();
+        }
+      }
+    }
 
     // ===== Phase 2 — Block pool refresh + regen =====
     // Effective block HP max = perks.blockHpBase + heavy-weapon bonus
@@ -10392,6 +10615,13 @@ export class GhostGame {
   }
 
   // Toggle the active secondary slot — only swaps if both slots have a weapon.
+  private slotUsable(slot: number): boolean {
+    const id = this.stats.secondaryIds[slot];
+    if (!id) return false;
+    if (id === "katana" || isMeleeSecondary(id)) return true;
+    return this.stats.secondaryAmmo[slot] > 0 && this.stats.secondaryReload[slot] <= 0;
+  }
+
   swapSecondary() {
     const a = this.stats.secondaryIds[0];
     const b = this.stats.secondaryIds[1];
@@ -10444,6 +10674,7 @@ export class GhostGame {
     } else {
       if (this.stats.secondaryAmmo[slot] <= 0) return;
       this.stats.secondaryAmmo[slot] -= 1;
+      if (this.stats.secondaryAmmo[slot] === 0) this.autoSwapTimer = 0.25;
       // ===== Phase 2 — Reload trigger =====
       // If this weapon uses reload and we just emptied the mag, kick off
       // the reload timer immediately. No firing is allowed until it ends.
@@ -10463,8 +10694,7 @@ export class GhostGame {
     // ===== Phase B — melee-style secondaries (Tessen, Jutte, Ono, Twin Sai, Odachi).
     // These all use def.aim === "self" but behave like swings, NOT smoke clouds.
     // We branch by id BEFORE the generic "self" path so smoke_bomb still works.
-    if (id === "tessen" || id === "jutte" || id === "ono"
-        || id === "twin_sai" || id === "odachi" || id === "tate") {
+    if (isMeleeSecondary(id)) {
       this.swingMeleeSecondary(id, def);
       return;
     }
@@ -10607,8 +10837,7 @@ export class GhostGame {
   private activeSecondaryIsMelee(): boolean {
     const id = this.stats.secondaryIds[this.stats.secondaryActiveSlot];
     if (!id) return false;
-    return id === "tessen" || id === "jutte" || id === "ono"
-        || id === "twin_sai" || id === "odachi" || id === "tate";
+    return isMeleeSecondary(id);
   }
 
   private swingMeleeSecondary(id: SecondaryId, def: typeof SECONDARIES[SecondaryId]) {
@@ -10629,6 +10858,7 @@ export class GhostGame {
     else if (id === "ono") { range = 110; arc = Math.PI * 0.55; }    // heavy frontal
     else if (id === "twin_sai") { range = 88; arc = Math.PI * 0.4; }
     else if (id === "tate") { range = 75; arc = Math.PI * 0.5; }      // shield bash — short cone
+    else if (id === "flame_spear") { range = 125; arc = Math.PI * 0.2; } // narrow piercing thrust
     else /* odachi */ { range = 150; arc = Math.PI * 1.5; }          // 270° huge arc
 
     // Bump per-weapon swing counter (used for Ono cleave + Twin Fang etc).
@@ -10658,6 +10888,10 @@ export class GhostGame {
         }
         if (id === "twin_sai" && Math.random() < 0.15 && !e.isBoss) {
           e.stunTimer = Math.max(e.stunTimer, 0.6);
+        }
+        if (id === "flame_spear") {
+          e.burnRemaining = Math.max(e.burnRemaining, 4);
+          e.burnDps = Math.max(e.burnDps, 4);
         }
         this.dealDamage(e, baseDmg, ang, e.isBoss ? 12 : 50, id);
         if (!anyHit) { anyHit = true; firstHitAng = ang; }
@@ -10689,7 +10923,12 @@ export class GhostGame {
     }
 
     // Visual swing arc + audio cue
-    if (id === "twin_sai") {
+    if (id === "flame_spear") {
+      const tipX = p.pos.x + Math.cos(p.facing) * range, tipY = p.pos.y + Math.sin(p.facing) * range;
+      this.fx.streakLine(p.pos.x + Math.cos(p.facing) * 24, p.pos.y + Math.sin(p.facing) * 24, tipX, tipY, 22, 85, 9, 0.16);
+      this.fx.flames2(tipX, tipY, 6, 14);
+      this.fx.burst(tipX, tipY, { count: 5, hue: 25, light: 70, speed: 260, dir: p.facing, spread: 0.6, life: 0.2 });
+    } else if (id === "twin_sai") {
       const side = this.saiNext;
       this.saiNext = 1 - side;
       this.saiAnim[side] = 1;
