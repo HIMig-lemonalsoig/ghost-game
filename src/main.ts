@@ -6,6 +6,7 @@ import { hueOf } from "./fx";
 import type { ClassId, GameStats, SecondaryId, Difficulty } from "./GhostGame";
 import { UI_CSS } from "./ui.css";
 import { initDevMode } from "./devmode";
+import { trackRun, commitRun, careerHTML, resetCareer, CAREER_CSS } from "./career";
 
 // ─── Persistent settings & records ────────────────────────────────────────────
 const SETTINGS_KEY = "ghostgame.settings.v1";
@@ -62,6 +63,8 @@ const DEFAULT_KEYS: Record<Action, string> = {
 const keys: Record<Action, string> = readJSON(KEYS_KEY, { ...DEFAULT_KEYS });
 let capturing: Action | null = null;
 let controlsOpen = false;
+let careerOpen = false;
+let careerArmed = false;
 
 // Left/right modifier keys count as the same key.
 const normKey = (c: string) => c.replace(/Right$/, (m) => (/^(Shift|Control|Alt|Meta)/.test(c) ? "Left" : m));
@@ -110,6 +113,18 @@ function showControlsModal() {
     <div class="pane" style="margin-top:16px">${controlsPanel()}</div>
     <div class="panel-actions"><button class="btn primary" data-act="closecontrols">Done · Esc</button></div></div>`;
 }
+function showCareerModal() {
+  careerOpen = true;
+  overlay.classList.add("show", "top");
+  overlay.innerHTML = careerHTML(careerArmed);
+}
+function closeCareerModal() {
+  careerOpen = false;
+  careerArmed = false;
+  overlay.classList.remove("show", "top");
+  overlay.innerHTML = "";
+  renderMenu();
+}
 function closeControlsModal() {
   controlsOpen = false;
   capturing = null;
@@ -126,7 +141,7 @@ function refreshControls() {
 
 // ─── DOM scaffolding ──────────────────────────────────────────────────────────
 const style = document.createElement("style");
-style.textContent = UI_CSS;
+style.textContent = UI_CSS + CAREER_CSS;
 document.head.appendChild(style);
 
 const canvas = document.getElementById("game-canvas") as HTMLCanvasElement;
@@ -255,7 +270,7 @@ function renderMenu() {
   <div class="menu-wrap">
     <div class="menu-top">
       <div class="logo"><span class="kanji">幽</span><div><h1>GHOST GAME</h1><p>Survive the waves. Forge your legend.</p></div></div>
-      <div class="menu-actions">${continueBtn}<button class="btn ghost" data-act="controls">Controls</button><button class="btn ghost" data-act="random">Random class</button></div>
+      <div class="menu-actions">${continueBtn}<button class="btn ghost" data-act="career">Career</button><button class="btn ghost" data-act="controls">Controls</button><button class="btn ghost" data-act="random">Random class</button></div>
     </div>
     <div class="menu-body">
       <div class="class-grid" role="listbox" aria-label="Classes">${cards}</div>
@@ -332,6 +347,7 @@ menu.addEventListener("click", e => {
   if (act === "start") startGame(currentClass, currentWeapons);
   else if (act === "continue") continueRun();
   else if (act === "controls") showControlsModal();
+  else if (act === "career") showCareerModal();
   else if (act === "random") {
     const pool = CLASSES.filter(c => c.id !== currentClass);
     selectClass(pool[Math.floor(Math.random() * pool.length)].id);
@@ -359,7 +375,7 @@ function menuKeys(e: KeyboardEvent) {
 function stopGame() {
   if (animId !== null) cancelAnimationFrame(animId);
   animId = null;
-  if (game) audio.stopMusic();
+  if (game) { commitRun(game); audio.stopMusic(); }
   game = null;
   stats = null;
   attackHeld = blockHeld = false;
@@ -397,6 +413,7 @@ function startGame(classId: ClassId, weapons: SecondaryId[]) {
   g.difficulty = settings.difficulty;
   g.start(classId, pick[0]);
   g.equipWeapons([pick[0], pick[1]]);
+  trackRun(g, true);
   stats = { ...g.stats };
   beginLoop();
 }
@@ -406,6 +423,7 @@ function continueRun() {
   if (!saved) { renderMenu(); return; }
   const g = bootGame();
   g.resumeFromSave(saved);
+  trackRun(g, false);
   stats = { ...g.stats };
   beginLoop();
 }
@@ -705,7 +723,14 @@ function updateHud(s: GameStats) {
     writeJSON(BEST_KEY, best);
     if (s.state === "defeat" || s.state === "victory") recordSet = true;
   }
+  // Career — fold progress in at each wave end and when the run ends.
+  if (game && s.state !== careerSeenState) {
+    if (s.state === "shop") commitRun(game);
+    else if (s.state === "defeat" || s.state === "victory") commitRun(game, true);
+    careerSeenState = s.state;
+  }
 }
+let careerSeenState = "";
 
 hud.addEventListener("click", e => {
   if ((e.target as HTMLElement).closest("[data-act=pause]")) pauseGame();
@@ -850,6 +875,12 @@ overlay.addEventListener("click", e => {
   const cact = t.closest<HTMLElement>("[data-act]")?.dataset.act;
   if (cact === "resetkeys") { Object.assign(keys, DEFAULT_KEYS); writeJSON(KEYS_KEY, keys); capturing = null; refreshControls(); return; }
   if (cact === "closecontrols") { closeControlsModal(); return; }
+  if (cact === "closecareer") { closeCareerModal(); return; }
+  if (cact === "resetcareer") {
+    if (careerArmed) { resetCareer(); careerArmed = false; } else careerArmed = true;
+    showCareerModal();
+    return;
+  }
   if (!game) return;
   const perk = t.closest<HTMLElement>("[data-perk]");
   if (perk) { game.selectPerk(perk.dataset.perk!); return; }
@@ -941,6 +972,7 @@ window.addEventListener("keydown", e => {
     return;
   }
   if (controlsOpen) { if (e.code === "Escape") closeControlsModal(); return; }
+  if (careerOpen) { if (e.code === "Escape") closeCareerModal(); return; }
   if (menu.style.display !== "none") { menuKeys(e); return; }
   if (!game) return;
   const s = game.stats;
@@ -999,8 +1031,9 @@ window.addEventListener("blur", () => {
   releaseInputs();
   if (settings.autoPause) pauseGame();
 });
+window.addEventListener("pagehide", () => commitRun(game));
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) { releaseInputs(); if (settings.autoPause) pauseGame(); }
+  if (document.hidden) { commitRun(game); releaseInputs(); if (settings.autoPause) pauseGame(); }
 });
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────

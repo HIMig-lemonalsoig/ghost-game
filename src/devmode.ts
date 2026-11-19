@@ -16,7 +16,7 @@ const ENEMY_KINDS: EnemyArchetype[] = [
 
 const CSS = `
 #devbadge {
-  position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 60;
+  position: fixed; left: 10px; bottom: 10px; z-index: 60;
   font: 700 10px/1 ui-monospace, Menlo, monospace; letter-spacing: .12em;
   padding: 5px 9px; border-radius: 999px; cursor: pointer;
   color: #0b0a09; background: #7fdc9a; border: 0; opacity: .85;

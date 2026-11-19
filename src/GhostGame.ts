@@ -3388,6 +3388,28 @@ export type EnemyArchetype =
 
 export type BossKind = "oni" | "kitsune" | "gasha" | "raijin";
 
+/** Per-run counters the menu folds into lifetime career stats. */
+export interface RunCounters {
+  kills: number;
+  stealthKills: number;
+  bossKills: number;
+  bossByKind: Record<string, number>;
+  killsByKind: Record<string, number>;
+  wavesCleared: number;
+  damageDealt: number;
+  damageTaken: number;
+  biggestHit: number;
+  monEarned: number;
+  ults: number;
+  items: number;
+  dashes: number;
+  time: number;          // seconds of active play
+}
+export const newRunCounters = (): RunCounters => ({
+  kills: 0, stealthKills: 0, bossKills: 0, bossByKind: {}, killsByKind: {}, wavesCleared: 0,
+  damageDealt: 0, damageTaken: 0, biggestHit: 0, monEarned: 0, ults: 0, items: 0, dashes: 0, time: 0,
+});
+
 export const BOSS_INFO: Record<BossKind, { name: string; kanji: string }> = {
   oni:     { name: "Oni Warlord",      kanji: "鬼" },
   kitsune: { name: "Nine-Tailed Witch", kanji: "狐" },
@@ -5391,6 +5413,7 @@ export class GhostGame {
   // unlock). All methods are safe no-ops if state isn't ready.
   // ============================================================
   devMode = false;
+  run: RunCounters = newRunCounters();
   devGodMode = false;        // re-applied each frame in update() if true
 
   devSetGodMode(on: boolean) {
@@ -5820,6 +5843,7 @@ export class GhostGame {
 
   // Wave over: spend banked level-ups first, then visit the shop.
   private finishWave() {
+    this.run.wavesCleared++;
     if ((this.stats.state as string) === "levelup") { this.pendingShopOpen = true; return; }
     if (this.pendingLevelUps > 0) {
       this.pendingShopOpen = true;
@@ -5916,6 +5940,7 @@ export class GhostGame {
     // Exception: on boss waves the timer is uncapped — the wave only
     // ends when every living boss is dead. The countdown still ticks
     // for visual feedback but reaching 0 does not end the wave.
+    this.run.time += dt;
     if (this.stats.waveTimer > 0) {
       this.stats.waveTimer = Math.max(0, this.stats.waveTimer - dt);
       if (this.stats.waveTimer === 0 && !this.stats.isBossWave) {
@@ -6149,6 +6174,7 @@ export class GhostGame {
       }
       p.dashAng = ang;
       p.dashTimer = BASE.DASH_DURATION;
+      this.run.dashes++;
       p.dashCooldown = BASE.DASH_COOLDOWN * (this.stats.classId === "tengu" ? 0.6 : 1) * this.perks.dashCdMul * (this.ultWindTimer > 0 ? 0.15 : 1);
       if (this.ultWindTimer > 0) {
         // Gale: a cutting wind along the whole dash path.
@@ -6195,6 +6221,7 @@ export class GhostGame {
     const isSmoked  = nearest && nearest.disorientRemaining > 0;
     if (nearest && (isUnaware || isSmoked) && !nearest.isBoss) {
       this.killEnemy(nearest, "ghost");
+      this.run.stealthKills++;
       this.cameraShake = 0.4;
       this.hitstop = 0.08;
       audio.play("stealth");
@@ -6263,6 +6290,13 @@ export class GhostGame {
   killEnemy(e: Enemy, type: "honor" | "ghost") {
     if (e.state === "dead") return;
     e.state = "dead";
+    this.run.kills++;
+    this.run.killsByKind[e.archetype] = (this.run.killsByKind[e.archetype] ?? 0) + 1;
+    if (e.isBoss) {
+      this.run.bossKills++;
+      const bk = e.archetype === "final" ? "final" : (e.bossKind ?? "oni");
+      this.run.bossByKind[bk] = (this.run.bossByKind[bk] ?? 0) + 1;
+    }
     e.deathTimer = 1.4;
     e.hp = 0;
     // Death Mark — chain to next nearest enemy with 3s remaining.
@@ -6346,6 +6380,7 @@ export class GhostGame {
       this.fx.seal(e.pos.x, e.pos.y - 30, "冥", 280, 30, 0.7);
     }
     this.stats.mon += monGain;
+    this.run.monEarned += monGain;
     if (monGain > 0) {
       // Floating gold popup, larger for bosses + bigger drops.
       const big = e.isBoss || monGain >= 25;
@@ -6551,6 +6586,8 @@ export class GhostGame {
       }
     }
     e.hp -= dmg;
+    this.run.damageDealt += dmg;
+    if (dmg > this.run.biggestHit) this.run.biggestHit = dmg;
     // Floating damage number above the enemy.
     const shown = fmtNum(dmg);
     this.spawnFloatText(e.pos, isCrit ? `${shown}!` : `${shown}`, {
@@ -6721,6 +6758,7 @@ export class GhostGame {
     const lastStandMul = this.perks.lastStand && this.player.hp / Math.max(1, this.player.maxHp) < 0.3 ? 0.8 : 1;
     baseDamage = Math.max(1, Math.round(this.scaleEnemyDamage(baseDamage) * bannerMul * lastStandMul));
     this.player.hp -= baseDamage;
+    this.run.damageTaken += baseDamage;
     if (this.stats.classId === "sohei" && e && e.state !== "dead") {
       const thorns = Math.max(1, Math.round(baseDamage * 0.6));
       e.hp -= thorns;
@@ -11549,6 +11587,7 @@ export class GhostGame {
     this.stats.ultCharge = 0;
     this.stats.ultReady = false;
     this.stats.ultActive = true;
+    this.run.ults++;
     audio.play("timeSlowSwell");
     if (this.ultCutscenes) {
       this.ultCutscene = { t: 0, dur: 1.35 };
@@ -13008,6 +13047,7 @@ export class GhostGame {
     }
     this.stats.consumables[slot] = null;
     this.stats.lastItemId = id;
+    this.run.items++;
     this.stats.lastItemText = text;
     this.stats.lastItemSeq++;
     this.fx.seal(p.pos.x, p.pos.y - 44, def.kanji, hueOf(def.accent), 26, 0.8, p.pos);
