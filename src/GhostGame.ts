@@ -85,7 +85,7 @@ export const CLASSES: ClassDef[] = [
     bonuses: ["+10% damage", "−10 max HP", "Choose secondary: Kusarigama or Crossbow"],
     ultName: "Crimson Debt",
     ultKanji: "血",
-    ultDesc: "Spend 20% HP to strike every enemy on screen 5 times. Lower HP deals more damage.",
+    ultDesc: "Pay 20% HP to brand the 3 strongest foes. 1.5s later the debt is collected in one brutal strike each — the lower your HP, the harder it hits.",
     accent: "hsl(0, 75%, 55%)",
   },
   {
@@ -151,7 +151,7 @@ export const CLASSES: ClassDef[] = [
     bonuses: ["+10% projectile speed", "Choose secondary: Yumi or Crossbow"],
     ultName: "Storm of Heaven",
     ultKanji: "雷",
-    ultDesc: "Leap into the sky and rain 20 piercing arrows across the arena, slowing on hit.",
+    ultDesc: "For 2.5s, arrows rain on wherever you aim. Steer the storm onto your enemies.",
     accent: "hsl(200, 80%, 65%)",
   },
   {
@@ -162,7 +162,7 @@ export const CLASSES: ClassDef[] = [
     bonuses: ["+30 max HP", "−5% movement speed", "+20% knockback on hit"],
     ultName: "Earthbreaker",
     ultKanji: "震",
-    ultDesc: "Slam the ground — a shockwave launches enemies, dealing fall and collision damage.",
+    ultDesc: "Tear a fissure forward: every foe in front of you is launched and stunned. Nothing behind you is touched.",
     accent: "hsl(30, 30%, 55%)",
   },
   {
@@ -229,7 +229,7 @@ export const CLASSES: ClassDef[] = [
     bonuses: ["Starts with Tessen", "+20 max HP", "Divine barrier absorbs 1 hit every 20s", "Mon pickups have a 5% chance to also heal you"],
     ultName: "Divine Judgement",
     ultKanji: "神",
-    ultDesc: "An expanding sacred beam for 3s. Purifies foes (disables specials for 5s) and heals 5 HP per hit.",
+    ultDesc: "A pillar of holy light follows your aim for 4s, burning and disarming what it touches and healing you for each new foe it strikes.",
     accent: "hsl(180, 70%, 75%)",
   },
   {
@@ -240,7 +240,7 @@ export const CLASSES: ClassDef[] = [
     bonuses: ["Starts with Odachi", "+15% damage", "An untargetable shadow clone mimics your attacks at 40% damage (0.5s delay)"],
     ultName: "Shadow Consume",
     ultKanji: "闇",
-    ultDesc: "Merge with shadow for 6s: 2× damage, +30% speed. Every hit doubles damage. Explodes on end.",
+    ultDesc: "Merge with shadow for 6s: 2× damage. Every kill feeds the darkness and extends it.",
     accent: "hsl(250, 30%, 40%)",
   },
   {
@@ -251,7 +251,7 @@ export const CLASSES: ClassDef[] = [
     bonuses: ["+10% movement speed", "15% chance on hit to set foes ablaze", "25% chance on kill to release a homing foxfire"],
     ultName: "Nine Tails",
     ultKanji: "九",
-    ultDesc: "Unleash 9 homing foxfires that burn everything they touch, and ignite all nearby foes.",
+    ultDesc: "Release nine homing foxfires that hunt foes down one by one, setting them ablaze.",
     accent: "hsl(24, 95%, 60%)",
   },
   {
@@ -262,7 +262,7 @@ export const CLASSES: ClassDef[] = [
     bonuses: ["+10 max HP", "Every 6th hit calls a chain-lightning bolt (3 jumps)"],
     ultName: "Heaven's Drum",
     ultKanji: "鼓",
-    ultDesc: "For 4s, lightning strikes a nearby foe every 0.3s, stunning on impact.",
+    ultDesc: "Charge your weapon for 6s: every hit you land calls chain lightning that jumps to 3 more foes.",
     accent: "hsl(52, 100%, 62%)",
   },
   {
@@ -273,7 +273,7 @@ export const CLASSES: ClassDef[] = [
     bonuses: ["+10 max HP", "Every hit chills the target (slowed 1.5s)", "+15% damage to chilled foes"],
     ultName: "Eternal Winter",
     ultKanji: "冬",
-    ultDesc: "Freeze time for 3s, frost-burst every foe on screen and leave them chilled for 6s.",
+    ultDesc: "A blizzard follows you for 6s. Foes inside crawl, and anyone caught for over a second freezes solid and takes +50% damage.",
     accent: "hsl(195, 85%, 80%)",
   },
   {
@@ -284,7 +284,7 @@ export const CLASSES: ClassDef[] = [
     bonuses: ["+35 max HP", "−5% movement speed", "Thorns: attackers take 60% of the damage they deal you"],
     ultName: "Prayer Wheel",
     ultKanji: "輪",
-    ultDesc: "Heal 35% of max HP, become immune for 2.5s and release a shockwave.",
+    ultDesc: "Turn the prayer wheel for 4s: you heal in pulses, gain brief immunity, and foes are pushed back from you.",
     accent: "hsl(28, 55%, 58%)",
   },
   {
@@ -295,7 +295,7 @@ export const CLASSES: ClassDef[] = [
     bonuses: ["Starts with Flame Spear", "+15 max HP", "+25% knockback on hit"],
     ultName: "Spear Wall",
     ultKanji: "槍",
-    ultDesc: "Spectral spears thrust out in 8 directions, skewering and hurling back every foe in their path.",
+    ultDesc: "Plant a wall of spears in front of you for 7s. It blocks arrows and orbs, and foes that touch it are burned and shoved back.",
     accent: "hsl(12, 75%, 55%)",
   },
   {
@@ -306,7 +306,7 @@ export const CLASSES: ClassDef[] = [
     bonuses: ["+0.3 HP regen per second", "Every 4th hit splashes nearby foes for 60% damage"],
     ultName: "Tidal Surge",
     ultKanji: "潮",
-    ultDesc: "A tidal wave bursts out, blasting foes far away and slowing them for 4s.",
+    ultDesc: "Send a tidal wave rolling forward across the arena. It carries every foe it catches and dumps them, slowed, at the far end.",
     accent: "hsl(175, 65%, 50%)",
   },
   {
@@ -317,7 +317,7 @@ export const CLASSES: ClassDef[] = [
     bonuses: ["+15% movement speed", "Dash recharges 40% faster"],
     ultName: "Divine Wind",
     ultKanji: "風",
-    ultDesc: "For 4s, razor winds slice the nearest foe 5 times a second.",
+    ultDesc: "Take flight for 5s: +60% speed, dash recharges almost instantly, and every dash leaves a cutting gale in its path.",
     accent: "hsl(150, 45%, 60%)",
   },
   {
@@ -3479,6 +3479,7 @@ interface Enemy {
   // 0.95 = nearly immune. Set per-archetype in makeEnemy.
   hitstunResist: number;
   bossKind?: BossKind;
+  chill?: number;     // seconds spent inside Yuki-onna's blizzard
   special?: number;   // per-archetype timer (heal pulse, bomb throw)
   fuse?: number;      // lantern self-destruct countdown
 }
@@ -4367,6 +4368,12 @@ export class GhostGame {
   shakeScale = 1;
   fx = new Fx();
   ultCutscene: { t: number; dur: number } | null = null;
+  roninDebt: { ids: number[]; t: number; dmg: number } | null = null;
+  beamPos: Vec2 = { x: 0, y: 0 };
+  ultBlizzardTimer = 0;
+  spearWall: { x: number; y: number; ang: number; len: number; t: number; tick: number } | null = null;
+  tideWave: { x: number; y: number; ang: number; dist: number; max: number; width: number; carried: Set<number> } | null = null;
+  thunderCd = 0;
   ultCutscenes = true;
   ultPose: { t: number; dur: number } | null = null;
   ultPrayerTimer = 0;
@@ -4498,6 +4505,10 @@ export class GhostGame {
     this.fx.clear();
     this.ultCutscene = null;
     this.ultPose = null;
+    this.roninDebt = null;
+    this.ultBlizzardTimer = 0;
+    this.spearWall = null;
+    this.tideWave = null;
     this.ultPrayerTimer = 0;
     this.ultArrowTimer = 0;
     this.reaperCount = 0;
@@ -5958,7 +5969,7 @@ export class GhostGame {
       ? Math.min(this.perks.speedMul, 1 + MAX_SPEED_BONUS)
       : this.perks.speedMul;
     // Wind Charm consumable: +30% movement speed while active.
-    const buffSpeedMul = this.stats.buffWindCharmRemaining > 0 ? 1.30 : 1;
+    const buffSpeedMul = (this.stats.buffWindCharmRemaining > 0 ? 1.30 : 1) * (this.ultWindTimer > 0 ? 1.6 : 1);
     if (dashing) {
       const dashSpeed = BASE.DASH_DISTANCE / BASE.DASH_DURATION;
       p.vel.x = Math.cos(p.dashAng) * dashSpeed;
@@ -6047,7 +6058,20 @@ export class GhostGame {
       }
       p.dashAng = ang;
       p.dashTimer = BASE.DASH_DURATION;
-      p.dashCooldown = BASE.DASH_COOLDOWN * (this.stats.classId === "tengu" ? 0.6 : 1) * this.perks.dashCdMul;
+      p.dashCooldown = BASE.DASH_COOLDOWN * (this.stats.classId === "tengu" ? 0.6 : 1) * this.perks.dashCdMul * (this.ultWindTimer > 0 ? 0.15 : 1);
+      if (this.ultWindTimer > 0) {
+        // Gale: a cutting wind along the whole dash path.
+        const ex = p.pos.x + Math.cos(ang) * BASE.DASH_DISTANCE, ey = p.pos.y + Math.sin(ang) * BASE.DASH_DISTANCE;
+        for (const e of this.enemies) {
+          if (e.state === "dead") continue;
+          const rx = e.pos.x - p.pos.x, ry = e.pos.y - p.pos.y;
+          const along = rx * Math.cos(ang) + ry * Math.sin(ang);
+          if (along < 0 || along > BASE.DASH_DISTANCE) continue;
+          if (Math.abs(-rx * Math.sin(ang) + ry * Math.cos(ang)) > 46 + e.size) continue;
+          this.dealDamage(e, 8, ang, 120);
+        }
+        this.fx.streakLine(p.pos.x, p.pos.y, ex, ey, 140, 90, 18, 0.35);
+      }
       p.invuln = Math.max(p.invuln, BASE.DASH_IFRAMES);
       p.dashHitIds.clear();
       this.cameraShake = Math.max(this.cameraShake, 0.15);
@@ -6278,6 +6302,11 @@ export class GhostGame {
     if (this.stats.classId === "dokkaebi" && Math.random() < 0.05) {
       this.spawnAllyGhost(e.pos.x, e.pos.y, false);
     }
+    if (this.ultShadowConsumeTimer > 0) {
+      // Shadow Consume feeds on kills: each one extends it.
+      this.ultShadowConsumeTimer = Math.min(12, this.ultShadowConsumeTimer + 0.6);
+      this.fx.smoke(e.pos.x, e.pos.y, 3, 30, 8, 260, 30);
+    }
     if (this.stats.classId === "kitsune" && Math.random() < 0.25) {
       this.spawnFoxfire(e.pos.x, e.pos.y, 5);
     }
@@ -6409,7 +6438,7 @@ export class GhostGame {
     // Death Mark — +50% damage from all sources while marked.
     if (e.markRemaining > 0) dmg *= 1.5;
     if (this.stats.classId === "yukionna" && e.slowRemaining > 0) dmg *= 1.15;
-    if (this.stats.classId === "yukionna" && this.stats.ultActive === false && e.stunTimer > 0.25 && e.slowRemaining > 3) dmg *= 1.5;
+    if (e.chill !== undefined && e.chill < 0 && e.stunTimer > 0) dmg *= 1.5;   // frozen by Eternal Winter
     if (this.perks.exploitMul > 0 && (e.stunTimer > 0 || e.slowRemaining > 0 || e.webbedRemaining > 0 || e.warHornSlowRemaining > 0)) {
       dmg *= 1 + this.perks.exploitMul;
     }
@@ -6492,6 +6521,11 @@ export class GhostGame {
         this.fx.shockwave(e.pos.x, e.pos.y, 95, { hue: 185, light: 70, life: 0.35, width: 6 });
         this.fx.burst(e.pos.x, e.pos.y, { count: 10, hue: 190, sat: 80, light: 80, speed: 260, life: 0.35, grav: 300 });
       }
+    }
+    if (this.ultThunderTimer > 0 && !this.raijinZapping && this.thunderCd <= 0) {
+      this.thunderCd = 0.12;
+      this.chainZap(e, 7, 3);
+      this.fx.bolt(e.pos.x, e.pos.y - 260, e.pos.x, e.pos.y, 205, 0.25);
     }
     if (this.stats.classId === "raijin" && !this.raijinZapping) {
       this.raijinHitChain++;
@@ -9935,14 +9969,90 @@ export class GhostGame {
     // Divine beam (Miko) — bright expanding circle
     if (this.ultDivineBeamTimer > 0) {
       ctx.save();
+      const { x, y } = this.beamPos;
       const r = this.ultDivineBeamRadius;
-      const grad = ctx.createRadialGradient(this.player.pos.x, this.player.pos.y, 0,
-                                             this.player.pos.x, this.player.pos.y, Math.max(1, r));
-      grad.addColorStop(0, "hsla(60, 100%, 90%, 0.85)");
-      grad.addColorStop(0.7, "hsla(180, 80%, 75%, 0.4)");
+      const col = ctx.createLinearGradient(x - r, 0, x + r, 0);
+      col.addColorStop(0, "hsla(180, 80%, 85%, 0)");
+      col.addColorStop(0.5, "hsla(55, 100%, 95%, 0.75)");
+      col.addColorStop(1, "hsla(180, 80%, 85%, 0)");
+      ctx.fillStyle = col;
+      ctx.fillRect(x - r, y - 900, r * 2, 900);
+      const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+      grad.addColorStop(0, "hsla(60, 100%, 92%, 0.9)");
       grad.addColorStop(1, "hsla(180, 80%, 75%, 0)");
       ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.arc(this.player.pos.x, this.player.pos.y, Math.max(1, r), 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "hsla(50, 100%, 80%, 0.8)";
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, y, r, this.elapsed * 3, this.elapsed * 3 + 4.5); ctx.stroke();
+      ctx.restore();
+    }
+    // Spear Wall (Ashigaru)
+    if (this.spearWall) {
+      const w = this.spearWall;
+      const ux = Math.cos(w.ang), uy = Math.sin(w.ang);
+      const fade = Math.min(1, w.t / 0.5);
+      ctx.save();
+      ctx.globalAlpha = fade;
+      ctx.strokeStyle = "hsl(20, 40%, 28%)";
+      ctx.lineWidth = 3;
+      for (let i = -7; i <= 7; i++) {
+        const bx = w.x + ux * (i / 7) * w.len / 2, by = w.y + uy * (i / 7) * w.len / 2;
+        const tilt = w.ang - Math.PI / 2 + (i % 2 ? 0.25 : -0.25);
+        const tx = bx + Math.cos(tilt) * 34, ty = by + Math.sin(tilt) * 34;
+        ctx.beginPath(); ctx.moveTo(bx - Math.cos(tilt) * 10, by - Math.sin(tilt) * 10); ctx.lineTo(tx, ty); ctx.stroke();
+        ctx.fillStyle = "hsl(20, 80%, 60%)";
+        ctx.beginPath(); ctx.arc(tx, ty, 3.5, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.strokeStyle = "hsla(20, 90%, 60%, 0.45)";
+      ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.moveTo(w.x - ux * w.len / 2, w.y - uy * w.len / 2); ctx.lineTo(w.x + ux * w.len / 2, w.y + uy * w.len / 2); ctx.stroke();
+      ctx.restore();
+    }
+    // Tidal Surge wave (Kappa)
+    if (this.tideWave) {
+      const tw = this.tideWave;
+      const ux = Math.cos(tw.ang), uy = Math.sin(tw.ang);
+      const fx = tw.x + ux * tw.dist, fy = tw.y + uy * tw.dist;
+      ctx.save();
+      ctx.translate(fx, fy);
+      ctx.rotate(tw.ang);
+      const g = ctx.createLinearGradient(-60, 0, 14, 0);
+      g.addColorStop(0, "hsla(195, 80%, 40%, 0)");
+      g.addColorStop(0.7, "hsla(190, 80%, 55%, 0.55)");
+      g.addColorStop(1, "hsla(185, 90%, 88%, 0.9)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(-60, -tw.width / 2);
+      for (let k = 0; k <= 10; k++) {
+        const yy = -tw.width / 2 + (k / 10) * tw.width;
+        ctx.lineTo(14 + Math.sin(this.elapsed * 10 + k) * 6, yy);
+      }
+      ctx.lineTo(-60, tw.width / 2);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+    // Blizzard (Yuki-onna)
+    if (this.ultBlizzardTimer > 0) {
+      ctx.save();
+      const { x, y } = this.player.pos;
+      ctx.fillStyle = "hsla(200, 70%, 85%, 0.12)";
+      ctx.beginPath(); ctx.arc(x, y, 230, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "hsla(195, 80%, 90%, 0.5)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([10, 10]);
+      ctx.lineDashOffset = -this.elapsed * 40;
+      ctx.beginPath(); ctx.arc(x, y, 230, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+    // Arashi's storm target
+    if (this.ultArrowTimer > 0) {
+      const a = this.aimPoint();
+      ctx.save();
+      ctx.strokeStyle = "hsla(200, 80%, 75%, 0.7)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 6]);
+      ctx.beginPath(); ctx.arc(a.x, a.y, 110, 0, Math.PI * 2); ctx.stroke();
       ctx.restore();
     }
     // Spirit Tempest vortex (Onmyoji)
@@ -10132,23 +10242,8 @@ export class GhostGame {
     }
     if (this.ultWindTimer > 0) {
       this.ultWindTimer = Math.max(0, this.ultWindTimer - dt);
-      this.ultWindTick -= dt;
-      if (this.ultWindTick <= 0) {
-        this.ultWindTick = 0.2;
-        let best: Enemy | null = null;
-        let bestD = 340;
-        for (const e of this.enemies) {
-          if (e.state === "dead" || e.hp <= 0) continue;
-          const d = Math.hypot(e.pos.x - this.player.pos.x, e.pos.y - this.player.pos.y);
-          if (d < bestD) { bestD = d; best = e; }
-        }
-        if (best) {
-          const ang = Math.atan2(best.pos.y - this.player.pos.y, best.pos.x - this.player.pos.x);
-          this.fx.slash(best.pos.x, best.pos.y, ang + Math.PI / 2, best.size + 22, Math.PI * 0.8, Math.random() < 0.5 ? 1 : -1,
-            { hue: 150, sat: 60, light: 85, width: 6, life: 0.2 });
-          this.fx.streakLine(this.player.pos.x, this.player.pos.y, best.pos.x, best.pos.y, 150, 90, 3, 0.15);
-          this.dealDamage(best, 6, ang, 90);
-        }
+      if (Math.random() < dt * 14) {
+        this.fx.burst(this.player.pos.x, this.player.pos.y, { count: 1, hue: 140, sat: 40, light: 88, speed: 60, life: 0.3 });
       }
     }
     if (this.ultPrayerTimer > 0) {
@@ -10172,12 +10267,10 @@ export class GhostGame {
       this.ultArrowTick -= dt;
       while (this.ultArrowTick <= 0) {
         this.ultArrowTick += 0.07;
-        const p = this.player;
-        const near = this.enemies.filter(e => e.state !== "dead" && Math.hypot(e.pos.x - p.pos.x, e.pos.y - p.pos.y) < 420);
-        const target = near.length && Math.random() < 0.65 ? near[Math.floor(Math.random() * near.length)] : null;
-        const a = Math.random() * Math.PI * 2, d = Math.random() * 320;
-        const tx = target ? target.pos.x + (Math.random() - 0.5) * 20 : p.pos.x + Math.cos(a) * d;
-        const ty = target ? target.pos.y + (Math.random() - 0.5) * 20 : p.pos.y + Math.sin(a) * d;
+        const aim = this.aimPoint();
+        const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * 110;
+        const tx = aim.x + Math.cos(a) * d;
+        const ty = aim.y + Math.sin(a) * d;
         this.fx.streakLine(tx + 50, ty - 230, tx, ty, 200, 92, 3, 0.18);
         this.fx.burst(tx, ty, { count: 2, hue: 200, light: 85, speed: 120, life: 0.15 });
         for (const e of this.enemies) {
@@ -10189,17 +10282,107 @@ export class GhostGame {
     }
     if (this.ultThunderTimer > 0) {
       this.ultThunderTimer = Math.max(0, this.ultThunderTimer - dt);
-      this.ultThunderTick -= dt;
-      if (this.ultThunderTick <= 0) {
-        this.ultThunderTick = 0.3;
-        const near = this.enemies.filter(e =>
-          e.state !== "dead" && Math.hypot(e.pos.x - this.player.pos.x, e.pos.y - this.player.pos.y) < 520);
-        if (near.length) {
-          const t = near[Math.floor(Math.random() * near.length)];
-          this.chainZap(t, 9, 2, true);
-          t.stunTimer = Math.max(t.stunTimer, 0.5);
-          this.cameraShake = Math.max(this.cameraShake, 0.25);
+      this.thunderCd = Math.max(0, this.thunderCd - dt);
+      if (Math.random() < dt * 10) {
+        const a = Math.random() * Math.PI * 2;
+        this.fx.burst(this.player.pos.x + Math.cos(a) * 16, this.player.pos.y + Math.sin(a) * 16, { count: 1, hue: 205, light: 85, speed: 90, life: 0.2 });
+      }
+    }
+    if (this.roninDebt) {
+      this.roninDebt.t -= dt;
+      if (this.roninDebt.t <= 0) {
+        for (const id of this.roninDebt.ids) {
+          const e = this.enemies.find(o => o.id === id && o.state !== "dead");
+          if (!e) continue;
+          this.fx.slash(e.pos.x, e.pos.y, Math.PI * 0.25, e.size + 30, Math.PI * 0.6, 1, { hue: 358, sat: 85, light: 70, width: 10, life: 0.4 });
+          this.fx.slash(e.pos.x, e.pos.y, Math.PI * 0.75, e.size + 30, Math.PI * 0.6, -1, { hue: 358, sat: 85, light: 70, width: 10, life: 0.4 });
+          this.fx.glow(e.pos.x, e.pos.y, 80, 358, 90, 50, 0.3);
+          this.dealDamage(e, this.roninDebt.dmg, -Math.PI / 2, 60);
         }
+        this.hitstop = Math.max(this.hitstop, 0.1);
+        this.cameraShake = Math.max(this.cameraShake, 0.5);
+        audio.play("executeThud");
+        this.roninDebt = null;
+      }
+    }
+    if (this.ultBlizzardTimer > 0) {
+      this.ultBlizzardTimer = Math.max(0, this.ultBlizzardTimer - dt);
+      const R = 230;
+      for (const e of this.enemies) {
+        if (e.state === "dead") continue;
+        if (Math.hypot(e.pos.x - this.player.pos.x, e.pos.y - this.player.pos.y) > R + e.size) { e.chill = 0; continue; }
+        e.slowRemaining = Math.max(e.slowRemaining, 1.5);
+        e.chill = (e.chill ?? 0) + dt;
+        if (e.chill >= 1.2) {
+          e.chill = -1.5;
+          e.stunTimer = Math.max(e.stunTimer, e.isBoss ? 0.8 : 2.5);
+          this.fx.frost(e.pos.x, e.pos.y, 6);
+        }
+      }
+      for (let i = 0; i < 3; i++) {
+        const a = Math.random() * Math.PI * 2, d = Math.random() * R;
+        this.fx.frost(this.player.pos.x + Math.cos(a) * d, this.player.pos.y + Math.sin(a) * d, 1);
+      }
+    }
+    if (this.spearWall) {
+      const w = this.spearWall;
+      w.t -= dt;
+      w.tick -= dt;
+      const ux = Math.cos(w.ang), uy = Math.sin(w.ang);
+      const nx = -uy, ny = ux;
+      const sideOf = (x: number, y: number) => (x - w.x) * nx + (y - w.y) * ny;
+      const playerSide = Math.sign(sideOf(this.player.pos.x, this.player.pos.y)) || 1;
+      for (const e of this.enemies) {
+        if (e.state === "dead") continue;
+        const along = (e.pos.x - w.x) * ux + (e.pos.y - w.y) * uy;
+        if (Math.abs(along) > w.len / 2) continue;
+        const side = sideOf(e.pos.x, e.pos.y);
+        if (Math.abs(side) > e.size + 14) continue;
+        // Shove foes back to the far side of the wall.
+        const push = -playerSide * (e.size + 16) - side;
+        e.pos.x += nx * push; e.pos.y += ny * push;
+        if (w.tick <= 0) {
+          this.dealDamage(e, 6, Math.atan2(-playerSide * ny, -playerSide * nx), e.isBoss ? 20 : 140);
+          e.burnRemaining = Math.max(e.burnRemaining, 2);
+          e.burnDps = Math.max(e.burnDps, 4);
+        }
+      }
+      if (w.tick <= 0) w.tick = 0.35;
+      for (const ep of this.enemyProjectiles) {
+        const along = (ep.pos.x - w.x) * ux + (ep.pos.y - w.y) * uy;
+        if (Math.abs(along) <= w.len / 2 && Math.abs(sideOf(ep.pos.x, ep.pos.y)) < 14) {
+          ep.life = 0;
+          this.spawnSpark(ep.pos);
+        }
+      }
+      if (w.t <= 0) this.spearWall = null;
+    }
+    if (this.tideWave) {
+      const tw = this.tideWave;
+      const step = 520 * dt;
+      tw.dist += step;
+      const ux = Math.cos(tw.ang), uy = Math.sin(tw.ang);
+      const fx = tw.x + ux * tw.dist, fy = tw.y + uy * tw.dist;
+      for (const e of this.enemies) {
+        if (e.state === "dead") continue;
+        const rx = e.pos.x - tw.x, ry = e.pos.y - tw.y;
+        const along = rx * ux + ry * uy;
+        const perp = Math.abs(-rx * uy + ry * ux);
+        if (perp > tw.width / 2 || along < tw.dist - 40 || along > tw.dist + 20) continue;
+        if (!tw.carried.has(e.id)) { tw.carried.add(e.id); this.dealDamage(e, 6, tw.ang, 0); }
+        if (!e.isBoss) { e.pos.x += ux * step; e.pos.y += uy * step; }
+        e.stunTimer = Math.max(e.stunTimer, 0.15);
+      }
+      if (Math.random() < 0.8) this.fx.burst(fx + (Math.random() - 0.5) * -uy * tw.width, fy + (Math.random() - 0.5) * ux * tw.width, { count: 2, hue: 190, light: 82, speed: 140, dir: tw.ang, spread: 1, life: 0.35 });
+      if (tw.dist >= tw.max || fx < 0 || fy < 0 || fx > this.worldW || fy > this.worldH) {
+        for (const id of tw.carried) {
+          const e = this.enemies.find(o => o.id === id && o.state !== "dead");
+          if (!e) continue;
+          this.dealDamage(e, 10, tw.ang, 80);
+          e.slowRemaining = Math.max(e.slowRemaining, 4);
+        }
+        this.fx.smoke(fx, fy, 10, 120, 70, 190, 55);
+        this.tideWave = null;
       }
     }
     if (this.standoffTimer > 0) this.standoffTimer = Math.max(0, this.standoffTimer - dt);
@@ -10231,6 +10414,10 @@ export class GhostGame {
         this.ultThunderTimer <= 0 &&
         this.ultPrayerTimer <= 0 &&
         this.ultArrowTimer <= 0 &&
+        this.ultBlizzardTimer <= 0 &&
+        !this.spearWall &&
+        !this.tideWave &&
+        !this.roninDebt &&
         this.ultWindTimer <= 0 &&
         this.ultFinaleTimer <= 0) {
       this.stats.ultActive = false;
@@ -10481,19 +10668,24 @@ export class GhostGame {
     // Miko: Divine Judgement (expanding beam)
     if (this.ultDivineBeamTimer > 0) {
       this.ultDivineBeamTimer = Math.max(0, this.ultDivineBeamTimer - dt);
-      this.ultDivineBeamRadius = (1 - this.ultDivineBeamTimer / 3) * 360;
+      this.ultDivineBeamRadius = 70;
+      // The pillar glides toward wherever you're aiming.
+      const aim = this.aimPoint();
+      const k = Math.min(1, dt * 4);
+      this.beamPos.x += (aim.x - this.beamPos.x) * k;
+      this.beamPos.y += (aim.y - this.beamPos.y) * k;
       this.ultDivineBeamTick += dt;
       if (this.ultDivineBeamTick >= 0.15) {
         this.ultDivineBeamTick = 0;
         for (const e of this.enemies) {
           if (e.state === "dead") continue;
-          const d = Math.hypot(e.pos.x - this.player.pos.x, e.pos.y - this.player.pos.y);
-          if (d <= this.ultDivineBeamRadius) {
-            this.dealDamage(e, 4, 0, 0);
-            e.disarmedRemaining = Math.max(e.disarmedRemaining, 5);
+          const d = Math.hypot(e.pos.x - this.beamPos.x, e.pos.y - this.beamPos.y);
+          if (d <= this.ultDivineBeamRadius + e.size) {
+            this.dealDamage(e, 5, 0, 0);
+            e.disarmedRemaining = Math.max(e.disarmedRemaining, 3);
             if (!this.ultDivineBeamHit.has(e.id)) {
               this.ultDivineBeamHit.add(e.id);
-              this.player.hp = Math.min(this.player.maxHp, this.player.hp + 5);
+              this.player.hp = Math.min(this.player.maxHp, this.player.hp + 4);
             }
           }
         }
@@ -10509,14 +10701,6 @@ export class GhostGame {
       const prev = this.ultShadowConsumeTimer;
       this.ultShadowConsumeTimer = Math.max(0, this.ultShadowConsumeTimer - dt);
       if (prev > 0 && this.ultShadowConsumeTimer <= 0) {
-        for (const e of this.enemies) {
-          if (e.state === "dead") continue;
-          const d = Math.hypot(e.pos.x - this.player.pos.x, e.pos.y - this.player.pos.y);
-          if (d <= 240) {
-            this.dealDamage(e, 18, Math.atan2(e.pos.y - this.player.pos.y, e.pos.x - this.player.pos.x), 280);
-          }
-        }
-        this.cameraShake = Math.max(this.cameraShake, 0.7);
         this.screenFlashColor = "hsla(250, 50%, 30%, 0.5)";
         this.screenFlashTimer = 0.4;
       }
@@ -11223,16 +11407,21 @@ export class GhostGame {
         break;
       }
       case "ronin": {
-        // Crimson Debt — sacrifice 20% of MAX HP (flat cost regardless of current
-        // HP), strike all enemies 5 times. Lower current HP = more damage.
-        const cost = Math.floor(this.player.maxHp * 0.20);
+        // Crimson Debt: pay 20% HP to brand the 3 strongest foes; 1.5s later the debt
+        // is collected in one strike each, scaled by how hurt you are.
+        const cost = Math.floor(this.player.maxHp * 0.2);
         this.player.hp = Math.max(1, this.player.hp - cost);
         this.player.hitFlash = 1;
         const ratio = this.player.hp / Math.max(1, this.player.maxHp);
-        this.ultRoninMul = 1 + (1 - ratio) * 1.5;          // up to ~2.5x at low HP
-        this.ultRoninRemaining = 5;
-        this.ultRoninTimer = 0;
-        this.player.invuln = Math.max(this.player.invuln, 1.6);
+        const marked = this.enemies.filter(e => e.state !== "dead")
+          .sort((a, b) => b.hp - a.hp).slice(0, 3);
+        for (const e of marked) {
+          e.markRemaining = Math.max(e.markRemaining, 2);
+          this.fx.seal(e.pos.x, e.pos.y - e.size - 18, "債", 358, 26, 1.6, e.pos);
+          this.fx.bolt(this.player.pos.x, this.player.pos.y, e.pos.x, e.pos.y, 358, 0.3);
+        }
+        this.roninDebt = { ids: marked.map(e => e.id), t: 1.5, dmg: (10 + cost * 1.5) * (1 + (1 - ratio) * 1.5) };
+        this.player.invuln = Math.max(this.player.invuln, 1);
         break;
       }
       case "dokkaebi": {
@@ -11268,30 +11457,35 @@ export class GhostGame {
         break;
       }
       case "arashi": {
-        // Storm of Heaven: arrows rain from the sky onto foes around you for 2.2s.
+        // Storm of Heaven: arrows rain on wherever you aim, for 2.5s. Steer it.
         this.player.invuln = Math.max(this.player.invuln, 1);
-        this.ultArrowTimer = 2.2;
+        this.ultArrowTimer = 2.5;
         this.ultArrowTick = 0;
-        this.screenFlashColor = "hsla(200, 80%, 75%, 0.45)";
-        this.screenFlashTimer = 0.4;
         break;
       }
       case "tetsubo": {
-        // Earthbreaker — slam ground, expanding shockwave launches enemies.
-        this.shockwaves.push({
-          pos: { x: this.player.pos.x, y: this.player.pos.y },
-          radius: 0,
-          maxRadius: 420,
-          life: 0.7,
-          damage: 18,
-          hitSet: new Set(),
-        });
+        // Earthbreaker: a fissure tears forward in a cone; only foes in front are launched.
+        const p = this.player;
+        const ang = p.facing;
+        for (const e of this.enemies) {
+          if (e.state === "dead") continue;
+          const dx = e.pos.x - p.pos.x, dy = e.pos.y - p.pos.y, d = Math.hypot(dx, dy);
+          if (d > 440) continue;
+          let diff = Math.atan2(dy, dx) - ang;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          if (Math.abs(diff) > 0.55) continue;
+          this.dealDamage(e, 20, Math.atan2(dy, dx), e.isBoss ? 60 : 420);
+          e.stunTimer = Math.max(e.stunTimer, e.isBoss ? 0.5 : 1.4);
+        }
+        for (let i = -2; i <= 2; i++) {
+          const a = ang + i * 0.22;
+          this.fx.streakLine(p.pos.x, p.pos.y, p.pos.x + Math.cos(a) * 440, p.pos.y + Math.sin(a) * 440, 28, 60, 10, 0.7);
+        }
+        this.fx.ground(p.pos.x + Math.cos(ang) * 200, p.pos.y + Math.sin(ang) * 200, 220, 30, 2.4);
         this.cameraShake = Math.max(this.cameraShake, 0.9);
-        this.screenFlashColor = "hsla(30, 80%, 60%, 0.4)";
-        this.screenFlashTimer = 0.4;
         break;
       }
-      // ===== Phase C — new ultimates =====
       case "onmyoji": {
         this.ultSpiritTempestTimer = 5;
         this.ultSpiritTempestTick = 0;
@@ -11339,13 +11533,14 @@ export class GhostGame {
         break;
       }
       case "miko": {
-        this.ultDivineBeamTimer = 3;
-        this.ultDivineBeamRadius = 0;
+        // Divine Judgement: a pillar of light that follows your aim for 4s, burning
+        // and disarming what it touches and healing you as it lands.
+        this.ultDivineBeamTimer = 4;
         this.ultDivineBeamTick = 0;
         this.ultDivineBeamHit = new Set();
-        this.player.invuln = Math.max(this.player.invuln, 1.0);
-        this.screenFlashColor = "hsla(180, 70%, 85%, 0.55)";
-        this.screenFlashTimer = 0.5;
+        const a = this.aimPoint();
+        this.beamPos = { x: a.x, y: a.y };
+        this.player.invuln = Math.max(this.player.invuln, 0.6);
         break;
       }
       case "kagebushi": {
@@ -11359,86 +11554,52 @@ export class GhostGame {
         break;
       }
       case "kitsune": {
+        // Nine Tails: nine homing foxfires hunt foes down one by one.
         for (let i = 0; i < 9; i++) {
           this.spawnFoxfire(this.player.pos.x, this.player.pos.y, 9, (i / 9) * Math.PI * 2);
         }
-        for (const e of this.enemies) {
-          if (e.state === "dead") continue;
-          if (Math.hypot(e.pos.x - this.player.pos.x, e.pos.y - this.player.pos.y) > 380) continue;
-          e.burnRemaining = Math.max(e.burnRemaining, 5);
-          e.burnDps = Math.max(e.burnDps, 7);
-        }
         this.player.invuln = Math.max(this.player.invuln, 0.8);
-        this.screenFlashColor = "hsla(24, 95%, 60%, 0.4)";
-        this.screenFlashTimer = 0.4;
         break;
       }
       case "raijin": {
-        this.ultThunderTimer = 4;
+        // Heaven's Drum: for 6s your weapon is charged — every hit calls chain lightning.
+        this.ultThunderTimer = 6;
         this.ultThunderTick = 0;
-        this.player.invuln = Math.max(this.player.invuln, 0.6);
-        this.screenFlashColor = "hsla(52, 100%, 80%, 0.5)";
-        this.screenFlashTimer = 0.35;
-        this.cameraShake = Math.max(this.cameraShake, 0.6);
+        this.player.invuln = Math.max(this.player.invuln, 0.5);
         break;
       }
       case "yukionna": {
-        // Eternal Winter: no blast. Foes freeze solid (and take +50% while frozen), then stay chilled.
-        this.timeSlowRemaining = Math.max(this.timeSlowRemaining, 1.2);
-        for (const e of this.enemies) {
-          if (e.state === "dead") continue;
-          if (Math.hypot(e.pos.x - this.player.pos.x, e.pos.y - this.player.pos.y) > 650) continue;
-          e.stunTimer = Math.max(e.stunTimer, e.isBoss ? 1 : 3);
-          e.slowRemaining = Math.max(e.slowRemaining, 7);
-          this.fx.frost(e.pos.x, e.pos.y, 5);
-        }
-        this.floorRings.spawn(this.player.pos.x, this.player.pos.y, 650, 0.8, 195, 0.9);
-        this.player.invuln = Math.max(this.player.invuln, 1);
-        this.screenFlashColor = "hsla(195, 85%, 90%, 0.55)";
-        this.screenFlashTimer = 0.5;
+        // Eternal Winter: a blizzard follows you for 6s. Foes inside crawl, and
+        // freeze solid after 1.2s in the storm (frozen foes take +50%).
+        this.ultBlizzardTimer = 6;
+        this.player.invuln = Math.max(this.player.invuln, 0.6);
         break;
       }
       case "ashigaru": {
-        const { x: px, y: py } = this.player.pos;
-        const len = 320;
-        for (let d = 0; d < 8; d++) {
-          const ang = (d / 8) * Math.PI * 2;
-          const ca = Math.cos(ang), sa = Math.sin(ang);
-          for (const e of this.enemies) {
-            if (e.state === "dead") continue;
-            const dx = e.pos.x - px, dy = e.pos.y - py;
-            const proj = dx * ca + dy * sa;
-            if (proj < 0 || proj > len) continue;
-            if (Math.abs(-dx * sa + dy * ca) > 30 + e.size) continue;
-            this.dealDamage(e, 16, ang, 240);
-            e.burnRemaining = Math.max(e.burnRemaining, 3);
-            e.burnDps = Math.max(e.burnDps, 4);
-          }
-          this.fx.streakLine(px + ca * 20, py + sa * 20, px + ca * len, py + sa * len, 18, 85, 14, 0.45);
-          this.fx.flames2(px + ca * len, py + sa * len, 5, 14);
-        }
-        this.player.invuln = Math.max(this.player.invuln, 0.8);
-        this.cameraShake = Math.max(this.cameraShake, 0.6);
+        // Spear Wall: plant a barrier of spears in front of you for 7s. It blocks
+        // arrows and orbs, and foes that touch it are hurt and shoved back.
+        const p = this.player;
+        this.spearWall = {
+          x: p.pos.x + Math.cos(p.facing) * 70, y: p.pos.y + Math.sin(p.facing) * 70,
+          ang: p.facing + Math.PI / 2, len: 280, t: 7, tick: 0,
+        };
+        this.cameraShake = Math.max(this.cameraShake, 0.5);
         break;
       }
       case "kappa": {
-        const { x: px, y: py } = this.player.pos;
-        for (const e of this.enemies) {
-          if (e.state === "dead") continue;
-          const dx = e.pos.x - px, dy = e.pos.y - py;
-          if (Math.hypot(dx, dy) > 420) continue;
-          this.dealDamage(e, 12, Math.atan2(dy, dx), e.isBoss ? 120 : 520);
-          e.slowRemaining = Math.max(e.slowRemaining, 4);
-        }
-        for (let i = 0; i < 3; i++) this.fx.shockwave(px, py, 420 - i * 60, { hue: 185, light: 65, life: 0.7, width: 16 - i * 4, delay: i * 0.1, lines: i === 0 ? 20 : 0 });
-        this.fx.burst(px, py, { count: 36, hue: 190, sat: 85, light: 80, speed: 620, life: 0.6, grav: 250 });
-        this.player.invuln = Math.max(this.player.invuln, 1);
+        // Tidal Surge: a rolling wave crashes forward across the arena, carrying every
+        // foe it catches and dumping them, slowed, at the far end.
+        const p = this.player;
+        this.tideWave = { x: p.pos.x, y: p.pos.y, ang: p.facing, dist: 0, max: 760, width: 260, carried: new Set() };
+        this.player.invuln = Math.max(this.player.invuln, 0.6);
         break;
       }
       case "tengu": {
-        this.ultWindTimer = 4;
-        this.ultWindTick = 0;
-        this.player.invuln = Math.max(this.player.invuln, 0.8);
+        // Divine Wind: take flight for 5s — much faster, dash recharges almost
+        // instantly, and every dash leaves a cutting gale behind you.
+        this.ultWindTimer = 5;
+        this.player.dashCooldown = 0;
+        this.player.invuln = Math.max(this.player.invuln, 0.5);
         break;
       }
       case "kabuki": {
@@ -11811,6 +11972,12 @@ export class GhostGame {
   }
 
   // Fire the active secondary if cooldown clear and ammo available.
+  // Where the player is aiming in world space (mouse, or straight ahead without one).
+  aimPoint(): Vec2 {
+    if (this.input.mouseAim) return { x: this.input.mouseX + this.cameraX, y: this.input.mouseY + this.cameraY };
+    return { x: this.player.pos.x + Math.cos(this.player.facing) * 220, y: this.player.pos.y + Math.sin(this.player.facing) * 220 };
+  }
+
   // Abilities swing whatever melee weapon is in hand; ranged weapons fall back to the katana.
   abilityWeapon(): SecondaryId | null {
     const held = this.stats.secondaryIds[this.stats.secondaryActiveSlot];
