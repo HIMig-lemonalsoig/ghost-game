@@ -68,7 +68,7 @@ kbd {
 .menu-body { display: grid; grid-template-columns: 1fr 380px; gap: 22px; align-items: start; }
 .class-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
 .class-card {
-  position: relative; text-align: left; padding: 14px 12px 12px; border-radius: var(--r);
+  position: relative; overflow: hidden; text-align: left; padding: 14px 12px 12px; border-radius: var(--r);
   background: var(--surface-2); border: 1px solid var(--line); min-height: 112px;
   transition: border-color .15s, background .15s, transform .15s var(--ease);
 }
@@ -104,7 +104,7 @@ kbd {
 .weapon-chip .kanji { font-size: 22px; color: var(--gold); width: 26px; text-align: center; }
 .weapon-chip .wn { font-size: 13px; font-weight: 600; padding-right: 34px; }
 .weapon-chip .wd { font-size: 11px; color: var(--muted); line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 2px; }
-.weapon-chip .slot { position: absolute; top: 8px; right: 8px; font-size: 9px; font-weight: 800; letter-spacing: .5px; color: var(--ink); background: var(--gold); border-radius: 4px; padding: 2px 5px; }
+.weapon-chip .wbadge { position: absolute; top: 8px; right: 8px; font-size: 9px; font-weight: 800; letter-spacing: .5px; color: var(--ink); background: var(--gold); border-radius: 4px; padding: 2px 5px; }
 .hint { font-size: 12px; color: var(--dim); margin-top: 8px; }
 .start-row { display: flex; gap: 10px; margin-top: 20px; }
 .start-row .btn.primary { flex: 1; }
@@ -248,6 +248,77 @@ kbd {
 .end-stat span { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--dim); }
 .record { display: inline-block; margin-top: 14px; padding: 5px 12px; border-radius: 999px; background: var(--gold); color: var(--ink); font-weight: 800; font-size: 12px; letter-spacing: 1.5px; }
 @media (max-width: 760px) { .pause-grid { grid-template-columns: 1fr; } }
+/* ---------- Magic-inspired effects: pointer glow, tilt, shine, animated border ---------- */
+@property --spin { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+.glow { --mx: 50%; --my: 50%; --gc: var(--accent, var(--rc, var(--gold))); isolation: isolate; }
+.glow::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none; z-index: 0;
+  background: radial-gradient(180px circle at var(--mx) var(--my), var(--gc), transparent 70%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  opacity: 0; transition: opacity .2s;
+}
+.glow::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 0;
+  background: radial-gradient(240px circle at var(--mx) var(--my), color-mix(in srgb, var(--gc) 16%, transparent), transparent 65%);
+  opacity: 0; transition: opacity .2s;
+}
+.glow:hover::before, .glow:hover::after, .glow.sel::before, .glow:focus-visible::after { opacity: 1; }
+.glow > * { position: relative; z-index: 1; }
+.class-card .watermark {
+  position: absolute; right: -6px; bottom: -14px; z-index: 0; font-family: var(--font-display); font-size: 84px; line-height: 1;
+  color: var(--accent); opacity: .06; transition: opacity .25s, transform .35s var(--ease); pointer-events: none;
+}
+.class-card:hover .watermark, .class-card.sel .watermark { opacity: .16; transform: translateY(-4px) rotate(-6deg); }
+.tilt { transform-style: preserve-3d; transition: transform .18s var(--ease), background .15s; will-change: transform; }
+.card.tilt:hover:not([disabled]) { transform: perspective(700px) rotateX(var(--ry, 0deg)) rotateY(var(--rx, 0deg)) translateY(-4px); }
+.card.r-legendary { border-color: transparent; background:
+  linear-gradient(var(--surface-2), var(--surface-2)) padding-box,
+  conic-gradient(from var(--spin), #f4c842, #d6453f, #f4c842 40%, #6b4b12, #f4c842) border-box;
+  animation: rise .25s var(--ease) both, spin 4s linear infinite; box-shadow: 0 0 28px -8px rgba(244,200,66,.6); }
+.card.r-legendary:hover:not([disabled]) { background:
+  linear-gradient(var(--surface-3), var(--surface-3)) padding-box,
+  conic-gradient(from var(--spin), #f4c842, #d6453f, #f4c842 40%, #6b4b12, #f4c842) border-box; }
+.card.r-rare { box-shadow: 0 0 22px -12px var(--rare); }
+@keyframes spin { to { --spin: 360deg; } }
+.btn.primary { position: relative; overflow: hidden; }
+.btn.primary::after {
+  content: ""; position: absolute; inset: 0; transform: translateX(-120%) skewX(-20deg);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent);
+}
+.btn.primary:hover::after { transform: translateX(120%) skewX(-20deg); transition: transform .6s var(--ease); }
+.detail { overflow: hidden; }
+.detail .bigmark {
+  position: absolute; right: -20px; top: -30px; font-family: var(--font-display); font-size: 220px; line-height: 1;
+  color: var(--accent); opacity: .05; pointer-events: none;
+}
+.detail > * { position: relative; }
+.detail-head .kanji { text-shadow: 0 0 24px color-mix(in srgb, var(--accent) 55%, transparent); }
+#menu .embers { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 0; }
+#menu .menu-wrap { position: relative; z-index: 1; }
+.embers i {
+  position: absolute; bottom: -10px; width: 4px; height: 4px; border-radius: 50%;
+  background: var(--crimson); box-shadow: 0 0 8px var(--crimson); opacity: 0;
+  animation: ember var(--d, 9s) linear var(--delay, 0s) infinite;
+}
+@keyframes ember {
+  10% { opacity: .8; }
+  100% { transform: translate(var(--dx, 40px), -105vh); opacity: 0; }
+}
+.logo .kanji { text-shadow: 0 0 30px rgba(214,69,63,.55); animation: breathe 4s ease-in-out infinite; }
+@keyframes breathe { 50% { text-shadow: 0 0 46px rgba(214,69,63,.85); } }
+.bar.hp.hurt { animation: hurt .35s ease-out; }
+@keyframes hurt { 30% { box-shadow: 0 0 0 2px var(--crimson), 0 0 18px var(--crimson); } }
+.slot.ult.ready::before {
+  content: ""; position: absolute; inset: -3px; border-radius: 50%; z-index: 0;
+  background: conic-gradient(from var(--spin), transparent 0 70%, var(--ult) 85%, transparent 100%);
+  animation: spin 1.6s linear infinite;
+  -webkit-mask: radial-gradient(circle, transparent 62%, #000 64%); mask: radial-gradient(circle, transparent 62%, #000 64%);
+}
+.slot.ready:not(.ult):not(.empty) .kanji { text-shadow: 0 0 12px rgba(237,227,200,.35); }
+@media (prefers-reduced-motion: reduce) {
+  .tilt:hover { transform: none !important; }
+}
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }

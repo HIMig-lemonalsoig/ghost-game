@@ -60,6 +60,7 @@ let overlayKey = "";
 let recordSet = false;
 let attackHeld = false;
 let blockHeld = false;
+let lastHp = Infinity;
 
 function resize() {
   dpr = window.devicePixelRatio || 1;
@@ -91,6 +92,23 @@ function perkLabel(id: string): { kanji: string; name: string } {
   return p ? { kanji: p.kanji, name: p.name } : { kanji: "印", name: id.replace(/_/g, " ") };
 }
 
+// ─── Pointer-tracked glow & tilt (inspired by 21st.dev Glow Card / Tilt Card) ──
+const EMBERS = `<div class="embers" aria-hidden="true">${Array.from({ length: 22 }, (_, i) =>
+  `<i style="left:${(i * 37) % 100}%;--d:${8 + (i % 5) * 2}s;--delay:${-(i * 1.3).toFixed(1)}s;--dx:${((i % 7) - 3) * 22}px;${i % 3 ? "" : "background:var(--gold);box-shadow:0 0 8px var(--gold);"}"></i>`).join("")}</div>`;
+
+document.addEventListener("pointermove", e => {
+  const el = (e.target as HTMLElement).closest?.<HTMLElement>(".glow");
+  if (!el) return;
+  const r = el.getBoundingClientRect();
+  const x = e.clientX - r.left, y = e.clientY - r.top;
+  el.style.setProperty("--mx", `${x}px`);
+  el.style.setProperty("--my", `${y}px`);
+  if (el.classList.contains("tilt")) {
+    el.style.setProperty("--rx", `${((x / r.width) - 0.5) * 10}deg`);
+    el.style.setProperty("--ry", `${(0.5 - (y / r.height)) * 10}deg`);
+  }
+}, { passive: true });
+
 // ─── Class select ─────────────────────────────────────────────────────────────
 function defaultWeapons(id: ClassId): SecondaryId[] {
   if (lastPick && lastPick.classId === id && lastPick.weapons.length === 2) return [...lastPick.weapons];
@@ -112,8 +130,8 @@ function renderMenu() {
   const cards = CLASSES.map(c => {
     const b = best[c.id];
     const badge = b ? `<span class="best num">Best W${b}</span>` : "";
-    return `<button class="class-card${c.id === currentClass ? " sel" : ""}" data-class="${c.id}" style="--accent:${c.accent}" aria-pressed="${c.id === currentClass}">
-      ${badge}<div class="kanji">${c.kanji}</div><div class="name">${c.name}</div><div class="role">${c.role}</div>
+    return `<button class="class-card glow${c.id === currentClass ? " sel" : ""}" data-class="${c.id}" style="--accent:${c.accent}" aria-pressed="${c.id === currentClass}">
+      <span class="watermark" aria-hidden="true">${c.ultKanji}</span>${badge}<div class="kanji">${c.kanji}</div><div class="name">${c.name}</div><div class="role">${c.role}</div>
     </button>`;
   }).join("");
 
@@ -122,10 +140,10 @@ function renderMenu() {
     const w = SECONDARIES[id];
     const idx = currentWeapons.indexOf(id);
     const on = idx >= 0;
-    return `<button class="weapon-chip${on ? " on" : ""}" data-weapon="${id}" aria-pressed="${on}">
+    return `<button class="weapon-chip glow${on ? " on" : ""}" data-weapon="${id}" aria-pressed="${on}">
       <span class="kanji">${w.kanji}</span>
       <span><div class="wn">${w.name}</div><div class="wd">${w.desc}</div></span>
-      ${on ? `<span class="slot">${idx === 0 ? "MAIN" : "ALT"}</span>` : ""}
+      ${on ? `<span class="wbadge">${idx === 0 ? "MAIN" : "ALT"}</span>` : ""}
     </button>`;
   }).join("");
 
@@ -133,7 +151,7 @@ function renderMenu() {
     ? `<button class="btn" data-act="continue">Continue · ${getClass(saved.classId).name} · Wave ${saved.wave}</button>`
     : "";
 
-  menu.innerHTML = `
+  menu.innerHTML = `${EMBERS}
   <div class="menu-wrap">
     <div class="menu-top">
       <div class="logo"><span class="kanji">幽</span><div><h1>GHOST GAME</h1><p>Survive the waves. Forge your legend.</p></div></div>
@@ -142,6 +160,7 @@ function renderMenu() {
     <div class="menu-body">
       <div class="class-grid" role="listbox" aria-label="Classes">${cards}</div>
       <aside class="detail" style="--accent:${cls.accent}">
+        <span class="bigmark" aria-hidden="true">${cls.kanji}</span>
         <div class="detail-head"><span class="kanji">${cls.kanji}</span><div><h2>${cls.name}</h2><div class="role">${cls.role}</div></div></div>
         <h3>Passives</h3>
         <ul>${cls.bonuses.filter(b => !/secondary|Starts with/i.test(b)).map(b => `<li>${b}</li>`).join("") || "<li>Balanced fighter</li>"}</ul>
@@ -320,6 +339,7 @@ const PAUSE_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="curren
 
 function buildHud() {
   cache.clear();
+  lastHp = Infinity;
   const cls = getClass(game!.stats.classId);
   hud.style.setProperty("--accent", cls.accent);
   hud.innerHTML = `
@@ -358,6 +378,11 @@ const H = (k: string) => hud.querySelector<HTMLElement>(`[data-h="${k}"]`);
 
 function updateHud(s: GameStats) {
   const hpFrac = s.maxHp > 0 ? s.hp / s.maxHp : 0;
+  if (s.hp < lastHp && lastHp !== Infinity) {
+    const bar = hud.querySelector<HTMLElement>(".bar.hp");
+    if (bar) { bar.classList.remove("hurt"); void bar.offsetWidth; bar.classList.add("hurt"); }
+  }
+  lastHp = s.hp;
   setScale(H("hp"), "hp", hpFrac);
   setScale(H("hpg"), "hpg", hpFrac);
   setText(H("hpt"), "hpt", `${Math.max(0, Math.ceil(s.hp))} / ${Math.round(s.maxHp)}`);
@@ -475,7 +500,7 @@ function rarityClass(r: string) { return `r-${r}`; }
 
 function renderLevelUp(s: GameStats) {
   const cards = s.pendingChoices.map((c, i) => `
-    <button class="card ${rarityClass(c.rarity)}" data-perk="${c.id}">
+    <button class="card glow tilt ${rarityClass(c.rarity)}" data-perk="${c.id}">
       <kbd class="key">${i + 1}</kbd>${c.kind === "ability" ? `<span class="tag">ABILITY</span>` : ""}
       <div class="kanji">${c.kanji}</div><div class="cn">${c.name}</div><div class="rar">${c.rarity}</div><div class="cd">${c.desc}</div>
     </button>`).join("");
@@ -489,7 +514,7 @@ function renderSwap(s: GameStats) {
   const incoming = abilityInfo(s.pendingAbilityId ?? "");
   const cards = s.equippedAbilities.map((id, i) => {
     const a = abilityInfo(id);
-    return `<button class="card r-rare" data-swap="${id}">
+    return `<button class="card glow tilt r-rare" data-swap="${id}">
       <kbd class="key">${i + 1}</kbd><div class="kanji">${a?.kanji ?? "技"}</div><div class="cn">Replace ${a?.name ?? id}</div>
       <div class="cd">${a?.desc ?? ""}</div></button>`;
   }).join("");
@@ -504,7 +529,7 @@ function renderShop(s: GameStats) {
   const items = s.shopOffer.map((it, i) => {
     const bought = s.shopPurchasedIds.includes(it.id);
     const broke = !bought && s.mon < it.price;
-    return `<button class="card ${rarityClass(it.rarity)}${bought ? " bought" : ""}" data-buy="${it.id}" ${bought || broke ? "disabled" : ""}>
+    return `<button class="card glow tilt ${rarityClass(it.rarity)}${bought ? " bought" : ""}" data-buy="${it.id}" ${bought || broke ? "disabled" : ""}>
       <kbd class="key">${i + 1}</kbd><div class="kanji">${it.kanji}</div><div class="cn">${it.name}</div>
       <div class="rar">${it.rarity}</div><div class="cd">${it.desc}</div>
       <div class="price num">${bought ? "Purchased" : `文 ${it.price}`}</div></button>`;
