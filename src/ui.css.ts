@@ -283,6 +283,10 @@ kbd {
   padding: 24px; overflow-y: auto; background: rgba(5,4,3,.78); backdrop-filter: blur(3px);
 }
 #overlay.show { display: flex; animation: fade .18s ease-out; }
+/* Centre panels with auto margins (not align-items) so a panel taller than the
+   screen can still scroll all the way to its top. */
+#overlay { align-items: flex-start; }
+#overlay > * { margin-block: auto; }
 @keyframes fade { from { opacity: 0; } }
 .panel { width: min(960px, 100%); text-align: center; }
 .panel-title { font-family: var(--font-display); font-size: 30px; letter-spacing: 3px; }
@@ -316,6 +320,9 @@ kbd {
 .stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 16px; font-size: 14px; }
 .stats div { display: flex; justify-content: space-between; border-bottom: 1px dashed var(--line); padding-bottom: 4px; }
 .stats b { color: var(--gold); }
+.stats b i { font-style: normal; font-size: 9px; letter-spacing: 1px; padding: 1px 4px; border-radius: 4px; vertical-align: 2px; margin-left: 3px; }
+.stats b i.maxed { background: var(--gold); color: var(--ink); }
+.stats b i.soft { border: 1px solid var(--line-strong); color: var(--muted); }
 .perk-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .perk-pill { font-size: 12px; padding: 4px 8px; border-radius: 999px; background: rgba(0,0,0,.3); border: 1px solid var(--line); }
 .perk-pill .kanji { color: var(--gold); margin-right: 4px; }

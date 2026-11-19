@@ -4,7 +4,7 @@
 // wave ends, the run ends, the player quits, or the page is closed — so
 // nothing is double-counted and a closed tab still keeps its progress.
 // Runs that touched dev mode are never counted.
-import { CLASSES, BOSS_INFO, DIFFICULTIES, getClass } from "./GhostGame";
+import { CLASSES, BOSS_INFO, DIFFICULTIES, getClass, newRunCounters } from "./GhostGame";
 import type { GhostGame, RunCounters, Difficulty } from "./GhostGame";
 
 const KEY = "ghostgame.career.v1";
@@ -21,6 +21,7 @@ export interface Career {
   waveSum: number; runsEnded: number;       // for average wave reached
   byClass: Record<string, ClassCareer>;
   byDifficulty: Record<string, number>;     // runs per difficulty
+  bestWaveByDiff: Record<string, number>;   // highest wave reached per difficulty
   firstPlayed: number;
 }
 
@@ -28,7 +29,7 @@ const fresh = (): Career => ({
   runs: 0, deaths: 0, kills: 0, stealthKills: 0, bossKills: 0, bossByKind: {}, killsByKind: {},
   wavesCleared: 0, highestWave: 0, highestWaveClass: "", highestWaveDiff: "", highestLevel: 0, monEarned: 0,
   damageDealt: 0, damageTaken: 0, biggestHit: 0, ults: 0, items: 0, dashes: 0, time: 0,
-  waveSum: 0, runsEnded: 0, byClass: {}, byDifficulty: {}, firstPlayed: 0,
+  waveSum: 0, runsEnded: 0, byClass: {}, byDifficulty: {}, bestWaveByDiff: {}, firstPlayed: 0,
 });
 
 function load(): Career {
@@ -42,15 +43,32 @@ let career = load();
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(career)); } catch { /* storage blocked */ } };
 
 export const getCareer = () => career;
+
+/** Career totals including this run's not-yet-saved progress (for live achievement checks). */
+/** True when this game is a fresh (not continued) run that is being tracked. */
+export const isFreshRun = (g: GhostGame) => tracks.get(g)?.isNew ?? false;
+
+export function liveCareer(g: GhostGame | null): Career {
+  const t = g ? tracks.get(g) : undefined;
+  if (!g || !t || t.ended || g.devMode) return career;
+  const out: Career = { ...career, killsByKind: { ...career.killsByKind }, bossByKind: { ...career.bossByKind },
+    byClass: { ...career.byClass }, bestWaveByDiff: { ...career.bestWaveByDiff } };
+  out.byClass[g.stats.classId] ??= { runs: 1, kills: 0, bestWave: 0, time: 0 };
+  out.bestWaveByDiff[g.difficulty] = Math.max(out.bestWaveByDiff[g.difficulty] ?? 0, g.stats.wave);
+  out.highestWave = Math.max(out.highestWave, g.stats.wave);
+  out.highestLevel = Math.max(out.highestLevel, g.stats.level);
+  for (const k of ["kills", "stealthKills", "bossKills", "wavesCleared", "damageDealt", "damageTaken",
+    "monEarned", "ults", "items", "dashes", "time"] as const) out[k] += Math.max(0, g.run[k] - t.committed[k]);
+  for (const k of Object.keys(g.run.bossByKind)) out.bossByKind[k] = (out.bossByKind[k] ?? 0) + Math.max(0, g.run.bossByKind[k] - (t.committed.bossByKind[k] ?? 0));
+  out.biggestHit = Math.max(out.biggestHit, g.run.biggestHit);
+  return out;
+}
 export function resetCareer() { career = fresh(); save(); }
 
 // What has already been folded in, per game instance.
 interface Track { committed: RunCounters; isNew: boolean; counted: boolean; ended: boolean; }
 const tracks = new WeakMap<GhostGame, Track>();
-const zero = (): RunCounters => ({
-  kills: 0, stealthKills: 0, bossKills: 0, bossByKind: {}, killsByKind: {}, wavesCleared: 0,
-  damageDealt: 0, damageTaken: 0, biggestHit: 0, monEarned: 0, ults: 0, items: 0, dashes: 0, time: 0,
-});
+const zero = (): RunCounters => newRunCounters();
 
 /** Call right after a run starts. `isNew` = fresh run (false for "Continue"). */
 export function trackRun(g: GhostGame, isNew: boolean) {
@@ -101,6 +119,7 @@ export function commitRun(g: GhostGame | null, died = false) {
     career.highestWaveDiff = g.difficulty;
   }
   C.bestWave = Math.max(C.bestWave, s.wave);
+  career.bestWaveByDiff[g.difficulty] = Math.max(career.bestWaveByDiff[g.difficulty] ?? 0, s.wave);
 
   if (died) {
     t.ended = true;

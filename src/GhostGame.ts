@@ -977,9 +977,11 @@ const rollOne = (entry: PoolEntry): ShopItem => ({
 export const rollShopOffer = (
   count = 6,
   equippedSecondaries: SecondaryId[] = [],
+  blocked: Set<string> = new Set(),
 ): ShopItem[] => {
   const equippedSet = new Set(equippedSecondaries);
   const pool = SHOP_POOL.filter((entry) => {
+    if (blocked.has(entry.effect)) return false;
     const m = /^dmg_([a-z_]+)_(common|rare|leg)$/.exec(entry.effect);
     if (!m) return true;
     const wid = m[1];
@@ -1167,6 +1169,7 @@ export const DIFFICULTIES: Record<Difficulty, {
 export interface SavedRun {
   v: number;
   savedAt: number;
+  atShop?: boolean;          // saved right after a wave cleared
   difficulty?: Difficulty;
   classId: ClassId;
   secondaryId: SecondaryId | null;
@@ -3404,10 +3407,22 @@ export interface RunCounters {
   items: number;
   dashes: number;
   time: number;          // seconds of active play
+  // ── Achievement trackers (per run, not summed into career totals) ──
+  purchases: number;
+  flawlessWaves: number;       // waves cleared without taking damage
+  flawlessStreak: number;      // current streak
+  bestFlawlessStreak: number;
+  flawlessBossWaves: number;
+  bestMultiKill: number;       // most kills inside 0.5s
+  bestUltKills: number;        // most kills during one ultimate
+  maxMon: number;              // most coins held at once
+  clutchWaves: number;         // waves cleared on 3 HP or less
 }
 export const newRunCounters = (): RunCounters => ({
   kills: 0, stealthKills: 0, bossKills: 0, bossByKind: {}, killsByKind: {}, wavesCleared: 0,
   damageDealt: 0, damageTaken: 0, biggestHit: 0, monEarned: 0, ults: 0, items: 0, dashes: 0, time: 0,
+  purchases: 0, flawlessWaves: 0, flawlessStreak: 0, bestFlawlessStreak: 0, flawlessBossWaves: 0,
+  bestMultiKill: 0, bestUltKills: 0, maxMon: 0, clutchWaves: 0,
 });
 
 export const BOSS_INFO: Record<BossKind, { name: string; kanji: string }> = {
@@ -3754,6 +3769,34 @@ const MIN_DAMAGE_PER_HIT = 1;
 // this only caps the additive base value from perks/shop.
 // Raised to support the new "rare = +5" / "legendary = +25" stat upgrades.
 const MAX_KATANA_DAMAGE = 200;
+
+// ===== Balance caps =====
+// Every stat a shop item or perk can stack has a ceiling here, so no amount
+// of coins (or an old save) can make a run unkillable. Items for a maxed
+// stat stop appearing in the shop.
+export const STAT_CAPS = {
+  dexSoft: 30,            // dexterity above this counts 40%
+  dexMaxRaw: 150,
+  attackSpeedMax: 2.5,    // 250% attack speed, all sources combined
+  speedBonus: 0.35,       // +35% move speed (already enforced in movement)
+  defenseMax: 25,         // flat damage reduction per hit...
+  defenseHitShare: 0.5,   // ...but never more than half of any hit
+  classDamageMul: 3.5,
+  secondaryDmgMul: 4,
+  critChance: 0.6,
+  hpRegen: 3,
+  monMul: 2.2,
+  ultChargeMul: 2,
+  abilityHaste: 2,          // cooldowns tick at most 2× speed (default 1)
+  dashCdMul: 0.5,         // floor
+  secondaryRegenMul: 0.4, // floor
+  invulnBonus: 0.75,
+  fireChance: 0.5,
+  lightningChance: 0.4,
+  healOnKill: 6,
+  eliteBounty: 16,
+  maxHpBonus: 400,
+};
 // Hard cap on the swing arc multiplier so wide_arc stacking can never
 // push the swept arc past 180°. BASE.ATTACK_ARC is 0.7π, so the cap is
 // (1π / 0.7π) ≈ 1.4286.
@@ -4769,7 +4812,8 @@ export class GhostGame {
   private mitigateIncoming(damage: number): number {
     const mul = Math.max(MIN_DAMAGE_TAKEN_MUL, this.perks.damageTakenMul);
     const afterPct = damage * mul;
-    const afterDef = afterPct - Math.max(0, this.perks.defense);
+    const def = Math.min(Math.max(0, this.perks.defense), afterPct * STAT_CAPS.defenseHitShare);
+    const afterDef = afterPct - def;
     return Math.max(MIN_DAMAGE_PER_HIT, Math.round(afterDef));
   }
 
@@ -4779,9 +4823,72 @@ export class GhostGame {
   // dexScale=1. Result is also clamped by MIN_ATTACK_COOLDOWN_MUL via the
   // attackCooldownMul, then by an additional Dex floor of 0.4.
   private dexCooldownMul(dexScale: number): number {
-    const dex = Math.max(0, this.perks.dexterity + (this.stats.buffHasteRemaining > 0 ? 15 : 0));
+    const raw = Math.max(0, this.perks.dexterity + (this.stats.buffHasteRemaining > 0 ? 15 : 0));
+    // Soft cap: points past dexSoft are worth 40%.
+    const dex = raw <= STAT_CAPS.dexSoft ? raw : STAT_CAPS.dexSoft + (raw - STAT_CAPS.dexSoft) * 0.4;
     const reduce = dex * 0.015 * Math.max(0, dexScale);
-    return Math.max(0.40, 1 - reduce);
+    return Math.max(1 / STAT_CAPS.attackSpeedMax, 1 - reduce);
+  }
+
+  /** Katana swing cooldown multiplier — every attack-speed source, capped. */
+  private katanaCdMul(): number {
+    return Math.max(1 / STAT_CAPS.attackSpeedMax, this.perks.attackCooldownMul * this.dexCooldownMul(0.8));
+  }
+
+  /** Clamp every stackable stat to STAT_CAPS (shop, perks, and loaded saves). */
+  enforceStatCaps() {
+    const P = this.perks, C = STAT_CAPS;
+    const fin = (v: number, d: number) => (Number.isFinite(v) ? v : d);
+    P.damage = Math.min(MAX_KATANA_DAMAGE, fin(P.damage, 3));
+    P.dexterity = Math.min(C.dexMaxRaw, fin(P.dexterity, 0));
+    P.defense = Math.min(C.defenseMax, fin(P.defense, 0));
+    P.classDamageMul = Math.min(C.classDamageMul, fin(P.classDamageMul, 1));
+    P.secondaryDmgMul = Math.min(C.secondaryDmgMul, fin(P.secondaryDmgMul, 1));
+    P.critChance = Math.min(C.critChance, fin(P.critChance, 0));
+    P.hpRegen = Math.min(C.hpRegen, fin(P.hpRegen, 0));
+    P.monMul = Math.min(C.monMul, fin(P.monMul, 1));
+    P.ultChargeMul = Math.min(C.ultChargeMul, fin(P.ultChargeMul, 1));
+    P.abilityHaste = Math.min(C.abilityHaste, fin(P.abilityHaste, 0));
+    P.dashCdMul = Math.max(C.dashCdMul, fin(P.dashCdMul, 1));
+    P.secondaryRegenMul = Math.max(C.secondaryRegenMul, fin(P.secondaryRegenMul, 1));
+    P.invulnBonus = Math.min(C.invulnBonus, fin(P.invulnBonus, 0));
+    P.fireChance = Math.min(C.fireChance, fin(P.fireChance, 0));
+    P.lightningChance = Math.min(C.lightningChance, fin(P.lightningChance, 0));
+    P.healOnKill = Math.min(C.healOnKill, fin(P.healOnKill, 0));
+    P.eliteBounty = Math.min(C.eliteBounty, fin(P.eliteBounty, 0));
+    P.attackCooldownMul = Math.max(MIN_ATTACK_COOLDOWN_MUL, fin(P.attackCooldownMul, 1));
+    P.speedMul = Math.min(1 + C.speedBonus, fin(P.speedMul, 1));
+    P.maxHpBonus = Math.min(C.maxHpBonus, fin(P.maxHpBonus, 0));
+    if (this.player) {
+      this.player.maxHp = Math.min(this.player.maxHp, 100 + C.maxHpBonus);
+      this.player.hp = Math.min(this.player.hp, this.player.maxHp);
+    }
+  }
+
+  /** Shop effects that would do nothing because their stat is already maxed. */
+  maxedShopEffects(): Set<string> {
+    const P = this.perks, C = STAT_CAPS, out = new Set<string>();
+    const add = (cond: boolean, ...ids: string[]) => { if (cond) ids.forEach(i => out.add(i)); };
+    add(P.speedMul >= 1 + C.speedBonus - 1e-6, "spd_common", "spd_rare", "spd_leg", "perk_ghost_steps");
+    add(P.defense >= C.defenseMax, "def_rare", "def_leg");
+    add(P.dexterity >= C.dexMaxRaw || this.katanaCdMul() <= 1 / C.attackSpeedMax + 1e-6, "dex_common", "dex_rare", "dex_leg", "perk_raging_current");
+    add(P.classDamageMul >= C.classDamageMul - 1e-6, "perk_crimson_blade", "perk_war_paint", "shop_gamble");
+    add(P.secondaryDmgMul >= C.secondaryDmgMul - 1e-6, "secondary_dmg_global", "perk_twin_fang");
+    add(P.critChance >= C.critChance - 1e-6, "crit");
+    add(P.hpRegen >= C.hpRegen - 1e-6, "hp_regen");
+    add(P.monMul >= C.monMul - 1e-6, "shop_lucky_coin");
+    add(P.ultChargeMul >= C.ultChargeMul - 1e-6, "shop_spirit_bell");
+    add(P.abilityHaste >= C.abilityHaste - 1e-6, "shop_battle_drum");
+    add(P.dashCdMul <= C.dashCdMul + 1e-6, "shop_dash_talisman");
+    add(P.secondaryRegenMul <= C.secondaryRegenMul + 1e-6, "ammo_regen");
+    add(P.invulnBonus >= C.invulnBonus - 1e-6, "perk_void_shard");
+    add(P.fireChance >= C.fireChance - 1e-6, "shop_fire_charm");
+    add(P.lightningChance >= C.lightningChance - 1e-6, "shop_thunder_charm");
+    add(P.healOnKill >= C.healOnKill, "lifesteal", "perk_hungry_blade");
+    add(P.eliteBounty >= C.eliteBounty, "shop_bounty");
+    add(P.maxHpBonus >= C.maxHpBonus, "hp_common", "hp_rare", "hp_leg", "perk_soul_collector");
+    add(P.damage >= MAX_KATANA_DAMAGE, "dmg_katana_common", "dmg_katana_rare", "dmg_katana_leg");
+    return out;
   }
 
   // Effective per-shot/swing damage for a secondary, including base scale,
@@ -5146,6 +5253,7 @@ export class GhostGame {
     const isFinalBossWave = wave >= 25 && (wave - 25) % 10 === 0;
     this.stats.isBossWave = isBoss;
     this.stats.wave = wave;
+    this.waveDmgMark = this.run.damageTaken;
     this.applyBiome(wave);
     this.stats.waveDuration = this.computeWaveDuration(wave);
     this.stats.waveTimer = this.stats.waveDuration;
@@ -5282,13 +5390,14 @@ export class GhostGame {
     this.stats.maxHp = this.player?.maxHp ?? this.stats.maxHp;
     this.stats.enemiesLeft = this.enemies.filter(e => e.state !== "dead").length;
     this.stats.perks = [...this.acquiredPerks];
+    if (this.stats.mon > this.run.maxMon) this.run.maxMon = this.stats.mon;
     // Derived stat snapshot — used by pause-screen stat list.
-    const cdMulKatana = this.perks.attackCooldownMul * this.dexCooldownMul(0.8);
+    const cdMulKatana = this.katanaCdMul();
     this.stats.derivedStats = {
       damage: this.perks.damage,
       dexterity: this.perks.dexterity,
       defense: this.perks.defense,
-      moveSpeedPct: Math.round(this.perks.speedMul * 100),
+      moveSpeedPct: Math.round(Math.min(this.perks.speedMul, 1 + STAT_CAPS.speedBonus) * 100),
       attackSpeedPct: Math.round((1 / Math.max(0.001, cdMulKatana)) * 100),
       critChancePct: Math.round(this.perks.critChance * 100),
       hpRegen: this.perks.hpRegen,
@@ -5414,6 +5523,10 @@ export class GhostGame {
   // ============================================================
   devMode = false;
   run: RunCounters = newRunCounters();
+  private multiKillTimes: number[] = [];
+  private sweeping = false;
+  private ultKillCount = 0;
+  private waveDmgMark = 0;
   devGodMode = false;        // re-applied each frame in update() if true
 
   devSetGodMode(on: boolean) {
@@ -5506,6 +5619,7 @@ export class GhostGame {
   devGivePerk(id: string) {
     if (!PERK_POOL.some(p => p.id === id)) return;
     this.applyPerk(id);
+    this.enforceStatCaps();
     this.acquiredPerks.push(id);
     this.stats.perks = [...this.acquiredPerks];
     const def = PERK_POOL.find(p => p.id === id)!;
@@ -5621,6 +5735,7 @@ export class GhostGame {
 
     // Passive perk
     this.applyPerk(id);
+    this.enforceStatCaps();
     this.acquiredPerks.push(id);
     this.afterPerkSelected();
   }
@@ -5765,7 +5880,14 @@ export class GhostGame {
   rollPerkChoices(): PerkChoice[] {
     // Filter out passive perks that buff abilities the player hasn't equipped.
     const equipped = this.stats.equippedAbilities;
+    const maxed = this.maxedShopEffects();
+    const perkMaxed: Record<string, string> = {
+      swift_step: "spd_common", swift_strike: "dex_common", thick_hide: "def_rare",
+      keen_eye: "crit", crit_strike: "crit", lifebloom: "hp_regen", blade_edge: "dmg_katana_common",
+      vampire: "lifesteal",
+    };
     const passivesAvailable = PERK_POOL.filter(p => {
+      if (perkMaxed[p.id] && maxed.has(perkMaxed[p.id])) return false;
       if ((p.id === "barrage_master" || p.id === "barrage_blade") && !equipped.includes("barrage")) return false;
       if ((p.id === "flash_master" || p.id === "phantom_strike") && !equipped.includes("flash")) return false;
       return true;
@@ -5844,6 +5966,13 @@ export class GhostGame {
   // Wave over: spend banked level-ups first, then visit the shop.
   private finishWave() {
     this.run.wavesCleared++;
+    if (this.run.damageTaken <= this.waveDmgMark) {
+      this.run.flawlessWaves++;
+      this.run.flawlessStreak++;
+      this.run.bestFlawlessStreak = Math.max(this.run.bestFlawlessStreak, this.run.flawlessStreak);
+      if (this.stats.isBossWave) this.run.flawlessBossWaves++;
+    } else this.run.flawlessStreak = 0;
+    if (this.player && this.player.hp > 0 && this.player.hp <= 3) this.run.clutchWaves++;
     if ((this.stats.state as string) === "levelup") { this.pendingShopOpen = true; return; }
     if (this.pendingLevelUps > 0) {
       this.pendingShopOpen = true;
@@ -5955,11 +6084,10 @@ export class GhostGame {
         // wait until the player picks all perks before opening the shop,
         // otherwise the shop overlay clobbers the levelup overlay.
         this.cleanupWaveEnd();
-        // Persist a resumeable snapshot at the wave-clear boundary. This
-        // captures progression *before* the shop runs, then we re-save
-        // again when the shop closes (see closeShop) so resumed runs start
-        // on the next wave, fully spent.
-        this.persistResumeSnapshot();
+        // Snapshot at the wave-clear boundary (flagged atShop so Continue
+        // reopens the level-ups/shop rather than replaying this wave). We
+        // re-save when the shop closes so resumed runs start the next wave.
+        this.persistResumeSnapshot(true);
         this.finishWave();
       }
     }
@@ -6080,7 +6208,7 @@ export class GhostGame {
     // Hard cap on player speed bonuses from all sources (perks + class + items).
     // Penalties (speedMul < 1, e.g. Tetsubo / Sumo) still apply normally; only
     // the *bonus* above 1.0 is clamped so the player can never out-run elites.
-    const MAX_SPEED_BONUS = 0.35; // +35% over base
+    const MAX_SPEED_BONUS = STAT_CAPS.speedBonus;
     const cappedSpeedMul = this.perks.speedMul > 1
       ? Math.min(this.perks.speedMul, 1 + MAX_SPEED_BONUS)
       : this.perks.speedMul;
@@ -6207,7 +6335,7 @@ export class GhostGame {
     // Katana cooldown: classic perk multiplier × Dex scaling (katana
     // dexScale baseline = 0.8 so it benefits from Dex but not as much
     // as the lightest one-handers).
-    p.attackCooldown = BASE.ATTACK_COOLDOWN * this.perks.attackCooldownMul * this.dexCooldownMul(0.8);
+    p.attackCooldown = BASE.ATTACK_COOLDOWN * this.katanaCdMul();
 
     const range = BASE.ATTACK_RANGE * this.perks.attackRangeMul;
     const arc = BASE.ATTACK_ARC * this.perks.attackArcMul;
@@ -6287,16 +6415,28 @@ export class GhostGame {
     return best;
   }
 
-  killEnemy(e: Enemy, type: "honor" | "ghost") {
-    if (e.state === "dead") return;
-    e.state = "dead";
+  /** Stats/achievement bookkeeping for a real kill. */
+  private trackKill(e: Enemy) {
     this.run.kills++;
+    this.multiKillTimes.push(this.elapsed);
+    while (this.multiKillTimes.length && this.elapsed - this.multiKillTimes[0] > 0.5) this.multiKillTimes.shift();
+    this.run.bestMultiKill = Math.max(this.run.bestMultiKill, this.multiKillTimes.length);
+    if (this.stats.ultActive || this.ultCutscene) {
+      this.ultKillCount++;
+      this.run.bestUltKills = Math.max(this.run.bestUltKills, this.ultKillCount);
+    }
     this.run.killsByKind[e.archetype] = (this.run.killsByKind[e.archetype] ?? 0) + 1;
     if (e.isBoss) {
       this.run.bossKills++;
       const bk = e.archetype === "final" ? "final" : (e.bossKind ?? "oni");
       this.run.bossByKind[bk] = (this.run.bossByKind[bk] ?? 0) + 1;
     }
+  }
+
+  killEnemy(e: Enemy, type: "honor" | "ghost") {
+    if (e.state === "dead") return;
+    e.state = "dead";
+    if (!this.sweeping) this.trackKill(e);
     e.deathTimer = 1.4;
     e.hp = 0;
     // Death Mark — chain to next nearest enemy with 3s remaining.
@@ -6475,6 +6615,7 @@ export class GhostGame {
         this.cameraZoom.setTarget(0.96, 3);
         setTimeout(() => this.cameraZoom.setTarget(1, 4), 800);
         this.cleanupWaveEnd();
+        this.persistResumeSnapshot(true);
         this.finishWave();
       }
     }
@@ -11588,6 +11729,7 @@ export class GhostGame {
     this.stats.ultReady = false;
     this.stats.ultActive = true;
     this.run.ults++;
+    this.ultKillCount = 0;
     audio.play("timeSlowSwell");
     if (this.ultCutscenes) {
       this.ultCutscene = { t: 0, dur: 1.35 };
@@ -13078,9 +13220,10 @@ export class GhostGame {
   // later via "Continue Run" on the main menu. Only safe to call from a
   // wave boundary — mid-wave state (enemies on screen, ult timers, in-flight
   // VFX) is intentionally NOT persisted; those reset cleanly on resume.
-  persistResumeSnapshot() {
+  persistResumeSnapshot(atShop = false) {
     try {
       saveRun({
+        atShop,
         classId: this.lastClassId,
         difficulty: this.difficulty,
         secondaryId: this.lastSecondaryId,
@@ -13126,6 +13269,7 @@ export class GhostGame {
     // acquiredPerks). Spread carefully — keep keys we don't recognize so
     // forward-compat survives.
     Object.assign(this.perks as unknown as Record<string, unknown>, s.perks);
+    this.enforceStatCaps();   // old saves can carry stats from before the caps
     this.acquiredPerks = [...s.acquiredPerks];
     this.pendingLevelUps = s.pendingLevelUps ?? 0;
     // Stats snapshot
@@ -13156,8 +13300,10 @@ export class GhostGame {
     // Player vitals
     this.stats.maxHp = s.maxHp;
     this.stats.hp = Math.min(s.maxHp, s.hp);
-    this.player.maxHp = s.maxHp;
-    this.player.hp = this.stats.hp;
+    this.player.maxHp = Math.min(s.maxHp, 100 + STAT_CAPS.maxHpBonus);
+    this.player.hp = Math.min(this.stats.hp, this.player.maxHp);
+    this.stats.maxHp = this.player.maxHp;
+    this.stats.hp = this.player.hp;
     // Mirror perk badges
     this.stats.perks = [...this.acquiredPerks];
     // Re-spawn the saved wave fresh (clears the wave-1 enemies start()
@@ -13165,6 +13311,17 @@ export class GhostGame {
     for (const e of this.enemies) e.state = "dead";
     this.enemies = [];
     this.applyBiome(s.wave);
+    if (s.atShop) {
+      // Saved after the wave was cleared — go straight to the level-ups /
+      // shop instead of replaying the wave (which used to grant its coins
+      // and level-ups a second time).
+      this.stats.wave = s.wave;
+      this.stats.waveTimer = 0;
+      this.onActiveSecondaryChanged();
+      if (this.pendingLevelUps > 0) { this.pendingShopOpen = true; this.openPendingLevelUp(); }
+      else this.openShop();
+      return;
+    }
     this.spawnWave(s.wave);
     this.onActiveSecondaryChanged();
     this.emitStats();
@@ -13236,11 +13393,13 @@ export class GhostGame {
   cleanupWaveEnd() {
     // Snapshot the list — killEnemy mutates orb arrays mid-loop.
     const alive = this.enemies.filter(e => e.state !== "dead" && e.archetype !== "final");
+    this.sweeping = true;   // these vanish — they don't count as kills in stats/achievements
     for (const e of alive) {
       // Spawn a small dissipation puff so it reads as "they vanish".
       this.spawnBlood(e.pos, Math.random() * Math.PI * 2, 6);
       this.killEnemy(e, "honor");
     }
+    this.sweeping = false;
     // Auto-collect every remaining orb (after the kill loop so newly-dropped
     // orbs are also swept up).
     let swept = 0;
@@ -13525,7 +13684,7 @@ export class GhostGame {
     if (this.stats.state !== "playing") return;
     const equipped = this.stats.secondaryIds.filter((s): s is SecondaryId => !!s);
     const infl = shopInflation(this.stats.wave);
-    this.stats.shopOffer = this.dedupeOffer(rollShopOffer(6, equipped)).map(it => ({ ...it, price: Math.round(it.price * infl) }));
+    this.stats.shopOffer = this.dedupeOffer(rollShopOffer(6, equipped, this.maxedShopEffects())).map(it => ({ ...it, price: Math.round(it.price * infl) }));
     this.stats.shopRerollCost = Math.round(SHOP_REROLL_COST * infl);
     this.stats.shopPurchasedIds = [];
     this.stats.state = "shop";
@@ -13546,7 +13705,7 @@ export class GhostGame {
     this.stats.mon -= this.stats.shopRerollCost;
     const equipped = this.stats.secondaryIds.filter((s): s is SecondaryId => !!s);
     const infl = shopInflation(this.stats.wave);
-    this.stats.shopOffer = this.dedupeOffer(rollShopOffer(6, equipped)).map(it => ({ ...it, price: Math.round(it.price * infl) }));
+    this.stats.shopOffer = this.dedupeOffer(rollShopOffer(6, equipped, this.maxedShopEffects())).map(it => ({ ...it, price: Math.round(it.price * infl) }));
     // Slight escalation so reroll spam isn't free.
     this.stats.shopRerollCost = Math.round(this.stats.shopRerollCost * 1.5);
     this.stats.shopPurchasedIds = [];
@@ -13587,6 +13746,7 @@ export class GhostGame {
     }
     this.stats.mon -= item.price;
     this.stats.shopPurchasedIds.push(itemId);
+    this.run.purchases++;
     try {
       this.applyShopEffect(item);
     } catch (err) {
@@ -13603,7 +13763,7 @@ export class GhostGame {
       if (!Number.isFinite(this.perks.secondaryDmgMul) || this.perks.secondaryDmgMul <= 0) {
         this.perks.secondaryDmgMul = 1;
       }
-      this.perks.secondaryDmgMul = Math.min(10, this.perks.secondaryDmgMul);
+      this.enforceStatCaps();
       // Same defensive clamp on every other multiplier touched by shop items.
       if (!Number.isFinite(this.perks.classDamageMul) || this.perks.classDamageMul <= 0) this.perks.classDamageMul = 1;
       if (!Number.isFinite(this.perks.attackCooldownMul) || this.perks.attackCooldownMul <= 0) this.perks.attackCooldownMul = 1;
@@ -13687,7 +13847,7 @@ export class GhostGame {
         this.perks.defense += 3;
         break;
       case "crit":
-        this.perks.critChance = Math.min(0.9, this.perks.critChance + 0.08);
+        this.perks.critChance = this.perks.critChance + 0.08;
         break;
       case "ult_charge":
         this.addUltCharge(this.stats.ultMax * 0.5);
@@ -13712,7 +13872,7 @@ export class GhostGame {
         this.perks.secondaryRegenMul *= 0.75;
         break;
       case "secondary_dmg_global":
-        this.perks.secondaryDmgMul *= 1.15;
+        this.perks.secondaryDmgMul += 0.15;
         break;
       case "lifesteal":
         this.perks.healOnKill += 1;
@@ -13739,14 +13899,14 @@ export class GhostGame {
       // simplified implementations preserve the spirit (offense /
       // defense / utility) until full mechanics ship.
       case "perk_crimson_blade":
-        this.perks.classDamageMul *= 1.15;
+        this.perks.classDamageMul += 0.15;
         this.flash("Crimson Blade");
         break;
       case "perk_stone_stance":
         // "−20% dmg taken / +15% dmg dealt" → permanent partial buff,
         // clamped by the global 15% damage-reduction cap.
         this.perks.damageTakenMul *= 0.90;
-        this.perks.classDamageMul *= 1.10;
+        this.perks.classDamageMul += 0.10;
         this.flash("Stone Stance");
         break;
       case "perk_ghost_steps":
@@ -13762,12 +13922,12 @@ export class GhostGame {
         this.flash("Hungry Blade");
         break;
       case "perk_war_paint":
-        this.perks.classDamageMul *= 1.08;
+        this.perks.classDamageMul += 0.08;
         this.flash("War Paint");
         break;
       case "perk_cursed_eye":
         this.perks.critChance = Math.min(0.9, this.perks.critChance + 0.05);
-        this.perks.classDamageMul *= 1.05;
+        this.perks.classDamageMul += 0.05;
         this.flash("Cursed Eye");
         break;
       case "perk_raging_current":
@@ -13775,7 +13935,7 @@ export class GhostGame {
         this.flash("Raging Current");
         break;
       case "perk_twin_fang":
-        this.perks.secondaryDmgMul *= 1.25;
+        this.perks.secondaryDmgMul += 0.25;
         this.flash("Twin Fang");
         break;
       case "perk_bone_armor":

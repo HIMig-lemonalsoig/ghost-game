@@ -1,12 +1,14 @@
 import {
   GhostGame, CLASSES, CLASS_WEAPON_OPTIONS, SECONDARIES, ABILITY_POOL, CONSUMABLES, PERK_POOL,
-  audio, loadRun, hasSavedRun, clearSavedRun, getClass, ABILITY_FX_HUE, SLASH_HUE, BOSS_INFO, DIFFICULTIES,
+  audio, loadRun, hasSavedRun, STAT_CAPS, clearSavedRun, getClass, ABILITY_FX_HUE, SLASH_HUE, BOSS_INFO, DIFFICULTIES,
 } from "./GhostGame";
 import { hueOf } from "./fx";
 import type { ClassId, GameStats, SecondaryId, Difficulty } from "./GhostGame";
 import { UI_CSS } from "./ui.css";
 import { initDevMode } from "./devmode";
-import { trackRun, commitRun, careerHTML, resetCareer, CAREER_CSS } from "./career";
+import { trackRun, commitRun, careerHTML, resetCareer, CAREER_CSS, getCareer, liveCareer, isFreshRun } from "./career";
+import { ACHIEVEMENTS, checkAchievements, achievementsHTML, achToastHTML, unlockedCount, ACH_CSS } from "./achievements";
+import type { AchCtx } from "./achievements";
 
 // ─── Persistent settings & records ────────────────────────────────────────────
 const SETTINGS_KEY = "ghostgame.settings.v1";
@@ -64,6 +66,7 @@ const keys: Record<Action, string> = readJSON(KEYS_KEY, { ...DEFAULT_KEYS });
 let capturing: Action | null = null;
 let controlsOpen = false;
 let careerOpen = false;
+let achOpen = false;
 let careerArmed = false;
 
 // Left/right modifier keys count as the same key.
@@ -113,6 +116,41 @@ function showControlsModal() {
     <div class="pane" style="margin-top:16px">${controlsPanel()}</div>
     <div class="panel-actions"><button class="btn primary" data-act="closecontrols">Done · Esc</button></div></div>`;
 }
+function achCtx(): AchCtx {
+  const g = game && !game.devMode ? game : null;
+  return { c: liveCareer(g), r: g?.run ?? null, s: g?.stats ?? null, diff: g?.difficulty ?? null, fresh: g ? isFreshRun(g) : false };
+}
+function showAchModal() {
+  achOpen = true;
+  overlay.classList.add("show", "top");
+  overlay.innerHTML = achievementsHTML({ c: getCareer(), r: null, s: null, diff: null, fresh: false });
+}
+function closeAchModal() {
+  achOpen = false;
+  overlay.classList.remove("show", "top");
+  overlay.innerHTML = "";
+  renderMenu();
+}
+const achToasts = document.createElement("div");
+achToasts.id = "ach-toasts";
+achToasts.setAttribute("aria-live", "polite");
+document.body.append(achToasts);
+let achCheckAt = 0;
+function runAchievementCheck(force = false) {
+  if (!game || game.devMode) return;
+  const now = performance.now();
+  if (!force && now - achCheckAt < 250) return;
+  achCheckAt = now;
+  for (const a of checkAchievements(achCtx())) {
+    const wrap = document.createElement("div");
+    wrap.innerHTML = achToastHTML(a);
+    const el = wrap.firstElementChild as HTMLElement;
+    achToasts.append(el);
+    try { audio.play(a.tier === "common" || a.tier === "uncommon" ? "monPing" : "levelUp"); } catch { /* audio off */ }
+    setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 220); }, a.tier === "mythic" ? 7000 : 4500);
+  }
+}
+
 function showCareerModal() {
   careerOpen = true;
   overlay.classList.add("show", "top");
@@ -141,7 +179,7 @@ function refreshControls() {
 
 // ─── DOM scaffolding ──────────────────────────────────────────────────────────
 const style = document.createElement("style");
-style.textContent = UI_CSS + CAREER_CSS;
+style.textContent = UI_CSS + CAREER_CSS + ACH_CSS;
 document.head.appendChild(style);
 
 const canvas = document.getElementById("game-canvas") as HTMLCanvasElement;
@@ -270,7 +308,7 @@ function renderMenu() {
   <div class="menu-wrap">
     <div class="menu-top">
       <div class="logo"><span class="kanji">幽</span><div><h1>GHOST GAME</h1><p>Survive the waves. Forge your legend.</p></div></div>
-      <div class="menu-actions">${continueBtn}<button class="btn ghost" data-act="career">Career</button><button class="btn ghost" data-act="controls">Controls</button><button class="btn ghost" data-act="random">Random class</button></div>
+      <div class="menu-actions">${continueBtn}<button class="btn ghost" data-act="ach">Achievements <span class="num" style="opacity:.7">${unlockedCount()}/${ACHIEVEMENTS.length}</span></button><button class="btn ghost" data-act="career">Career</button><button class="btn ghost" data-act="controls">Controls</button><button class="btn ghost" data-act="random">Random class</button></div>
     </div>
     <div class="menu-body">
       <div class="class-grid" role="listbox" aria-label="Classes">${cards}</div>
@@ -348,6 +386,7 @@ menu.addEventListener("click", e => {
   else if (act === "continue") continueRun();
   else if (act === "controls") showControlsModal();
   else if (act === "career") showCareerModal();
+  else if (act === "ach") showAchModal();
   else if (act === "random") {
     const pool = CLASSES.filter(c => c.id !== currentClass);
     selectClass(pool[Math.floor(Math.random() * pool.length)].id);
@@ -723,11 +762,13 @@ function updateHud(s: GameStats) {
     writeJSON(BEST_KEY, best);
     if (s.state === "defeat" || s.state === "victory") recordSet = true;
   }
+  runAchievementCheck();
   // Career — fold progress in at each wave end and when the run ends.
   if (game && s.state !== careerSeenState) {
     if (s.state === "shop") commitRun(game);
     else if (s.state === "defeat" || s.state === "victory") commitRun(game, true);
     careerSeenState = s.state;
+    runAchievementCheck(true);
   }
 }
 let careerSeenState = "";
@@ -833,10 +874,10 @@ function renderPause(s: GameStats) {
       </div>
       <div style="display:grid;gap:14px">
         <div class="pane"><h4>Stats</h4><div class="stats num">
-          <div>Damage <b>${d.damage.toFixed(1)}</b></div><div>Dexterity <b>${d.dexterity}</b></div>
-          <div>Defense <b>${d.defense}</b></div><div>Move speed <b>${d.moveSpeedPct}%</b></div>
-          <div>Attack speed <b>${d.attackSpeedPct}%</b></div><div>Crit chance <b>${d.critChancePct}%</b></div>
-          <div>HP regen <b>${d.hpRegen.toFixed(1)}/s</b></div><div>Weapon dmg <b>×${d.secondaryDmgMul.toFixed(2)}</b></div>
+          <div>Damage <b>${d.damage.toFixed(1)}</b></div><div>Dexterity <b>${d.dexterity}${d.dexterity > STAT_CAPS.dexSoft ? ` <i class="soft">soft cap</i>` : ""}</b></div>
+          <div>Defense <b>${d.defense}${mx(d.defense >= STAT_CAPS.defenseMax)}</b></div><div>Move speed <b>${d.moveSpeedPct}%${mx(d.moveSpeedPct >= Math.round((1 + STAT_CAPS.speedBonus) * 100))}</b></div>
+          <div>Attack speed <b>${d.attackSpeedPct}%${mx(d.attackSpeedPct >= STAT_CAPS.attackSpeedMax * 100)}</b></div><div>Crit chance <b>${d.critChancePct}%${mx(d.critChancePct >= STAT_CAPS.critChance * 100)}</b></div>
+          <div>HP regen <b>${d.hpRegen.toFixed(1)}/s${mx(d.hpRegen >= STAT_CAPS.hpRegen)}</b></div><div>Weapon dmg <b>×${d.secondaryDmgMul.toFixed(2)}${mx(d.secondaryDmgMul >= STAT_CAPS.secondaryDmgMul)}</b></div>
         </div></div>
         <div class="pane"><h4>Blessings</h4><div class="perk-list">${perks}</div></div>
         <div class="pane"><h4>Controls · click a key to change it</h4>${controlsPanel()}</div>
@@ -865,6 +906,7 @@ function renderEnd(s: GameStats) {
     </div></div>`);
 }
 
+const mx = (on: boolean) => (on ? ` <i class="maxed">MAX</i>` : "");
 function pauseGame() { if (game?.stats.state === "playing") { releaseInputs(); game.pause(); } }
 function resumeGame() { game?.resume(); }
 
@@ -876,6 +918,7 @@ overlay.addEventListener("click", e => {
   if (cact === "resetkeys") { Object.assign(keys, DEFAULT_KEYS); writeJSON(KEYS_KEY, keys); capturing = null; refreshControls(); return; }
   if (cact === "closecontrols") { closeControlsModal(); return; }
   if (cact === "closecareer") { closeCareerModal(); return; }
+  if (cact === "closeach") { closeAchModal(); return; }
   if (cact === "resetcareer") {
     if (careerArmed) { resetCareer(); careerArmed = false; } else careerArmed = true;
     showCareerModal();
@@ -973,6 +1016,7 @@ window.addEventListener("keydown", e => {
   }
   if (controlsOpen) { if (e.code === "Escape") closeControlsModal(); return; }
   if (careerOpen) { if (e.code === "Escape") closeCareerModal(); return; }
+  if (achOpen) { if (e.code === "Escape") closeAchModal(); return; }
   if (menu.style.display !== "none") { menuKeys(e); return; }
   if (!game) return;
   const s = game.stats;
