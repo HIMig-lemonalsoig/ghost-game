@@ -816,6 +816,8 @@ export type ShopEffectId =
   | "perk_bone_armor"
   | "perk_drifting_leaves"
   | "perk_soul_collector"
+  | "shop_lucky_coin" | "shop_bounty" | "shop_spirit_bell" | "shop_battle_drum" | "shop_dash_talisman"
+  | "shop_gamble" | "shop_oni_mask" | "shop_fire_charm" | "shop_thunder_charm" | "shop_reaper_bell"
   // ===== Secondary weapon scrolls (equip into open slot, or replace slot 2) =====
   | `secondary_${SecondaryId}`;
 
@@ -886,6 +888,17 @@ export const SHOP_POOL: PoolEntry[] = [
   { effect: "perk_bone_armor",      kanji: "骨", name: "Bone Armor",         desc: "Once per run, survive a lethal hit at 1 HP with 3s of invulnerability.",      priceMin: 70, priceMax: 95, rarity: "legendary" },
   { effect: "perk_drifting_leaves", kanji: "葉", name: "Drifting Leaves",    desc: "Dashing leaves behind a 2s damaging leaf storm at your starting spot.",        priceMin: 45, priceMax: 60, rarity: "rare"      },
   { effect: "perk_soul_collector",  kanji: "魂", name: "Soul Collector",     desc: "Every 25 kills permanently grants +2 max HP for the rest of this run.",        priceMin: 50, priceMax: 70, rarity: "rare"      },
+  // ===== Build-direction items =====
+  { effect: "shop_lucky_coin",    kanji: "運", name: "Lucky Coin",      desc: "+20% coins from kills.",                                     priceMin: 40, priceMax: 55, rarity: "rare"      },
+  { effect: "shop_bounty",        kanji: "賞", name: "Bounty Ledger",   desc: "Elite kills give +4 coins and heal 2 HP.",                   priceMin: 45, priceMax: 60, rarity: "rare"      },
+  { effect: "shop_spirit_bell",   kanji: "鈴", name: "Spirit Bell",     desc: "Ultimate charges 25% faster.",                               priceMin: 30, priceMax: 42, rarity: "common"    },
+  { effect: "shop_battle_drum",   kanji: "鼓", name: "Battle Drum",     desc: "Ability cooldowns recover 20% faster.",                      priceMin: 45, priceMax: 62, rarity: "rare"      },
+  { effect: "shop_dash_talisman", kanji: "符", name: "Dash Talisman",   desc: "Dash recharges 15% faster.",                                 priceMin: 28, priceMax: 40, rarity: "common"    },
+  { effect: "shop_gamble",        kanji: "賭", name: "Ronin's Gamble",  desc: "+30% damage, but −15% max HP.",                              priceMin: 45, priceMax: 60, rarity: "rare"      },
+  { effect: "shop_oni_mask",      kanji: "面", name: "Oni Mask",        desc: "Below 30% HP: +50% damage and −20% damage taken.",           priceMin: 90, priceMax: 120, rarity: "legendary" },
+  { effect: "shop_fire_charm",    kanji: "火", name: "Fire Charm",      desc: "+10% chance to ignite on hit.",                              priceMin: 30, priceMax: 42, rarity: "common"    },
+  { effect: "shop_thunder_charm", kanji: "雷", name: "Thunder Charm",   desc: "+8% chance to call lightning on hit.",                       priceMin: 42, priceMax: 58, rarity: "rare"      },
+  { effect: "shop_reaper_bell",   kanji: "冥", name: "Reaper's Bell",   desc: "Every 10th kill releases a soul shockwave (stacks faster).", priceMin: 95, priceMax: 125, rarity: "legendary" },
   // ===== Secondary weapon scrolls — equip into 2nd slot, swap with Tab =====
   // Pulled dynamically from SECONDARIES so we never drift out of sync.
   ...(Object.values(SECONDARIES).map((s): PoolEntry => {
@@ -3290,7 +3303,31 @@ export type EnemyArchetype =
   | "archer"
   | "assassin"
   | "boss"
-  | "final";
+  | "final"
+  // Swarm / support / artillery / exploder roles
+  | "wisp"
+  | "priest"
+  | "bomber"
+  | "lantern";
+
+export type BossKind = "oni" | "kitsune" | "gasha" | "raijin";
+
+export const BOSS_INFO: Record<BossKind, { name: string; kanji: string }> = {
+  oni:     { name: "Oni Warlord",      kanji: "鬼" },
+  kitsune: { name: "Nine-Tailed Witch", kanji: "狐" },
+  gasha:   { name: "Gashadokuro",      kanji: "骸" },
+  raijin:  { name: "Thunder General",  kanji: "雷" },
+};
+
+// Telegraphed ground attack: a circle fills up over `max` seconds, then
+// detonates and hurts the player if they're still inside.
+interface Hazard {
+  x: number; y: number; r: number;
+  t: number; max: number;
+  damage: number;
+  kind: "bomb" | "bolt" | "slam";
+  fromX: number; fromY: number;
+}
 
 interface Enemy {
   id: number;
@@ -3365,6 +3402,9 @@ interface Enemy {
   // 0 = no resist (full hitstun applied). 0.5 = halves applied stun.
   // 0.95 = nearly immune. Set per-archetype in makeEnemy.
   hitstunResist: number;
+  bossKind?: BossKind;
+  special?: number;   // per-archetype timer (heal pulse, bomb throw)
+  fuse?: number;      // lantern self-destruct countdown
 }
 
 interface Particle {
@@ -3670,9 +3710,33 @@ export const PERK_POOL: Omit<PerkChoice, never>[] = [
   { id: "bleed_dmg_r",     kanji: "血", name: "Hemorrhage",         desc: "+50% bleed damage",                                           rarity: "rare" },
   { id: "lightning_hits_r",kanji: "雷", name: "Storm-Touched",      desc: "+8% chance to call lightning on hit (small zap + brief stun)", rarity: "rare" },
   { id: "lightning_dmg_l", kanji: "雷", name: "Stormborn",          desc: "+8 lightning damage and +0.25s stun",                         rarity: "legendary" },
+  // ===== Build-direction perks =====
+  { id: "keen_eye",      kanji: "眼", name: "Keen Eye",       desc: "+6% critical hit chance",                                   rarity: "common" },
+  { id: "thick_hide",    kanji: "皮", name: "Thick Hide",     desc: "+1 defense (−1 damage from every hit)",                     rarity: "common" },
+  { id: "quick_draw",    kanji: "抜", name: "Quick Draw",     desc: "Dash recharges 15% faster",                                 rarity: "common" },
+  { id: "scavenger",     kanji: "拾", name: "Scavenger",      desc: "+20% coins from kills",                                     rarity: "common" },
+  { id: "glass_cannon",  kanji: "硝", name: "Glass Cannon",   desc: "+35% damage, but −20% max HP",                              rarity: "rare" },
+  { id: "exploit",       kanji: "破", name: "Exploit Weakness", desc: "+40% damage to stunned, slowed or webbed foes",          rarity: "rare" },
+  { id: "dash_strike",   kanji: "突", name: "Piercing Dash",  desc: "Dashing through foes deals 3× damage",                       rarity: "rare" },
+  { id: "spirit_flow",   kanji: "気", name: "Spirit Flow",    desc: "Ultimate charges 30% faster",                               rarity: "rare" },
+  { id: "bounty_hunter", kanji: "賞", name: "Bounty Hunter",  desc: "Elite kills give +3 coins and heal 2 HP",                   rarity: "rare" },
+  { id: "haste",         kanji: "速", name: "Battle Rhythm",  desc: "Ability cooldowns recover 20% faster",                     rarity: "rare" },
+  { id: "reaper",        kanji: "冥", name: "Reaper's Toll",  desc: "Every 10th kill releases a soul shockwave",                 rarity: "legendary" },
+  { id: "last_stand",    kanji: "背", name: "Last Stand",     desc: "Below 30% HP: +50% damage and −20% damage taken",          rarity: "legendary" },
+  { id: "fox_companion", kanji: "狐", name: "Spirit Fox",     desc: "A homing foxfire leaps from you every 4s",                  rarity: "legendary" },
 ];
 
 interface Perks {
+  dashCdMul: number;        // multiplies dash cooldown
+  dashDmgMul: number;       // multiplies dash contact damage
+  monMul: number;           // multiplies coins from kills
+  eliteBounty: number;      // bonus coins (+2 HP) per elite kill
+  ultChargeMul: number;     // multiplies ultimate charge gained
+  abilityHaste: number;     // ability cooldowns tick this much faster
+  exploitMul: number;       // bonus damage vs stunned/slowed/webbed foes
+  lastStand: boolean;       // below 30% HP: +50% damage, −20% damage taken
+  reaperEvery: number;      // every N kills, a soul shockwave (0 = off)
+  foxCompanion: boolean;    // a homing foxfire every 4s
   damage: number;
   attackCooldownMul: number;
   attackRangeMul: number;
@@ -3772,6 +3836,16 @@ interface Perks {
 }
 
 const defaultPerks = (): Perks => ({
+  dashCdMul: 1,
+  dashDmgMul: 1,
+  monMul: 1,
+  eliteBounty: 0,
+  ultChargeMul: 1,
+  abilityHaste: 1,
+  exploitMul: 0,
+  lastStand: false,
+  reaperEvery: 0,
+  foxCompanion: false,
   damage: BASE.ATTACK_DAMAGE,
   attackCooldownMul: 1,
   attackRangeMul: 1,
@@ -4129,6 +4203,7 @@ export class GhostGame {
   secProjectiles: SecondaryProjectile[] = [];
   // Phase 8 — projectiles fired by enemies (archer arrows + final boss volleys)
   enemyProjectiles: EnemyProjectile[] = [];
+  hazards: Hazard[] = [];
   // Phase 8 — final-boss death cinematic state.
   cinematicTimer = 0;        // total seconds remaining
   cinematicMaxTime = 0;
@@ -4210,6 +4285,8 @@ export class GhostGame {
   quality = new QualityGuard();
   shakeScale = 1;
   fx = new Fx();
+  reaperCount = 0;
+  foxTimer = 4;
   arena = new Arena();
   baseKatanaDamage = 1;
   fireAnim = 0;
@@ -4325,8 +4402,11 @@ export class GhostGame {
     this.shockwaves = [];
     this.secProjectiles = [];
     this.enemyProjectiles = [];
+    this.hazards = [];
     this.cinematicTimer = 0;
     this.fx.clear();
+    this.reaperCount = 0;
+    this.foxTimer = 4;
     this.kappaHitChain = 0;
     this.ultWindTimer = 0;
     this.ultFinaleTimer = 0;
@@ -4754,6 +4834,7 @@ export class GhostGame {
         xpReward: 60 + tier * 20,
         monReward: 80 + tier * 40 + Math.floor(Math.random() * 30),
       }));
+      this.decorateBoss(this.enemies[this.enemies.length - 1], wave);
     } else if (kind === "shielded") {
       // Tanky frontline — frontal melee bounces off until shield breaks.
       this.enemies.push(this.makeEnemy({
@@ -4806,6 +4887,58 @@ export class GhostGame {
         xpReward: 14,
         monReward: 6 + tier * 2 + Math.floor(Math.random() * 4),
       }));
+    } else if (kind === "wisp") {
+      // Swarm: a pack of four weak, quick spirit flames.
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2;
+        this.enemies.push(this.makeEnemy({
+          x: s.x + Math.cos(a) * 26, y: s.y + Math.sin(a) * 26,
+          isBoss: false, archetype: "wisp",
+          hp: Math.max(0.5, 0.6 * hpScale),
+          damage: Math.round(6 * dmgScale),
+          speed: 200 * speedScale,
+          size: 9,
+          xpReward: 3,
+          monReward: 1 + Math.floor(Math.random() * 2),
+        }));
+      }
+    } else if (kind === "priest") {
+      // Support: heals nearby allies — the priority target.
+      const pr = this.makeEnemy({
+        x: s.x, y: s.y, isBoss: false, archetype: "priest",
+        hp: Math.round(3 * hpScale * 10) / 10,
+        damage: Math.round(8 * dmgScale),
+        speed: 150 * speedScale,
+        size: 15,
+        xpReward: 22,
+        monReward: 8 + tier * 2 + Math.floor(Math.random() * 4),
+      });
+      pr.special = 2;
+      this.enemies.push(pr);
+    } else if (kind === "bomber") {
+      // Artillery: lobs bombs onto where you're standing.
+      const bm = this.makeEnemy({
+        x: s.x, y: s.y, isBoss: false, archetype: "bomber",
+        hp: Math.round(2.5 * hpScale * 10) / 10,
+        damage: Math.round(14 * dmgScale),
+        speed: 155 * speedScale,
+        size: 13,
+        xpReward: 18,
+        monReward: 6 + tier + Math.floor(Math.random() * 4),
+      });
+      bm.special = 1.5 + Math.random();
+      this.enemies.push(bm);
+    } else if (kind === "lantern") {
+      // Exploder: rushes in, swells, then bursts.
+      this.enemies.push(this.makeEnemy({
+        x: s.x, y: s.y, isBoss: false, archetype: "lantern",
+        hp: Math.round(1.5 * hpScale * 10) / 10,
+        damage: Math.round(20 * dmgScale),
+        speed: 205 * speedScale,
+        size: 13,
+        xpReward: 12,
+        monReward: 4 + tier + Math.floor(Math.random() * 3),
+      }));
     } else {
       this.enemies.push(this.makeEnemy({
         x: s.x, y: s.y,
@@ -4821,6 +4954,15 @@ export class GhostGame {
     }
   }
 
+  // Each boss wave brings a different boss: Oni → Kitsune → Gashadokuro → Raijin.
+  decorateBoss(b: Enemy, wave: number) {
+    const order: BossKind[] = ["oni", "kitsune", "gasha", "raijin"];
+    const kind = order[Math.max(0, Math.floor(wave / 5) - 1) % order.length];
+    b.bossKind = kind;
+    if (kind === "kitsune") { b.hp = b.maxHp = Math.round(b.maxHp * 0.85); b.speed *= 1.1; }
+    else if (kind === "gasha") { b.hp = b.maxHp = Math.round(b.maxHp * 1.3); b.speed *= 0.75; b.size += 8; }
+  }
+
   // Roll a non-elite enemy, with elites unlocking by wave.
   // shielded @ wave 6+, archer @ wave 8+, assassin @ wave 10+.
   pickRollKind(wave: number): EnemyArchetype {
@@ -4829,7 +4971,15 @@ export class GhostGame {
     const shieldedChance = wave >= 6 ? Math.min(0.18, (wave - 5) * 0.025) : 0;
     const archerChance = wave >= 8 ? Math.min(0.22, (wave - 7) * 0.03) : 0;
     const assassinChance = wave >= 10 ? Math.min(0.18, (wave - 9) * 0.025) : 0;
+    const wispChance = wave >= 2 ? Math.min(0.09, (wave - 1) * 0.02) : 0;
+    const lanternChance = wave >= 4 ? Math.min(0.12, (wave - 3) * 0.02) : 0;
+    const bomberChance = wave >= 5 ? Math.min(0.12, (wave - 4) * 0.02) : 0;
+    const priestChance = wave >= 7 ? Math.min(0.08, (wave - 6) * 0.015) : 0;
     let cum = 0;
+    if (r < (cum += priestChance)) return "priest";
+    if (r < (cum += bomberChance)) return "bomber";
+    if (r < (cum += lanternChance)) return "lantern";
+    if (r < (cum += wispChance)) return "wisp";
     if (r < (cum += shieldedChance)) return "shielded";
     if (r < (cum += archerChance)) return "archer";
     if (r < (cum += assassinChance)) return "assassin";
@@ -4889,7 +5039,10 @@ export class GhostGame {
     }
 
     this.stats.enemiesLeft = this.enemies.filter(e => e.state !== "dead").length;
-    if (isBoss) this.flash(`◈ BOSS WAVE ${wave} · Slay the boss ◈`);
+    if (isBoss) {
+      const bk = this.enemies.find(en => en.bossKind)?.bossKind;
+      this.flash(bk ? `◈ ${BOSS_INFO[bk].kanji} ${BOSS_INFO[bk].name} approaches ◈` : `◈ BOSS WAVE ${wave} · Slay the boss ◈`);
+    }
     else this.flash(`Wave ${wave} · Survive ${Math.round(this.stats.waveDuration)}s`);
 
     audio.play("waveStart");
@@ -5276,6 +5429,15 @@ export class GhostGame {
     this.perks.damage = Math.min(MAX_KATANA_DAMAGE, this.perks.damage + this.baseKatanaDamage * pct);
   }
 
+  // +damage for −max HP. Used by the Glass Cannon perk and Ronin's Gamble.
+  private applyGlassCannon(dmgMul: number, hpCut: number) {
+    this.perks.classDamageMul *= dmgMul;
+    const cut = Math.round((100 + this.perks.maxHpBonus) * hpCut);
+    this.perks.maxHpBonus -= cut;
+    this.player.maxHp = Math.max(20, 100 + this.perks.maxHpBonus);
+    this.player.hp = Math.min(this.player.hp, this.player.maxHp);
+  }
+
   applyPerk(id: string) {
     switch (id) {
       case "blade_edge":
@@ -5308,6 +5470,19 @@ export class GhostGame {
         break;
       }
       case "wave_clear": this.perks.healBetweenWaves += 25; break;
+      case "keen_eye": this.perks.critChance = Math.min(0.9, this.perks.critChance + 0.06); break;
+      case "thick_hide": this.perks.defense += 1; break;
+      case "quick_draw": this.perks.dashCdMul *= 0.85; break;
+      case "scavenger": this.perks.monMul += 0.2; break;
+      case "glass_cannon": this.applyGlassCannon(1.35, 0.2); break;
+      case "exploit": this.perks.exploitMul += 0.4; break;
+      case "dash_strike": this.perks.dashDmgMul *= 3; break;
+      case "spirit_flow": this.perks.ultChargeMul += 0.3; break;
+      case "bounty_hunter": this.perks.eliteBounty += 3; break;
+      case "haste": this.perks.abilityHaste += 0.2; break;
+      case "reaper": this.perks.reaperEvery = this.perks.reaperEvery ? Math.max(5, this.perks.reaperEvery - 3) : 10; break;
+      case "last_stand": this.perks.lastStand = true; break;
+      case "fox_companion": this.perks.foxCompanion = true; break;
       case "phantom": this.perks.invulnBonus += 1; break;
       case "kensei":
         this.addKatanaDamagePct(0.60);
@@ -5520,6 +5695,7 @@ export class GhostGame {
     this.updatePlayer(dt);
     this.updateEnemies(dt);
     this.updateEnemyProjectiles(dt);
+    this.updateHazards(dt);
     this.updateParticles(dt);
     this.updatePetals(dtRaw);
     this.updateAbilities(dt);
@@ -5566,7 +5742,7 @@ export class GhostGame {
     // Ability cooldown ticking — every equipped ability
     for (const id of this.stats.equippedAbilities) {
       const cur = this.stats.abilityCd[id] ?? 0;
-      if (cur > 0) this.stats.abilityCd[id] = Math.max(0, cur - dt);
+      if (cur > 0) this.stats.abilityCd[id] = Math.max(0, cur - dt * this.perks.abilityHaste);
     }
     // Time-slow effect tick
     if (this.timeSlowRemaining > 0) {
@@ -5697,7 +5873,7 @@ export class GhostGame {
         const d = Math.hypot(e.pos.x - p.pos.x, e.pos.y - p.pos.y);
         if (d < r + e.size) {
           // Dash contact damage scales with the player's flat damage perk.
-          const dmg = BASE.DASH_DAMAGE * (this.perks.damage / BASE.ATTACK_DAMAGE);
+          const dmg = BASE.DASH_DAMAGE * (this.perks.damage / BASE.ATTACK_DAMAGE) * this.perks.dashDmgMul;
           e.hp -= dmg;
           this.spawnFloatText(e.pos, fmtNum(dmg), {
             color: "hsl(36 90% 75%)",
@@ -5755,7 +5931,7 @@ export class GhostGame {
       }
       p.dashAng = ang;
       p.dashTimer = BASE.DASH_DURATION;
-      p.dashCooldown = BASE.DASH_COOLDOWN * (this.stats.classId === "tengu" ? 0.6 : 1);
+      p.dashCooldown = BASE.DASH_COOLDOWN * (this.stats.classId === "tengu" ? 0.6 : 1) * this.perks.dashCdMul;
       p.invuln = Math.max(p.invuln, BASE.DASH_IFRAMES);
       p.dashHitIds.clear();
       this.cameraShake = Math.max(this.cameraShake, 0.15);
@@ -5920,7 +6096,24 @@ export class GhostGame {
     if (type === "honor") this.stats.honor++;
     else this.stats.ghost++;
     // Mon coin drop — stealth kills (ghost) earn a 50% bonus.
-    const monGain = Math.max(0, Math.round(e.monReward * 0.75 * (type === "ghost" ? 1.5 : 1)));
+    const monGain = Math.max(0, Math.round(e.monReward * 0.75 * this.perks.monMul * (type === "ghost" ? 1.5 : 1)));
+    if (this.perks.eliteBounty > 0 && e.archetype !== "normal" && e.archetype !== "wisp") {
+      this.stats.mon += this.perks.eliteBounty;
+      this.player.hp = Math.min(this.player.maxHp, this.player.hp + 2);
+      this.spawnFloatText(e.pos, `+${this.perks.eliteBounty} 賞`, { color: "hsl(45 95% 65%)", size: 13, jp: true, vy: -70 });
+    }
+    if (this.perks.reaperEvery > 0 && ++this.reaperCount >= this.perks.reaperEvery) {
+      this.reaperCount = 0;
+      const R = 170;
+      const rd = this.perks.damage * 3 + 4;
+      for (const o of this.enemies) {
+        if (o === e || o.state === "dead" || o.hp <= 0) continue;
+        const d = Math.hypot(o.pos.x - e.pos.x, o.pos.y - e.pos.y);
+        if (d <= R + o.size) this.dealDamage(o, rd, Math.atan2(o.pos.y - e.pos.y, o.pos.x - e.pos.x), 120);
+      }
+      this.fx.shockwave(e.pos.x, e.pos.y, R, { hue: 280, light: 70, life: 0.5, width: 10, lines: 14 });
+      this.fx.seal(e.pos.x, e.pos.y - 30, "冥", 280, 30, 0.7);
+    }
     this.stats.mon += monGain;
     if (monGain > 0) {
       // Floating gold popup, larger for bosses + bigger drops.
@@ -6025,6 +6218,7 @@ export class GhostGame {
   // Add charge to the ultimate gauge and update the `ultReady` flag.
   addUltCharge(amount: number) {
     if (this.stats.ultActive) return;
+    amount *= this.perks.ultChargeMul;
     this.stats.ultCharge = Math.min(this.stats.ultMax, this.stats.ultCharge + amount);
     if (this.stats.ultCharge >= this.stats.ultMax && !this.stats.ultReady) {
       this.stats.ultReady = true;
@@ -6099,6 +6293,10 @@ export class GhostGame {
     // Death Mark — +50% damage from all sources while marked.
     if (e.markRemaining > 0) dmg *= 1.5;
     if (this.stats.classId === "yukionna" && e.slowRemaining > 0) dmg *= 1.15;
+    if (this.perks.exploitMul > 0 && (e.stunTimer > 0 || e.slowRemaining > 0 || e.webbedRemaining > 0 || e.warHornSlowRemaining > 0)) {
+      dmg *= 1 + this.perks.exploitMul;
+    }
+    if (this.perks.lastStand && this.player.hp / Math.max(1, this.player.maxHp) < 0.3) dmg *= 1.5;
     // Executioner perk
     if (this.perks.executionerThreshold > 0 && e.maxHp > 0) {
       const ratio = e.hp / e.maxHp;
@@ -6226,7 +6424,7 @@ export class GhostGame {
   // Apply enemy damage to the player, respecting i-frames + parry.
   // Mirrors the inline melee block in updateEnemies but reusable for
   // assassin dashes and final-boss patterns.
-  applyEnemyHit(e: Enemy, baseDamage: number) {
+  applyEnemyHit(e: Enemy | null, baseDamage: number) {
     if (this.player.invuln > 0) return;
     if (this.ultMountainTimer > 0 || this.ultBloodRageTimer > 0 || this.ultShadowStepTimer > 0) return;
     // ===== Phase 2 — Block check =====
@@ -6277,9 +6475,10 @@ export class GhostGame {
     // Scale by HP pool + defense, then apply banner reduction on top
     // (banner is temporary so it lives outside the cap).
     const bannerMul = this.ultBannerActive ? 0.7 : 1;
-    baseDamage = Math.max(1, Math.round(this.scaleEnemyDamage(baseDamage) * bannerMul));
+    const lastStandMul = this.perks.lastStand && this.player.hp / Math.max(1, this.player.maxHp) < 0.3 ? 0.8 : 1;
+    baseDamage = Math.max(1, Math.round(this.scaleEnemyDamage(baseDamage) * bannerMul * lastStandMul));
     this.player.hp -= baseDamage;
-    if (this.stats.classId === "sohei" && e.state !== "dead") {
+    if (this.stats.classId === "sohei" && e && e.state !== "dead") {
       const thorns = Math.max(1, Math.round(baseDamage * 0.6));
       e.hp -= thorns;
       e.hitFlash = 1;
@@ -6379,25 +6578,69 @@ export class GhostGame {
           ep.life = 0;
           continue;
         }
-        if (this.player.invuln <= 0) {
-          const bannerMul = this.ultBannerActive ? 0.7 : 1;
-          const dmg = Math.max(1, Math.round(this.scaleEnemyDamage(ep.damage) * bannerMul));
-          this.player.hp -= dmg;
-          this.spawnFloatText(this.player.pos, `-${dmg}`, {
-            color: "hsl(358 90% 65%)",
-            size: 15,
-          });
-          this.player.hitFlash = 1;
-          this.player.invuln = 0.6 + this.perks.invulnBonus;
-          this.cameraShake = Math.max(this.cameraShake, 0.4);
-          this.spawnBlood(this.player.pos, Math.atan2(ep.vel.y, ep.vel.x), 8);
-          this.addUltCharge(this.lowHp() ? 16 : 9);
-          audio.play("hit");
-        }
+        // Route through the shared path so block and class shields apply.
+        this.applyEnemyHit(null, ep.damage);
         ep.life = 0;
       }
     }
     this.enemyProjectiles = this.enemyProjectiles.filter(ep => ep.life > 0);
+  }
+
+  updateHazards(dt: number) {
+    if (!this.hazards.length) return;
+    for (const h of this.hazards) {
+      h.t += dt;
+      if (h.t < h.max) continue;
+      if (Math.hypot(this.player.pos.x - h.x, this.player.pos.y - h.y) <= h.r + BASE.PLAYER_RADIUS * 0.5) {
+        this.applyEnemyHit(null, h.damage);
+      }
+      if (h.kind === "bomb") {
+        this.fx.shockwave(h.x, h.y, h.r * 1.2, { hue: 22, life: 0.4, width: 12, lines: 10 });
+        this.fx.smoke(h.x, h.y, 6, h.r, 20, 20, 15);
+        this.fx.flames2(h.x, h.y, 8, h.r * 0.5);
+        audio.play("bombBoom");
+      } else if (h.kind === "bolt") {
+        this.fx.bolt(h.x + (Math.random() - 0.5) * 40, h.y - 320, h.x, h.y, 205, 0.3);
+        this.fx.shockwave(h.x, h.y, h.r * 1.1, { hue: 205, light: 80, life: 0.35, width: 8 });
+        audio.play("crossbowSnap");
+      } else {
+        this.fx.shockwave(h.x, h.y, h.r * 1.3, { hue: 40, sat: 20, light: 85, life: 0.45, width: 14, lines: 12 });
+        this.fx.ground(h.x, h.y, h.r * 1.1, 30, 1.6);
+        audio.play("bombBoom");
+      }
+      this.cameraShake = Math.max(this.cameraShake, 0.3);
+    }
+    this.hazards = this.hazards.filter(h => h.t < h.max);
+  }
+
+  drawHazards() {
+    const ctx = this.ctx;
+    for (const h of this.hazards) {
+      const p = Math.min(1, h.t / h.max);
+      const hue = h.kind === "bolt" ? 205 : h.kind === "bomb" ? 18 : 0;
+      ctx.save();
+      ctx.fillStyle = `hsla(${hue}, 85%, 50%, ${0.1 + p * 0.12})`;
+      ctx.beginPath(); ctx.arc(h.x, h.y, h.r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `hsla(${hue}, 90%, 55%, ${0.18 + p * 0.22})`;
+      ctx.beginPath(); ctx.arc(h.x, h.y, h.r * p, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = `hsla(${hue}, 95%, 65%, ${0.6 + p * 0.35})`;
+      ctx.lineWidth = 2 + p * 2;
+      ctx.setLineDash([8, 6]);
+      ctx.lineDashOffset = -h.t * 30;
+      ctx.beginPath(); ctx.arc(h.x, h.y, h.r, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      if (h.kind === "bomb" && p < 0.75) {
+        // The bomb arcs from the thrower to the target.
+        const k = p / 0.75;
+        const bx = h.fromX + (h.x - h.fromX) * k;
+        const by = h.fromY + (h.y - h.fromY) * k - Math.sin(k * Math.PI) * 90;
+        ctx.fillStyle = "hsl(0, 0%, 10%)";
+        ctx.beginPath(); ctx.arc(bx, by, 6, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = `hsl(${30 + Math.random() * 20}, 100%, 65%)`;
+        ctx.beginPath(); ctx.arc(bx + 3, by - 5, 2, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
   }
 
   updateFinalBoss(e: Enemy, dt: number, dist: number, angToPlayer: number, speedMul: number) {
@@ -6482,6 +6725,83 @@ export class GhostGame {
           audio.play("smokeWoosh");
         }
       }
+      else if (e.bossPattern === 3) {
+        // Kitsune blink: vanish in smoke, reappear beside you, then a foxfire fan.
+        if (e.bossPatternStep === 0) {
+          e.bossPatternStep = 1;
+          this.fx.smoke(e.pos.x, e.pos.y, 10, 60, 70, 24, 60);
+          const a = Math.random() * Math.PI * 2;
+          e.pos.x = Math.max(40, Math.min(this.worldW - 40, this.player.pos.x + Math.cos(a) * 240));
+          e.pos.y = Math.max(40, Math.min(this.worldH - 40, this.player.pos.y + Math.sin(a) * 240));
+          this.fx.smoke(e.pos.x, e.pos.y, 10, 60, 70, 24, 60);
+          this.fx.shockwave(e.pos.x, e.pos.y, 90, { hue: 24, life: 0.35, width: 6 });
+          audio.play("smokeWoosh");
+        } else if (e.bossPatternStep === 1 && e.bossPatternTimer < 0.45) {
+          e.bossPatternStep = 2;
+          const n = 3 + e.bossPhase * 2;
+          for (let i = 0; i < n; i++) {
+            const a = angToPlayer + (i / (n - 1) - 0.5) * 0.9;
+            this.enemyProjectiles.push({
+              pos: { x: e.pos.x, y: e.pos.y }, vel: { x: Math.cos(a) * 300, y: Math.sin(a) * 300 },
+              life: 2.2, maxLife: 2.2, damage: Math.round(e.damage * 0.6), size: 9, kind: "orb", trail: [],
+            });
+          }
+          audio.play("bombBoom");
+        }
+      } else if (e.bossPattern === 4) {
+        // Summon: the witch calls wisps, the skeleton raises soldiers.
+        if (e.bossPatternStep === 0) {
+          e.bossPatternStep = 1;
+          const tier = Math.floor((this.stats.wave - 1) / 5);
+          const scale = 1 + (this.stats.wave - 1) * 0.45;
+          if (e.bossKind === "kitsune") {
+            for (let i = 0; i < 5; i++) {
+              const a = (i / 5) * Math.PI * 2;
+              this.enemies.push(this.makeEnemy({
+                x: e.pos.x + Math.cos(a) * 50, y: e.pos.y + Math.sin(a) * 50, isBoss: false, archetype: "wisp",
+                hp: Math.max(0.5, 0.6 * scale), damage: Math.round(6 * (1 + (this.stats.wave - 1) * 0.1)),
+                speed: 200, size: 9, xpReward: 2, monReward: 0,
+              }));
+            }
+          } else {
+            for (let i = 0; i < 3; i++) {
+              const a = (i / 3) * Math.PI * 2 + Math.random();
+              this.enemies.push(this.makeEnemy({
+                x: e.pos.x + Math.cos(a) * 70, y: e.pos.y + Math.sin(a) * 70, isBoss: false, archetype: "normal",
+                hp: Math.max(1, Math.round(2 * scale)), damage: Math.round(12 * (1 + (this.stats.wave - 1) * 0.1)),
+                speed: 165, size: BASE.ENEMY_RADIUS, xpReward: 4 + tier, monReward: 0,
+              }));
+            }
+          }
+          this.fx.shockwave(e.pos.x, e.pos.y, 140, { hue: e.bossKind === "kitsune" ? 24 : 40, life: 0.5, width: 8, lines: 10 });
+          audio.play("bossRoar");
+        }
+      } else if (e.bossPattern === 5) {
+        // Gashadokuro: three telegraphed fist slams marching toward you.
+        if (e.bossPatternStep === 0) {
+          e.bossPatternStep = 1;
+          for (let k = 1; k <= 3; k++) {
+            this.hazards.push({
+              x: e.pos.x + Math.cos(angToPlayer) * k * 110, y: e.pos.y + Math.sin(angToPlayer) * k * 110,
+              r: 80, t: 0, max: 0.6 + k * 0.28, damage: Math.round(e.damage * 0.8), kind: "slam", fromX: e.pos.x, fromY: e.pos.y,
+            });
+          }
+        }
+      } else if (e.bossPattern === 6) {
+        // Thunder General: lightning strikes on and around you.
+        if (e.bossPatternStep === 0) {
+          e.bossPatternStep = 1;
+          const n = 4 + e.bossPhase;
+          for (let i = 0; i < n; i++) {
+            const a = Math.random() * Math.PI * 2, d = i === 0 ? 0 : 60 + Math.random() * 130;
+            this.hazards.push({
+              x: this.player.pos.x + Math.cos(a) * d, y: this.player.pos.y + Math.sin(a) * d,
+              r: 62, t: 0, max: 0.9 + i * 0.12, damage: Math.round(e.damage * 0.7), kind: "bolt", fromX: e.pos.x, fromY: e.pos.y,
+            });
+          }
+          audio.play("timeSlowSwell");
+        }
+      }
       if (e.bossPatternTimer <= 0) {
         e.bossPatternCd = 1.4 - e.bossPhase * 0.2;
         e.bossPatternStep = 0;
@@ -6491,20 +6811,35 @@ export class GhostGame {
 
     // Between patterns — stalk player slowly, then queue next pattern.
     e.bossPatternCd -= dt;
-    if (dist > 220) {
+    if (e.bossKind === "kitsune") {
+      // The witch keeps her distance and circles.
+      const side = angToPlayer + Math.PI / 2;
+      const away = dist < 230 ? -1 : dist > 320 ? 1 : 0;
+      e.pos.x += (Math.cos(angToPlayer) * away + Math.cos(side) * 0.6) * e.speed * speedMul * dt;
+      e.pos.y += (Math.sin(angToPlayer) * away + Math.sin(side) * 0.6) * e.speed * speedMul * dt;
+      e.pos.x = Math.max(40, Math.min(this.worldW - 40, e.pos.x));
+      e.pos.y = Math.max(40, Math.min(this.worldH - 40, e.pos.y));
+    } else if (dist > 220) {
       e.pos.x += Math.cos(angToPlayer) * e.speed * speedMul * dt;
       e.pos.y += Math.sin(angToPlayer) * e.speed * speedMul * dt;
     }
     if (e.bossPatternCd <= 0) {
       // Pick a pattern weighted by phase
       const choices: number[] = [0, 1];
-      if (e.bossPhase >= 2) choices.push(1);
-      if (e.bossPhase >= 3) { choices.push(2, 0); }
+      if (e.bossKind === "kitsune") { choices.length = 0; choices.push(0, 3, 4); if (e.bossPhase >= 2) choices.push(3); if (e.bossPhase >= 3) choices.push(0, 3); }
+      else if (e.bossKind === "gasha") { choices.length = 0; choices.push(1, 5, 4); if (e.bossPhase >= 2) choices.push(5); if (e.bossPhase >= 3) choices.push(1, 5); }
+      else if (e.bossKind === "raijin") { choices.length = 0; choices.push(6, 2, 0); if (e.bossPhase >= 2) choices.push(6); if (e.bossPhase >= 3) choices.push(2, 6); }
+      else if (e.bossPhase >= 2) choices.push(1);
+      if (!e.bossKind || e.bossKind === "oni") { if (e.bossPhase >= 3) { choices.push(2, 0); } }
       e.bossPattern = choices[Math.floor(Math.random() * choices.length)];
       e.bossPatternStep = 0;
       e.bossPatternTimer =
         e.bossPattern === 0 ? 1.2 :
-        e.bossPattern === 1 ? 0.85 : 1.5;
+        e.bossPattern === 1 ? 0.85 :
+        e.bossPattern === 3 ? 0.9 :
+        e.bossPattern === 4 ? 0.6 :
+        e.bossPattern === 5 ? 1.6 :
+        e.bossPattern === 6 ? 1.2 : 1.5;
       e.attackAnim = 0.001;
     }
   }
@@ -7324,6 +7659,69 @@ export class GhostGame {
         e.shieldFacing = angToPlayer;
       }
 
+      if (e.archetype === "priest" || e.archetype === "bomber") {
+        const ideal = e.archetype === "priest" ? 260 : 300;
+        e.facing = angToPlayer;
+        if (dist < ideal - 40) {
+          e.pos.x -= Math.cos(angToPlayer) * e.speed * speedMul * dt;
+          e.pos.y -= Math.sin(angToPlayer) * e.speed * speedMul * dt;
+        } else if (dist > ideal + 60) {
+          e.pos.x += Math.cos(angToPlayer) * e.speed * 0.8 * speedMul * dt;
+          e.pos.y += Math.sin(angToPlayer) * e.speed * 0.8 * speedMul * dt;
+        }
+        e.special = (e.special ?? 2) - dt * speedMul;
+        if (e.special <= 0 && e.disarmedRemaining <= 0) {
+          if (e.archetype === "priest") {
+            e.special = 3.5;
+            let healed = 0;
+            for (const o of this.enemies) {
+              if (o === e || o.state === "dead" || o.hp >= o.maxHp) continue;
+              if (Math.hypot(o.pos.x - e.pos.x, o.pos.y - e.pos.y) > 170) continue;
+              o.hp = Math.min(o.maxHp, o.hp + o.maxHp * (o.isBoss ? 0.04 : 0.3));
+              healed++;
+              this.fx.burst(o.pos.x, o.pos.y, { count: 3, hue: 130, light: 70, speed: 120, life: 0.4, grav: -120 });
+            }
+            this.fx.shockwave(e.pos.x, e.pos.y, 170, { hue: 130, light: 65, life: 0.6, width: 5 });
+            if (healed) this.spawnFloatText(e.pos, "癒", { color: "hsl(130 70% 65%)", size: 16, jp: true });
+          } else if (dist < 560) {
+            e.special = 2.8 + Math.random() * 0.8;
+            const tx = this.player.pos.x + (Math.random() - 0.5) * 50;
+            const ty = this.player.pos.y + (Math.random() - 0.5) * 50;
+            this.hazards.push({ x: tx, y: ty, r: 70, t: 0, max: 1.15, damage: e.damage, kind: "bomb", fromX: e.pos.x, fromY: e.pos.y });
+            audio.play("slash");
+          }
+        }
+        continue;
+      }
+
+      if (e.archetype === "lantern") {
+        if (e.fuse !== undefined && e.fuse > 0) {
+          e.fuse -= dt * speedMul;
+          if (e.fuse <= 0) {
+            const R = 90;
+            if (Math.hypot(this.player.pos.x - e.pos.x, this.player.pos.y - e.pos.y) <= R + BASE.PLAYER_RADIUS) {
+              this.applyEnemyHit(e, e.damage);
+            }
+            this.fx.shockwave(e.pos.x, e.pos.y, R * 1.2, { hue: 25, life: 0.45, width: 14, lines: 12 });
+            this.fx.glow(e.pos.x, e.pos.y, R, 30, 100, 65, 0.3);
+            this.fx.flames2(e.pos.x, e.pos.y, 14, 40);
+            this.cameraShake = Math.max(this.cameraShake, 0.35);
+            audio.play("bombBoom");
+            this.killEnemy(e, "honor");
+          }
+          continue;
+        }
+        e.facing = angToPlayer;
+        if (dist < 62 && e.disarmedRemaining <= 0) {
+          e.fuse = 0.8;
+          audio.play("bossRoar");
+        } else {
+          e.pos.x += Math.cos(angToPlayer) * e.speed * speedMul * dt;
+          e.pos.y += Math.sin(angToPlayer) * e.speed * speedMul * dt;
+        }
+        continue;
+      }
+
       if (e.archetype === "archer") {
         // Archer — kite to maintain ~280px range and fire on cooldown.
         const ideal = 280;
@@ -7734,7 +8132,7 @@ export class GhostGame {
     ctx.globalAlpha = 1;
 
     for (const e of this.enemies) {
-      if (e.state === "dead" || e.stunTimer > 0) continue;
+      if (e.state === "dead" || e.stunTimer > 0 || e.archetype === "wisp" || e.archetype === "lantern") continue;
       ctx.save();
       ctx.translate(e.pos.x, e.pos.y);
       ctx.rotate(e.facing);
@@ -7755,6 +8153,7 @@ export class GhostGame {
     }
 
     this.fx.drawGround(ctx);
+    this.drawHazards();
     for (const e of this.enemies) if (e.state === "dead") this.drawEnemy(e, true);
     for (const p of this.particles) if (p.kind === "blood") this.drawParticle(p);
     for (const e of this.enemies) if (e.state !== "dead") this.drawEnemy(e, false);
@@ -8583,6 +8982,216 @@ export class GhostGame {
     }
   }
 
+  // Bodies for the newer roles. Drawn unrotated around the enemy's position.
+  private drawSpecialEnemy(e: Enemy): boolean {
+    const ctx = this.ctx;
+    const t = this.elapsed + e.id;
+    const flash = e.hitFlash > 0;
+    switch (e.archetype) {
+      case "wisp": {
+        // Hitodama: a blue spirit flame trailing behind its direction of travel.
+        const back = e.facing + Math.PI;
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        const g = ctx.createRadialGradient(0, 0, 1, 0, 0, e.size * 1.6);
+        g.addColorStop(0, flash ? "hsla(0,0%,100%,0.95)" : "hsla(195, 100%, 85%, 0.95)");
+        g.addColorStop(0.5, "hsla(210, 90%, 60%, 0.55)");
+        g.addColorStop(1, "hsla(230, 90%, 50%, 0)");
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(0, 0, e.size * 1.6, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "hsla(205, 95%, 70%, 0.6)";
+        ctx.beginPath();
+        const wob = Math.sin(t * 12) * 3;
+        ctx.moveTo(Math.cos(back + 1.2) * e.size * 0.8, Math.sin(back + 1.2) * e.size * 0.8);
+        ctx.quadraticCurveTo(Math.cos(back) * e.size * 2.4 + wob, Math.sin(back) * e.size * 2.4 - wob, Math.cos(back) * e.size * 2.8, Math.sin(back) * e.size * 2.8);
+        ctx.quadraticCurveTo(Math.cos(back) * e.size * 2.2 - wob, Math.sin(back) * e.size * 2.2 + wob, Math.cos(back - 1.2) * e.size * 0.8, Math.sin(back - 1.2) * e.size * 0.8);
+        ctx.fill();
+        ctx.restore();
+        ctx.fillStyle = "hsl(220, 60%, 12%)";
+        for (const s of [-1, 1]) {
+          ctx.beginPath(); ctx.arc(Math.cos(e.facing + s * 0.5) * 3.5, Math.sin(e.facing + s * 0.5) * 3.5 - 1, 1.5, 0, Math.PI * 2); ctx.fill();
+        }
+        return true;
+      }
+      case "priest": {
+        // Healer monk: pale robe, shakujō staff, and a visible healing aura.
+        const charge = Math.max(0, 1 - (e.special ?? 2) / 3.5);
+        ctx.save();
+        ctx.strokeStyle = `hsla(130, 70%, 60%, ${0.18 + charge * 0.35})`;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 8]);
+        ctx.lineDashOffset = -t * 20;
+        ctx.beginPath(); ctx.arc(0, 0, 170, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = `hsla(130, 70%, 55%, ${0.05 + charge * 0.1})`;
+        ctx.beginPath(); ctx.arc(0, 0, 170, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+        ctx.save();
+        ctx.rotate(e.facing);
+        ctx.fillStyle = flash ? "hsl(36, 80%, 85%)" : "hsl(45, 25%, 82%)";
+        ctx.beginPath(); ctx.arc(0, 0, e.size, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "hsl(130, 40%, 30%)";
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(0, 0, e.size - 1.5, Math.PI * 0.6, Math.PI * 1.4); ctx.stroke();
+        ctx.fillStyle = "hsl(30, 30%, 70%)";
+        ctx.beginPath(); ctx.arc(e.size * 0.35, 0, e.size * 0.42, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "hsl(42, 70%, 50%)";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(-4, e.size * 0.7); ctx.lineTo(e.size + 16, e.size * 0.7); ctx.stroke();
+        ctx.beginPath(); ctx.arc(e.size + 18, e.size * 0.7, 5, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+        ctx.fillStyle = "hsl(130, 70%, 65%)";
+        ctx.font = "bold 12px serif";
+        ctx.textAlign = "center";
+        ctx.fillText("癒", 0, -e.size - 14);
+        return true;
+      }
+      case "bomber": {
+        // Hōrokubiya: straw-hatted grenadier with a lit bomb in hand.
+        ctx.save();
+        ctx.rotate(e.facing);
+        ctx.fillStyle = flash ? "hsl(36, 80%, 80%)" : "hsl(25, 30%, 24%)";
+        ctx.beginPath(); ctx.arc(0, 0, e.size, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "hsl(42, 45%, 55%)";
+        ctx.beginPath(); ctx.arc(0, 0, e.size * 1.15, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "hsl(38, 40%, 38%)";
+        ctx.lineWidth = 1;
+        for (let k = 0; k < 8; k++) {
+          const a = (k / 8) * Math.PI * 2;
+          ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * e.size * 1.15, Math.sin(a) * e.size * 1.15); ctx.stroke();
+        }
+        ctx.fillStyle = "hsl(0, 0%, 9%)";
+        ctx.beginPath(); ctx.arc(e.size + 4, e.size * 0.5, 5.5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = `hsl(${35 + Math.sin(t * 25) * 12}, 100%, 65%)`;
+        ctx.beginPath(); ctx.arc(e.size + 7, e.size * 0.5 - 5, 1.8, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+        return true;
+      }
+      case "lantern": {
+        // Chōchin-obake: a paper lantern ghost; swells and blinks before bursting.
+        const fusing = (e.fuse ?? 0) > 0;
+        const fp = fusing ? 1 - (e.fuse! / 0.8) : 0;
+        const sc = 1 + fp * 0.45;
+        if (fusing) {
+          ctx.fillStyle = `hsla(10, 90%, 50%, ${0.12 + fp * 0.18})`;
+          ctx.beginPath(); ctx.arc(0, 0, 90, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = `hsla(10, 95%, 60%, ${0.5 + fp * 0.4})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(0, 0, 90, 0, Math.PI * 2); ctx.stroke();
+          ctx.beginPath(); ctx.arc(0, 0, 90 * fp, 0, Math.PI * 2); ctx.stroke();
+        }
+        ctx.save();
+        ctx.scale(sc, sc);
+        const blink = fusing && Math.sin(t * (20 + fp * 40)) > 0;
+        const body = flash || blink ? "hsl(40, 100%, 85%)" : "hsl(24, 85%, 52%)";
+        const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, e.size * 2);
+        glow.addColorStop(0, "hsla(35, 100%, 65%, 0.55)");
+        glow.addColorStop(1, "hsla(30, 100%, 50%, 0)");
+        ctx.fillStyle = glow;
+        ctx.beginPath(); ctx.arc(0, 0, e.size * 2, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = body;
+        ctx.beginPath(); ctx.ellipse(0, 0, e.size * 0.85, e.size * 1.1, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "hsla(20, 60%, 25%, 0.8)";
+        ctx.lineWidth = 1;
+        for (let k = -2; k <= 2; k++) {
+          ctx.beginPath(); ctx.ellipse(0, k * e.size * 0.35, e.size * 0.85 * Math.cos(k * 0.45), 1, 0, 0, Math.PI * 2); ctx.stroke();
+        }
+        ctx.fillStyle = "hsl(0, 0%, 10%)";
+        ctx.fillRect(-e.size * 0.5, -e.size * 1.15, e.size, 3);
+        ctx.fillRect(-e.size * 0.5, e.size * 1.05, e.size, 3);
+        ctx.fillStyle = "hsl(0, 0%, 98%)";
+        ctx.beginPath(); ctx.arc(0, -2, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "hsl(0, 0%, 5%)";
+        ctx.beginPath(); ctx.arc(Math.cos(e.facing) * 1.5, -2 + Math.sin(e.facing) * 1.5, 2, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "hsl(355, 80%, 55%)";
+        ctx.beginPath(); ctx.ellipse(0, 6, 2.5, 4 + Math.sin(t * 8), 0, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private drawEnemyHpBar(e: Enemy) {
+    const ctx = this.ctx;
+    const ratio = Math.max(0, Math.min(1, e.hp / e.maxHp));
+    const w = Math.max(18, e.size * 1.6);
+    const x = e.pos.x - w / 2;
+    const y = e.pos.y - e.size - (e.archetype === "priest" ? 28 : 9);
+    ctx.fillStyle = "hsla(0, 0%, 4%, 0.7)";
+    ctx.fillRect(x - 1, y - 1, w + 2, 4);
+    ctx.fillStyle = `hsl(358, 75%, ${30 + ratio * 22}%)`;
+    ctx.fillRect(x, y, w * ratio, 2);
+  }
+
+  // Boss-specific silhouettes layered over the shared boss body (rotated space).
+  private drawBossOrnament(e: Enemy) {
+    const ctx = this.ctx;
+    const t = this.elapsed;
+    const s = e.size;
+    switch (e.bossKind) {
+      case "oni": {
+        ctx.fillStyle = "hsl(42, 70%, 70%)";
+        for (const side of [-1, 1]) {
+          ctx.beginPath();
+          ctx.moveTo(s * 0.1, side * s * 0.45);
+          ctx.lineTo(-s * 0.45, side * s * 1.15);
+          ctx.lineTo(s * 0.35, side * s * 0.7);
+          ctx.closePath(); ctx.fill();
+        }
+        break;
+      }
+      case "kitsune": {
+        // Nine fanned tails behind her.
+        for (let i = 0; i < 9; i++) {
+          const a = Math.PI + (i / 8 - 0.5) * 2.2 + Math.sin(t * 3 + i) * 0.08;
+          ctx.save();
+          ctx.rotate(a);
+          const g = ctx.createLinearGradient(s * 0.5, 0, s * 2.6, 0);
+          g.addColorStop(0, "hsla(28, 95%, 55%, 0.9)");
+          g.addColorStop(1, "hsla(40, 100%, 92%, 0.95)");
+          ctx.fillStyle = g;
+          ctx.beginPath(); ctx.ellipse(s * 1.55, 0, s * 1.05, s * 0.28, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.restore();
+        }
+        ctx.fillStyle = "hsl(30, 90%, 60%)";
+        for (const side of [-1, 1]) {
+          ctx.beginPath(); ctx.moveTo(s * 0.4, side * s * 0.3); ctx.lineTo(s * 0.1, side * s * 1.0); ctx.lineTo(-s * 0.2, side * s * 0.4); ctx.closePath(); ctx.fill();
+        }
+        break;
+      }
+      case "gasha": {
+        // Giant skeleton: bone skull face with hollow eyes and ribs.
+        ctx.fillStyle = e.hitFlash > 0 ? "hsl(36, 80%, 90%)" : "hsl(45, 25%, 82%)";
+        ctx.beginPath(); ctx.arc(0, 0, s * 0.92, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "hsl(0, 0%, 6%)";
+        for (const side of [-1, 1]) { ctx.beginPath(); ctx.ellipse(s * 0.3, side * s * 0.32, s * 0.2, s * 0.15, 0, 0, Math.PI * 2); ctx.fill(); }
+        ctx.fillStyle = `hsla(0, 90%, 55%, ${0.6 + Math.sin(t * 5) * 0.3})`;
+        for (const side of [-1, 1]) { ctx.beginPath(); ctx.arc(s * 0.32, side * s * 0.32, s * 0.06, 0, Math.PI * 2); ctx.fill(); }
+        ctx.strokeStyle = "hsl(45, 15%, 55%)";
+        ctx.lineWidth = 2;
+        for (let k = -2; k <= 2; k++) { ctx.beginPath(); ctx.arc(-s * 0.4, 0, s * 0.5 + k * 3, Math.PI * 0.6, Math.PI * 1.4); ctx.stroke(); }
+        break;
+      }
+      case "raijin": {
+        // Ring of thunder drums orbiting the general, crackling.
+        for (let i = 0; i < 6; i++) {
+          const a = t * 1.5 + (i / 6) * Math.PI * 2;
+          const x = Math.cos(a) * s * 1.7, y = Math.sin(a) * s * 1.7;
+          ctx.fillStyle = "hsl(15, 60%, 30%)";
+          ctx.beginPath(); ctx.arc(x, y, s * 0.28, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = "hsl(45, 80%, 60%)";
+          ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.arc(x, y, s * 0.2, 0, Math.PI * 2); ctx.stroke();
+        }
+        ctx.strokeStyle = `hsla(205, 100%, 80%, ${0.4 + Math.random() * 0.5})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(0, 0, s * 1.7, 0, Math.PI * 2); ctx.stroke();
+        break;
+      }
+    }
+  }
+
   drawEnemy(e: Enemy, dead: boolean) {
     const ctx = this.ctx;
     ctx.save();
@@ -8609,6 +9218,12 @@ export class GhostGame {
     ctx.beginPath();
     ctx.ellipse(0, e.size - 2, e.size, e.size * 0.4, 0, 0, Math.PI * 2);
     ctx.fill();
+
+    if (this.drawSpecialEnemy(e)) {
+      ctx.restore();
+      this.drawEnemyHpBar(e);
+      return;
+    }
 
     ctx.rotate(e.facing);
 
@@ -8755,6 +9370,7 @@ export class GhostGame {
       ctx.arc(0, 0, e.size * 2.2, 0, Math.PI * 2);
       ctx.fill();
     }
+    if (e.bossKind) this.drawBossOrnament(e);
 
     ctx.restore();
 
@@ -8780,7 +9396,7 @@ export class GhostGame {
       ctx.fillStyle = "hsl(42, 95%, 70%)";
       ctx.font = "bold 10px serif";
       ctx.textAlign = "center";
-      ctx.fillText("◈ BOSS ◈", e.pos.x, y - 4);
+      ctx.fillText(e.bossKind ? `◈ ${BOSS_INFO[e.bossKind].kanji} ${BOSS_INFO[e.bossKind].name} ◈` : "◈ BOSS ◈", e.pos.x, y - 4);
       // Numeric HP — current/max, to the right of the bar.
       const hpNow = fmtNum(e.hp);
       const hpMax = fmtNum(e.maxHp);
@@ -9277,6 +9893,13 @@ export class GhostGame {
       }
     }
     if (this.kabukiHealCd > 0) this.kabukiHealCd = Math.max(0, this.kabukiHealCd - dt);
+    if (this.perks.foxCompanion) {
+      this.foxTimer -= dt;
+      if (this.foxTimer <= 0 && this.enemies.some(o => o.state !== "dead")) {
+        this.foxTimer = 4;
+        this.spawnFoxfire(this.player.pos.x, this.player.pos.y, this.perks.damage * 1.5 + 2);
+      }
+    }
     if (this.ultFinaleTimer > 0) {
       this.ultFinaleTimer = Math.max(0, this.ultFinaleTimer - dt);
       if (Math.random() < dt * 14) {
@@ -11766,12 +12389,19 @@ export class GhostGame {
     if (this.stats.state !== "playing") return;
     const equipped = this.stats.secondaryIds.filter((s): s is SecondaryId => !!s);
     const infl = shopInflation(this.stats.wave);
-    this.stats.shopOffer = rollShopOffer(6, equipped).map(it => ({ ...it, price: Math.round(it.price * infl) }));
+    this.stats.shopOffer = this.dedupeOffer(rollShopOffer(6, equipped)).map(it => ({ ...it, price: Math.round(it.price * infl) }));
     this.stats.shopRerollCost = Math.round(SHOP_REROLL_COST * infl);
     this.stats.shopPurchasedIds = [];
     this.stats.state = "shop";
     audio.play("levelUp");
     this.emitStats();
+  }
+
+  // Swap out items whose effect the player already has, so nothing is wasted.
+  private dedupeOffer(items: ShopItem[]): ShopItem[] {
+    const owned = (eff: string) => eff === "shop_oni_mask" && this.perks.lastStand;
+    const replacement = SHOP_POOL.find(e => e.effect === "heal_full")!;
+    return items.map(it => (owned(it.effect) ? rollOne(replacement) : it));
   }
 
   rerollShop() {
@@ -11780,7 +12410,7 @@ export class GhostGame {
     this.stats.mon -= this.stats.shopRerollCost;
     const equipped = this.stats.secondaryIds.filter((s): s is SecondaryId => !!s);
     const infl = shopInflation(this.stats.wave);
-    this.stats.shopOffer = rollShopOffer(6, equipped).map(it => ({ ...it, price: Math.round(it.price * infl) }));
+    this.stats.shopOffer = this.dedupeOffer(rollShopOffer(6, equipped)).map(it => ({ ...it, price: Math.round(it.price * infl) }));
     // Slight escalation so reroll spam isn't free.
     this.stats.shopRerollCost = Math.round(this.stats.shopRerollCost * 1.5);
     this.stats.shopPurchasedIds = [];
@@ -11954,6 +12584,19 @@ export class GhostGame {
       case "hp_regen":
         this.perks.hpRegen += 0.5;
         break;
+      case "shop_lucky_coin": this.perks.monMul += 0.2; break;
+      case "shop_bounty": this.perks.eliteBounty += 4; break;
+      case "shop_spirit_bell": this.perks.ultChargeMul += 0.25; break;
+      case "shop_battle_drum": this.perks.abilityHaste += 0.2; break;
+      case "shop_dash_talisman": this.perks.dashCdMul *= 0.85; break;
+      case "shop_gamble": this.applyGlassCannon(1.3, 0.15); break;
+      case "shop_oni_mask": this.perks.lastStand = true; break;
+      case "shop_fire_charm":
+        this.perks.fireChance += 0.10;
+        this.perks.fireDmgMul = Math.max(this.perks.fireDmgMul, 1);
+        break;
+      case "shop_thunder_charm": this.perks.lightningChance += 0.08; break;
+      case "shop_reaper_bell": this.perks.reaperEvery = this.perks.reaperEvery ? Math.max(5, this.perks.reaperEvery - 3) : 10; break;
       // ===== Shop perks (perk_*) — implemented as safe stat boosts so
       // none of them can ever crash the game or silently no-op. The
       // descriptions in shop.ts hint at richer mechanics; these

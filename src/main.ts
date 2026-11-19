@@ -1,6 +1,6 @@
 import {
   GhostGame, CLASSES, CLASS_WEAPON_OPTIONS, SECONDARIES, ABILITY_POOL, CONSUMABLES, PERK_POOL,
-  audio, loadRun, hasSavedRun, clearSavedRun, getClass, ABILITY_FX_HUE, SLASH_HUE,
+  audio, loadRun, hasSavedRun, clearSavedRun, getClass, ABILITY_FX_HUE, SLASH_HUE, BOSS_INFO,
 } from "./GhostGame";
 import { hueOf } from "./fx";
 import type { ClassId, GameStats, SecondaryId } from "./GhostGame";
@@ -355,7 +355,7 @@ function buildHud() {
       <div class="hud-wave" data-h="wave"></div>
       <div class="hud-sub num" data-h="sub"></div>
       <div class="bar timer"><i data-h="timer"></i></div>
-      <div class="boss-bar" data-h="bosswrap"><div class="lbl">◆ BOSS ◆</div><div class="bar"><i data-h="boss"></i></div></div>
+      <div class="boss-bar" data-h="bosswrap"><div class="lbl" data-h="bossname">◆ BOSS ◆</div><div class="bar"><i data-h="boss"></i></div></div>
     </div>
     <div class="hud-tr">
       <div class="mon num"><span class="kanji">文</span><span data-h="mon"></span></div>
@@ -452,10 +452,14 @@ function updateHud(s: GameStats) {
   setText(H("sub"), "sub", `${s.biomeKanji} ${s.biomeName} · ${timeTxt} · ${s.enemiesLeft} foes`);
   setScale(H("timer"), "timer", s.waveDuration > 0 ? s.waveTimer / s.waveDuration : 0);
 
-  let boss: { hp: number; maxHp: number } | null = null;
+  let boss: GhostGame["enemies"][number] | null = null;
   if (game) for (const e of game.enemies) if (e.isBoss && e.state !== "dead") { boss = e; break; }
   toggle(H("bosswrap"), "show", !!boss);
-  if (boss) setScale(H("boss"), "boss", boss.hp / Math.max(1, boss.maxHp));
+  if (boss) {
+    setScale(H("boss"), "boss", boss.hp / Math.max(1, boss.maxHp));
+    const info = boss.bossKind ? BOSS_INFO[boss.bossKind] : null;
+    setText(H("bossname"), "bossname", info ? `◆ ${info.kanji} ${info.name.toUpperCase()} ◆` : boss.archetype === "final" ? "◆ 鬼 THE DEMON LORD ◆" : "◆ BOSS ◆");
+  }
 
   setText(H("mon"), "mon", String(s.mon));
 
