@@ -3909,6 +3909,16 @@ export const ABILITY_FX_HUE: Record<string, number> = {
   fireball: 20, lightning: 52,
 };
 
+// Damage/HP text: two decimals below 1, one below 10, so small hits aren't shown as "1".
+export function fmtNum(n: number): string {
+  const v = Math.max(0, n);
+  if (v >= 10) return String(Math.round(v));
+  if (v > 0 && v < 0.01) return "0.01";
+  if (v < 1) return String(Math.round(v * 100) / 100);
+  const r = Math.round(v * 10) / 10;
+  return Number.isInteger(r) ? String(r) : r.toFixed(1);
+}
+
 export class GhostGame {
   ctx: CanvasRenderingContext2D;
   width = 0;
@@ -5579,7 +5589,7 @@ export class GhostGame {
           // Dash contact damage scales with the player's flat damage perk.
           const dmg = BASE.DASH_DAMAGE * (this.perks.damage / BASE.ATTACK_DAMAGE);
           e.hp -= dmg;
-          this.spawnFloatText(e.pos, `${Math.max(1, Math.round(dmg))}`, {
+          this.spawnFloatText(e.pos, fmtNum(dmg), {
             color: "hsl(36 90% 75%)",
             size: 12,
           });
@@ -5996,7 +6006,7 @@ export class GhostGame {
     }
     e.hp -= dmg;
     // Floating damage number above the enemy.
-    const shown = Math.max(1, Math.round(dmg));
+    const shown = fmtNum(dmg);
     this.spawnFloatText(e.pos, isCrit ? `${shown}!` : `${shown}`, {
       color: isCrit ? "hsl(42 100% 65%)" : "hsl(36 30% 92%)",
       size: isCrit ? 18 : 13,
@@ -8690,8 +8700,8 @@ export class GhostGame {
       ctx.textAlign = "center";
       ctx.fillText("◈ BOSS ◈", e.pos.x, y - 4);
       // Numeric HP — current/max, to the right of the bar.
-      const hpNow = Math.max(0, Math.ceil(e.hp));
-      const hpMax = Math.max(1, Math.ceil(e.maxHp));
+      const hpNow = fmtNum(e.hp);
+      const hpMax = fmtNum(e.maxHp);
       ctx.font = "bold 11px serif";
       ctx.textAlign = "left";
       ctx.textBaseline = "middle";
@@ -8718,8 +8728,8 @@ export class GhostGame {
       ctx.lineWidth = 0.5;
       ctx.strokeRect(x - 1, y - 1, w + 2, 4);
       // Numeric HP — current/max, shown to the right of the bar.
-      const hpNow = Math.max(0, Math.ceil(e.hp));
-      const hpMax = Math.max(1, Math.ceil(e.maxHp));
+      const hpNow = fmtNum(e.hp);
+      const hpMax = fmtNum(e.maxHp);
       ctx.font = "9px serif";
       ctx.textAlign = "left";
       ctx.textBaseline = "middle";
@@ -9606,7 +9616,7 @@ export class GhostGame {
             this.applyEnemyHit(owner, sw.damage);
           } else if (this.player.invuln <= 0) {
             this.player.hp -= sw.damage;
-            this.spawnFloatText(this.player.pos, `-${Math.max(1, Math.round(sw.damage))}`, {
+            this.spawnFloatText(this.player.pos, `-${fmtNum(sw.damage)}`, {
               color: "hsl(358 90% 65%)",
               size: 15,
             });
