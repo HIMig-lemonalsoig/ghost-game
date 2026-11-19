@@ -1,4 +1,5 @@
 // Consolidated game engine and supporting systems. No React dependencies.
+import { Fx, hueOf } from "./fx";
 // Sections: classes, weapons, shop, consumables, saves, biomes, audio, VFX, gameplay.
 
 // ============================================================================
@@ -3898,6 +3899,16 @@ const CLASS_META: Record<ClassId, {
   sohei:      { name: "Sohei",           kanji: "僧",  ultName: "Prayer Wheel",          ultKanji: "輪" },
 };
 
+const SLASH_HUE: Partial<Record<SecondaryId, number>> = {
+  katana: 40, tessen: 330, jutte: 200, ono: 18, twin_sai: 160, tate: 45, odachi: 265,
+};
+
+const ABILITY_FX_HUE: Record<string, number> = {
+  barrage: 40, flash: 200, whirlwind: 330, timeslow: 210, bladestorm: 0, phantom_slash: 358,
+  death_mark: 358, soul_rend: 280, deflect: 45, smoke_bomb: 220, war_horn: 42, execution: 358,
+  fireball: 20, lightning: 52,
+};
+
 export class GhostGame {
   ctx: CanvasRenderingContext2D;
   width = 0;
@@ -4124,6 +4135,7 @@ export class GhostGame {
   vfx = new VfxPool(300);
   quality = new QualityGuard();
   shakeScale = 1;
+  fx = new Fx();
   inkGrain = new InkGrain();
   parallax = new ParallaxLayer();
   cameraZoom = new CameraZoom();
@@ -4227,6 +4239,7 @@ export class GhostGame {
     this.secProjectiles = [];
     this.enemyProjectiles = [];
     this.cinematicTimer = 0;
+    this.fx.clear();
     this.raijinHitChain = 0;
     this.ultThunderTimer = 0;
     this.ultThunderTick = 0;
@@ -5311,6 +5324,7 @@ export class GhostGame {
       this.stats.pendingChoices = this.rollPerkChoices();
       this.flash(`Level ${this.stats.level}!`);
       audio.play("levelUp");
+      this.fx.levelUp(this.player.pos.x, this.player.pos.y);
     }
   }
 
@@ -5324,6 +5338,13 @@ export class GhostGame {
     this.quality.sample(dtRaw);
     this.vfx.resize(this.quality.state.particleCap);
     this.vfx.update(dtRaw);
+    this.fx.scale = this.quality.state.particleScale;
+    this.fx.update(dtRaw);
+    if (this.player) {
+      this.fx.aura.on = this.stats.ultActive;
+      this.fx.aura.x = this.player.pos.x;
+      this.fx.aura.y = this.player.pos.y;
+    }
     this.bossInkWash.update(dtRaw);
     this.cameraZoom.update(dtRaw);
     this.katanaTrail.update(dtRaw);
@@ -5606,6 +5627,9 @@ export class GhostGame {
       p.dashHitIds.clear();
       this.cameraShake = Math.max(this.cameraShake, 0.15);
       audio.play("smokeWoosh");
+      this.fx.smoke(p.pos.x, p.pos.y, 4, 26, 45, 30, 15);
+      this.fx.streakLine(p.pos.x, p.pos.y, p.pos.x + Math.cos(ang) * BASE.DASH_DISTANCE, p.pos.y + Math.sin(ang) * BASE.DASH_DISTANCE, 40, 92, 7, 0.22);
+      for (let i = 1; i <= 3; i++) spawnGhostAfterimage(this.vfx, p.pos.x + Math.cos(ang) * BASE.DASH_DISTANCE * i * 0.25, p.pos.y + Math.sin(ang) * BASE.DASH_DISTANCE * i * 0.25, ang, BASE.PLAYER_RADIUS);
     }
   }
 
@@ -5784,6 +5808,7 @@ export class GhostGame {
       }
     }
     this.spawnBlood(e.pos, Math.random() * Math.PI * 2, e.isBoss ? 40 : 18);
+    this.fx.death(e.pos.x, e.pos.y, e.size, e.isBoss);
     audio.play(e.isBoss ? "bossRoar" : "kill");
     // Phase 4 — long sub-bass rumble layered under the boss roar on death.
     if (e.isBoss) audio.play("bossDeathRumble");
@@ -6034,8 +6059,9 @@ export class GhostGame {
     this.spawnBlood(e.pos, ang);
     // Phase 1 — sparks burst (orange + white-hot) on every weapon hit.
     spawnSparkBurst(this.vfx, this.quality.state, e.pos.x, e.pos.y, ang, {
-      count: 7, spread: Math.PI * 80 / 180, hue: 32, speed: 220,
+      count: 4, spread: Math.PI * 80 / 180, hue: 32, speed: 220,
     });
+    this.fx.impact(e.pos.x, e.pos.y, ang, isCrit ? 45 : 30, isCrit || dmg >= 12 || e.isBoss);
     // Phase 4 — layered impact audio: metallic ring on armoured/heavy
     // foes, otherwise a wet flesh thud. Subtle, sits under the main hit.
     if (e.archetype === "shielded" || e.archetype === "heavy" || e.isBoss || e.archetype === "final") {
@@ -6454,6 +6480,7 @@ export class GhostGame {
       for (const fb of this.fireballs) {
         fb.pos.x += fb.vel.x * dt;
         fb.pos.y += fb.vel.y * dt;
+        this.fx.flame(fb.pos.x, fb.pos.y, 9);
         fb.life -= dt;
         let hit = fb.life <= 0;
         if (!hit) {
@@ -6480,6 +6507,10 @@ export class GhostGame {
           audio.play("bombBoom");
           spawnInkSplash(this.vfx, this.quality.state, fb.pos.x, fb.pos.y,
             { count: 8, size: 30, hue: 18, lightness: 50, life: 0.8 });
+          this.fx.shockwave(fb.pos.x, fb.pos.y, ABILITY.FIREBALL_RADIUS * 1.2, { hue: 22, life: 0.45, width: 14, lines: 14 });
+          this.fx.glow(fb.pos.x, fb.pos.y, ABILITY.FIREBALL_RADIUS, 25, 100, 60, 0.35);
+          this.fx.flames2(fb.pos.x, fb.pos.y, 22, ABILITY.FIREBALL_RADIUS * 0.6);
+          this.fx.ground(fb.pos.x, fb.pos.y, ABILITY.FIREBALL_RADIUS, 20, 1.2);
           fb.life = 0;
         }
       }
@@ -6502,6 +6533,7 @@ export class GhostGame {
   }
 
   castBarrage() {
+    this.abilityFx("barrage");
     this.barrageActive = true;
     this.barrageRemaining = this.perks.barrageHits;
     this.barrageTimer = 0;
@@ -6554,6 +6586,7 @@ export class GhostGame {
   }
 
   castFlashStep() {
+    this.abilityFx("flash");
     const p = this.player;
     // Aim direction: facing
     const dirX = Math.cos(p.facing);
@@ -6631,10 +6664,14 @@ export class GhostGame {
     this.flash("Flash Step!");
     // Phase 1 — desaturated player afterimage at the departure point.
     spawnGhostAfterimage(this.vfx, startX, startY, p.facing, BASE.PLAYER_RADIUS);
+    this.fx.streakLine(startX, startY, endX, endY, 200, 95, 12, 0.35);
+    this.fx.smoke(startX, startY, 5, 30, 35, 210, 20);
+    this.fx.burst(endX, endY, { count: 12, hue: 200, light: 85, speed: 380, life: 0.3 });
   }
 
   // ============ Whirlwind: spin attack hitting enemies in a 360° ring ============
   castWhirlwind() {
+    this.abilityFx("whirlwind");
     this.whirlwindActive = true;
     this.whirlwindRemaining = ABILITY.WHIRLWIND_HITS;
     this.whirlwindTimer = 0;
@@ -6674,6 +6711,7 @@ export class GhostGame {
 
   // ============ Time Slow: enemies move at 25% speed for a few seconds ============
   castTimeSlow() {
+    this.abilityFx("timeslow");
     this.timeSlowRemaining = ABILITY.TIMESLOW_DURATION;
     const cd = ABILITY.TIMESLOW_CD;
     this.stats.abilityCd.timeslow = cd;
@@ -6681,10 +6719,13 @@ export class GhostGame {
     this.cameraShake = 0.2;
     audio.play("timeSlowSwell");
     this.flash("Time Slow!");
+    this.fx.shockwave(this.player.pos.x, this.player.pos.y, 520, { hue: 210, life: 0.9, width: 6, light: 80, lines: 12 });
+    this.fx.enso(this.player.pos.x, this.player.pos.y, 120, 210, { life: 1.1, width: 6, follow: this.player.pos });
   }
 
   // ============ Blade Storm: 9 rapid 360° hits, last spin launches enemies ============
   castBladeStorm() {
+    this.abilityFx("bladestorm");
     this.bladeStormActive = true;
     this.bladeStormRemaining = ABILITY.BLADESTORM_HITS;
     this.bladeStormTimer = 0;
@@ -6726,6 +6767,7 @@ export class GhostGame {
 
   // ============ Phantom Slash: pierce wave fired forward across the arena ============
   castPhantomSlash() {
+    this.abilityFx("phantom_slash");
     const p = this.player;
     const ang = p.facing;
     const sx = p.pos.x;
@@ -6742,10 +6784,13 @@ export class GhostGame {
     this.cameraShake = Math.max(this.cameraShake, 0.3);
     audio.play("phantomSlash");
     this.flash("Phantom Slash!");
+    this.fx.glow(sx, sy, 80, 358, 90, 60, 0.25);
+    this.fx.burst(sx, sy, { count: 14, hue: 358, light: 70, speed: 520, dir: ang, spread: 0.5, life: 0.4 });
   }
 
   // ============ Death Mark: cursed seal on nearest enemy; chains on kill ============
   castDeathMark() {
+    this.abilityFx("death_mark");
     const target = this.findNearestEnemy();
     this.stats.abilityCd.death_mark = ABILITY.DEATH_MARK_CD;
     this.stats.abilityMax.death_mark = ABILITY.DEATH_MARK_CD;
@@ -6755,12 +6800,15 @@ export class GhostGame {
     }
     target.markRemaining = ABILITY.DEATH_MARK_DURATION;
     this.deathMarkId = target.id;
+    this.fx.bolt(this.player.pos.x, this.player.pos.y, target.pos.x, target.pos.y, 358, 0.35);
+    this.fx.enso(target.pos.x, target.pos.y, target.size + 18, 358, { life: 0.8, width: 4, light: 50, follow: target.pos });
     audio.play("deathMarkSeal");
     this.flash("Death Mark!");
   }
 
   // ============ Soul Rend: deal 40% of nearest enemy's current HP ============
   castSoulRend() {
+    this.abilityFx("soul_rend");
     const target = this.findNearestEnemy();
     this.stats.abilityCd.soul_rend = ABILITY.SOUL_REND_CD;
     this.stats.abilityMax.soul_rend = ABILITY.SOUL_REND_CD;
@@ -6787,6 +6835,13 @@ export class GhostGame {
     this.cameraShake = Math.max(this.cameraShake, 0.3);
     audio.play("soulRendBass");
     this.flash("Soul Rend!");
+    for (let i = 0; i < 8; i++) {
+      const a = Math.random() * Math.PI * 2;
+      this.fx.streaks.push({ x: target.pos.x + Math.cos(a) * 30, y: target.pos.y + Math.sin(a) * 30,
+        vx: (this.player.pos.x - target.pos.x) * 2.2, vy: (this.player.pos.y - target.pos.y) * 2.2,
+        hue: 280, sat: 70, light: 75, life: 0.45, max: 0.45, w: 3, drag: 1, grav: 0 });
+    }
+    this.fx.glow(target.pos.x, target.pos.y, 70, 280, 80, 60, 0.3);
     // Phase 2 — triple concentric shockwave from the player + edge bleed.
     this.soulRendShocks.spawn(this.player.pos.x, this.player.pos.y, 280, 0.55);
     this.edgeBleedTimer = 0.5; this.edgeBleedMax = 0.5;
@@ -6794,15 +6849,18 @@ export class GhostGame {
 
   // ============ Deflect: 1.0s perfect-guard window (scaled by Perfect Guard perk) ============
   castDeflect() {
+    this.abilityFx("deflect");
     this.player.deflectTimer = ABILITY.DEFLECT_DURATION * this.perks.parryWindowMul;
     this.stats.abilityCd.deflect = ABILITY.DEFLECT_CD;
     this.stats.abilityMax.deflect = ABILITY.DEFLECT_CD;
     audio.play("parry");
     this.flash("Deflect stance!");
+    this.fx.shockwave(this.player.pos.x, this.player.pos.y, 70, { hue: 45, life: 0.3, width: 5, light: 80 });
   }
 
   // ============ Smoke Bomb: cloud disorients enemies in radius ============
   castSmokeBomb() {
+    this.abilityFx("smoke_bomb");
     const p = this.player;
     this.smokeClouds.push({
       pos: { x: p.pos.x, y: p.pos.y },
@@ -6823,10 +6881,13 @@ export class GhostGame {
     this.stats.abilityMax.smoke_bomb = ABILITY.SMOKE_BOMB_CD;
     audio.play("smokeWoosh");
     this.flash("Smoke Bomb!");
+    this.fx.smoke(p.pos.x, p.pos.y, 16, ABILITY.SMOKE_BOMB_RADIUS, 30, 220, 10);
+    this.fx.shockwave(p.pos.x, p.pos.y, ABILITY.SMOKE_BOMB_RADIUS, { hue: 220, sat: 15, light: 70, life: 0.4, width: 6 });
   }
 
   // ============ War Horn: slow every enemy on screen ============
   castWarHorn() {
+    this.abilityFx("war_horn");
     const p = this.player;
     for (const e of this.enemies) {
       if (e.state === "dead") continue;
@@ -6843,10 +6904,12 @@ export class GhostGame {
     this.cameraShake = Math.max(this.cameraShake, 0.4);
     audio.play("warHornCry");
     this.flash("War Horn!");
+    for (let i = 0; i < 3; i++) this.fx.shockwave(p.pos.x, p.pos.y, 380 + i * 80, { hue: 42, life: 0.7, width: 10 - i * 2, delay: i * 0.14, lines: i === 0 ? 16 : 0 });
   }
 
   // ============ Execution: instakill enemy <15% HP, else heavy single hit ============
   castExecution() {
+    this.abilityFx("execution");
     this.stats.abilityCd.execution = ABILITY.EXECUTION_CD;
     this.stats.abilityMax.execution = ABILITY.EXECUTION_CD;
     // Find any enemy below threshold
@@ -6885,6 +6948,10 @@ export class GhostGame {
       this.hitstop = Math.max(this.hitstop, 0.12);
       spawnInkSplash(this.vfx, this.quality.state, victim.pos.x, victim.pos.y,
         { count: 6, size: 28, hue: 0, lightness: 6, life: 0.6 });
+      this.fx.slash(victim.pos.x, victim.pos.y, Math.PI * 0.25, 46, Math.PI * 0.5, 1, { hue: 358, sat: 80, light: 75, width: 9, life: 0.45 });
+      this.fx.slash(victim.pos.x, victim.pos.y, Math.PI * 0.75, 46, Math.PI * 0.5, -1, { hue: 358, sat: 80, light: 75, width: 9, life: 0.45 });
+      this.fx.seal(victim.pos.x, victim.pos.y - 40, "斬", 358, 42, 0.9);
+      this.fx.glow(victim.pos.x, victim.pos.y, 110, 358, 90, 55, 0.3);
       return;
     }
     // No threshold target — heavy strike on nearest
@@ -6903,6 +6970,7 @@ export class GhostGame {
   // max range) it explodes, dealing damage in a radius and igniting all
   // foes for FIREBALL_BURN_SECONDS.
   castFireball() {
+    this.abilityFx("fireball");
     this.stats.abilityCd.fireball = ABILITY.FIREBALL_CD;
     this.stats.abilityMax.fireball = ABILITY.FIREBALL_CD;
     const p = this.player;
@@ -6922,6 +6990,7 @@ export class GhostGame {
   // Strikes the nearest enemy, then arcs to the next-nearest unhit enemy
   // up to LIGHTNING_CHAINS times. Each hit deals damage + brief stun.
   castLightning() {
+    this.abilityFx("lightning");
     this.stats.abilityCd.lightning = ABILITY.LIGHTNING_CD;
     this.stats.abilityMax.lightning = ABILITY.LIGHTNING_CD;
     const p = this.player;
@@ -6940,10 +7009,7 @@ export class GhostGame {
       }
       if (!best) break;
       hit.add(best.id);
-      this.lightningBolts.push({
-        ax: origin.x, ay: origin.y, bx: best.pos.x, by: best.pos.y,
-        life: 0.25, maxLife: 0.25,
-      });
+      this.fx.bolt(origin.x, origin.y, best.pos.x, best.pos.y, 52);
       const ang = Math.atan2(best.pos.y - origin.y, best.pos.x - origin.x);
       this.dealDamage(best, baseDmg, ang, 30);
       best.stunTimer = Math.max(best.stunTimer, stunDur);
@@ -6981,7 +7047,7 @@ export class GhostGame {
     let target: Enemy | null = includeSource ? source : pickNext();
     for (let i = 0; i < jumps && target; i++) {
       hit.add(target.id);
-      this.lightningBolts.push({ ax: origin.x, ay: origin.y, bx: target.pos.x, by: target.pos.y, life: 0.25, maxLife: 0.25 });
+      this.fx.bolt(origin.x, origin.y, target.pos.x, target.pos.y, 52);
       const ang = Math.atan2(target.pos.y - origin.y, target.pos.x - origin.x);
       origin = { x: target.pos.x, y: target.pos.y };
       if (target.state !== "dead" && target.hp > 0) {
@@ -7335,7 +7401,14 @@ export class GhostGame {
   }
 
   spawnSlash(pos: Vec2, ang: number, range: number, arc: number) {
-    for (let i = 0; i < 6; i++) {
+    const onPlayer = this.player && pos === this.player.pos;
+    const wid = onPlayer ? this.player.swingWeaponId : null;
+    const hue = wid ? (SLASH_HUE[wid] ?? 40) : (this.stats.ultActive ? hueOf(getClass(this.stats.classId).accent) : 40);
+    this.fx.slash(pos.x, pos.y, ang, range * 0.92, arc, onPlayer ? this.player.swingDir : 1, {
+      hue, sat: wid || this.stats.ultActive ? 70 : 35, light: 90, follow: onPlayer ? this.player.pos : undefined,
+      width: wid === "ono" || wid === "odachi" ? range * 0.2 : undefined,
+    });
+    for (let i = 0; i < 3; i++) {
       const t = (i / 5 - 0.5) * arc;
       const r = range * 0.7;
       this.particles.push({
@@ -7597,6 +7670,7 @@ export class GhostGame {
       ctx.restore();
     }
 
+    this.fx.drawGround(ctx);
     for (const e of this.enemies) if (e.state === "dead") this.drawEnemy(e, true);
     for (const p of this.particles) if (p.kind === "blood") this.drawParticle(p);
     for (const e of this.enemies) if (e.state !== "dead") this.drawEnemy(e, false);
@@ -7615,6 +7689,7 @@ export class GhostGame {
 
     // Phase 1 — pooled VFX particles (sparks, ink-splats, ghosts, rings, ash).
     this.vfx.drawWorld(ctx);
+    this.fx.drawWorld(ctx);
     // Phase 1 — katana ink-brush ribbon (drawn over player so the slash reads on top).
     this.katanaTrail.draw(ctx);
 
@@ -7860,6 +7935,7 @@ export class GhostGame {
     }
 
     ctx.restore();
+    this.fx.drawScreen(ctx, W, H);
   }
 
   drawPlayer() {
@@ -8118,7 +8194,22 @@ export class GhostGame {
 
     const isAttacking = e.state === "attacking";
     if (isAttacking) {
-      const t = e.attackAnim;
+      const t = Math.max(0, Math.min(1, e.attackAnim));
+      const reach = (e.isBoss ? BASE.ENEMY_ATTACK_RANGE + 16 : BASE.ENEMY_ATTACK_RANGE) + BASE.PLAYER_RADIUS + 6;
+      ctx.save();
+      ctx.fillStyle = `hsla(358, 85%, 50%, ${0.08 + t * 0.14})`;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, reach, -0.6, 0.6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = `hsla(358, 90%, 55%, ${0.18 + t * 0.25})`;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, reach * Math.min(1, t), -0.6, 0.6);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
       ctx.save();
       ctx.rotate(-Math.PI / 3 + t * (Math.PI / 1.5));
       ctx.strokeStyle = `hsla(358, 80%, 60%, ${0.4 + t * 0.6})`;
@@ -8390,8 +8481,15 @@ export class GhostGame {
     const ctx = this.ctx;
     for (const f of this.floatTexts) {
       const a = Math.max(0, Math.min(1, f.life / f.maxLife));
+      const age = f.maxLife - f.life;
+      const pop = age < 0.12 ? 1.6 - (age / 0.12) * 0.6 : 1;
       ctx.save();
       ctx.globalAlpha = a;
+      if (pop !== 1) {
+        ctx.translate(f.pos.x, f.pos.y);
+        ctx.scale(pop, pop);
+        ctx.translate(-f.pos.x, -f.pos.y);
+      }
       ctx.font = `${f.jp ? '700 ' : '600 '}${f.size}px ${f.jp ? '"Noto Serif JP", "Yu Mincho", serif' : '"Cormorant Garamond", serif'}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -8682,7 +8780,10 @@ export class GhostGame {
         }
       }
       if (e.curseRemaining > 0) e.curseRemaining = Math.max(0, e.curseRemaining - dt);
-      if (e.slowRemaining > 0) e.slowRemaining = Math.max(0, e.slowRemaining - dt);
+      if (e.slowRemaining > 0) {
+        e.slowRemaining = Math.max(0, e.slowRemaining - dt);
+        if (Math.random() < dt * 5) this.fx.frost(e.pos.x, e.pos.y, 1);
+      }
       // ===== Phase B — Flame Spear burn DoT (separate from poison) =====
       if (e.burnRemaining > 0) {
         e.burnRemaining = Math.max(0, e.burnRemaining - dt);
@@ -8712,8 +8813,9 @@ export class GhostGame {
             continue;
           }
         }
+        if (Math.random() < dt * 9) this.fx.flame(e.pos.x, e.pos.y + e.size * 0.3, e.size * 0.35);
         // Ember particle drizzle
-        if (Math.random() < dt * 7) {
+        if (Math.random() < dt * 4) {
           const r = e.size * (0.2 + Math.random() * 0.7);
           const a = Math.random() * Math.PI * 2;
           this.particles.push({
@@ -8742,6 +8844,8 @@ export class GhostGame {
       this.ultThousandTickAccum += dt;
       if (this.ultThousandTickAccum >= 0.1) {
         this.ultThousandTickAccum = 0;
+        this.fx.slash(this.player.pos.x, this.player.pos.y, Math.random() * Math.PI * 2, 120, Math.PI * 1.2, Math.random() < 0.5 ? 1 : -1,
+          { hue: 330, sat: 75, light: 85, width: 10, life: 0.16, follow: this.player.pos });
         for (const e of this.enemies) {
           if (e.state === "dead") continue;
           const dx = e.pos.x - this.player.pos.x;
@@ -9279,6 +9383,7 @@ export class GhostGame {
           const dx = e.pos.x - this.player.pos.x;
           const dy = e.pos.y - this.player.pos.y;
           if (Math.hypot(dx, dy) > 700) continue;
+          this.fx.slash(e.pos.x, e.pos.y, Math.random() * Math.PI * 2, e.size + 16, Math.PI * 0.7, 1, { hue: 0, sat: 85, light: 70, width: 6, life: 0.18 });
           this.dealDamage(e, 8 * this.ultRoninMul, Math.atan2(dy, dx), 40);
         }
         this.spawnBlood(this.player.pos, Math.random() * Math.PI * 2, 6);
@@ -9316,10 +9421,53 @@ export class GhostGame {
   }
 
   // ============ ULTIMATES ============
+  abilityFx(id: string) {
+    if (!this.player) return;
+    const info = ABILITY_POOL.find(a => a.id === id);
+    const kanji = info?.kanji ?? (id === "fireball" ? "炎" : id === "lightning" ? "雷" : "技");
+    this.fx.abilityCast(this.player.pos.x, this.player.pos.y, kanji, ABILITY_FX_HUE[id] ?? 40, this.player.pos);
+  }
+
+  ultimateFx() {
+    const cls = getClass(this.stats.classId);
+    const hue = hueOf(cls.accent);
+    const { x, y } = this.player.pos;
+    this.fx.ultimate(x, y, cls.ultKanji, cls.ultName, hue, this.player.pos);
+    this.hitstop = Math.max(this.hitstop, 0.09);
+    switch (this.stats.classId) {
+      case "tetsubo": case "sohei": case "hatamoto":
+        this.fx.ground(x, y, 240, hue, 2);
+        this.fx.smoke(x, y, 10, 120, 35, 30, 20);
+        break;
+      case "shinobi": case "kagemusha": case "kagebushi":
+        this.fx.smoke(x, y, 18, 140, 10, 250, 20);
+        break;
+      case "kitsune": case "berserker":
+        this.fx.flames2(x, y, 30, 70);
+        break;
+      case "yukionna":
+        this.fx.burst(x, y, { count: 40, hue: 195, sat: 80, light: 92, speed: 700, life: 0.7, w: 2 });
+        break;
+      case "yamabushi": case "miko":
+        this.fx.enso(x, y, 150, hue, { life: 1.4, width: 10, follow: this.player.pos });
+        break;
+      case "raijin": case "arashi":
+        for (let i = 0; i < 4; i++) {
+          const a = Math.random() * Math.PI * 2;
+          this.fx.bolt(x + Math.cos(a) * 30, y - 260, x + Math.cos(a) * 60, y + Math.sin(a) * 40, hue);
+        }
+        break;
+      case "dokkaebi": case "onmyoji": case "tsuchigumo":
+        this.fx.smoke(x, y, 12, 130, 18, hue, 40);
+        break;
+    }
+  }
+
   triggerUltimate() {
     // (Old "press R again" Standoff resolution removed — the Samurai ult
     // is now an automatic chain teleport. See castIaiChain().)
     if (!this.stats.ultReady || this.stats.ultActive) return;
+    this.ultimateFx();
     this.stats.ultCharge = 0;
     this.stats.ultReady = false;
     this.stats.ultActive = true;
@@ -9384,6 +9532,11 @@ export class GhostGame {
             ang,
             life: 1,
           });
+        }
+        this.fx.streakLine(startX, startY, endX, endY, 36, 95, 22, 0.6);
+        for (let i = 1; i < 6; i++) {
+          const t = i / 6;
+          this.fx.slash(startX + (endX - startX) * t, startY + (endY - startY) * t, ang + Math.PI / 2, 44, Math.PI * 0.6, i % 2 ? 1 : -1, { hue: 36, sat: 70, light: 88, width: 7, life: 0.4 });
         }
         this.player.pos.x = endX;
         this.player.pos.y = endY;
@@ -9595,7 +9748,7 @@ export class GhostGame {
         break;
       }
       default: {
-        // Safety net — should not be reached now that all 11 classes have bespoke ults.
+        // Safety net — should not be reached now that all classes have bespoke ults.
         for (const e of this.enemies) {
           if (e.state === "dead") continue;
           const dx = e.pos.x - this.player.pos.x;
@@ -9689,6 +9842,8 @@ export class GhostGame {
     p.facing = Math.atan2(best.pos.y - p.pos.y, best.pos.x - p.pos.x);
 
     // Slash visual + ink splash centered on the victim.
+    this.fx.streakLine(startX, startY, p.pos.x, p.pos.y, 45, 95, 10, 0.3);
+    this.fx.glow(best.pos.x, best.pos.y, 60, 45, 90, 70, 0.2);
     this.spawnSlash(p.pos, p.facing, BASE.ATTACK_RANGE * 0.95, Math.PI * 0.85);
     spawnInkSplash(this.vfx, this.quality.state,
       best.pos.x, best.pos.y,
