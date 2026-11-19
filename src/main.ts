@@ -11,8 +11,8 @@ const SETTINGS_KEY = "ghostgame.settings.v1";
 const BEST_KEY = "ghostgame.best.v1";
 const LAST_KEY = "ghostgame.last.v1";
 
-interface Settings { sound: boolean; shake: boolean; tips: boolean; autoPause: boolean; difficulty: Difficulty; }
-type ToggleKey = "sound" | "shake" | "tips" | "autoPause";
+interface Settings { sound: boolean; shake: boolean; tips: boolean; autoPause: boolean; cutscenes: boolean; difficulty: Difficulty; }
+type ToggleKey = "sound" | "shake" | "tips" | "autoPause" | "cutscenes";
 interface LastPick { classId: ClassId; weapons: SecondaryId[]; }
 
 function readJSON<T>(key: string, fallback: T): T {
@@ -25,7 +25,7 @@ function writeJSON(key: string, value: unknown) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage blocked */ }
 }
 
-const settings: Settings = readJSON(SETTINGS_KEY, { sound: true, shake: true, tips: true, autoPause: true, difficulty: "normal" as Difficulty });
+const settings: Settings = readJSON(SETTINGS_KEY, { sound: true, shake: true, tips: true, autoPause: true, cutscenes: true, difficulty: "normal" as Difficulty });
 if (!(settings.difficulty in DIFFICULTIES)) settings.difficulty = "normal";
 // Best wave per class and difficulty (Normal keeps the original un-suffixed key).
 const bestKey = (cls: string, d: Difficulty) => (d === "normal" ? cls : `${cls}@${d}`);
@@ -172,7 +172,10 @@ window.addEventListener("resize", resize);
 
 function applySettings() {
   audio.setMuted(!settings.sound);
-  if (game) game.shakeScale = settings.shake ? 1 : 0.15;
+  if (game) {
+    game.shakeScale = settings.shake ? 1 : 0.15;
+    game.ultCutscenes = settings.cutscenes;
+  }
   writeJSON(SETTINGS_KEY, settings);
 }
 
@@ -799,7 +802,7 @@ function renderPause(s: GameStats) {
         <button class="btn" data-act="quit">Quit to menu</button>
         <div class="pane" style="margin-top:6px">
           <h4>Settings</h4>
-          ${sw("sound", "Sound & music")}${sw("shake", "Screen shake")}${sw("tips", "Control tips")}${sw("autoPause", "Pause when tabbed out")}
+          ${sw("sound", "Sound & music")}${sw("shake", "Screen shake")}${sw("tips", "Control tips")}${sw("cutscenes", "Ultimate cutscenes")}${sw("autoPause", "Pause when tabbed out")}
         </div>
       </div>
       <div style="display:grid;gap:14px">
@@ -940,6 +943,10 @@ window.addEventListener("keydown", e => {
   if (s.state !== "playing") { if (!e.repeat) overlayKeys(e, s); return; }
 
   const code = normKey(e.code);
+  if (game.ultCutscene) {
+    const a = actionOf(code);
+    if (a === "attack" || a === "ult" || code === "Enter") { e.preventDefault(); game.skipUltCutscene(); return; }
+  }
   const dir = moveDir(code);
   if (dir) { game.setInput({ [dir]: true }); e.preventDefault(); return; }
   const act = actionOf(code);
@@ -977,6 +984,7 @@ canvas.addEventListener("mousemove", e => {
 });
 canvas.addEventListener("mousedown", e => {
   if (!game || game.stats.state !== "playing") return;
+  if (game.ultCutscene) { game.skipUltCutscene(); return; }
   if (e.button === 0) { attackHeld = true; game.triggerAttack(); }
   if (e.button === 2) game.triggerDash();
 });

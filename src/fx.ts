@@ -172,14 +172,9 @@ export class Fx {
     }
   }
 
-  ultimate(x: number, y: number, kanji: string, name: string, hue: number, follow?: Pt) {
+  // Quick title banner, used when cutscenes are turned off.
+  ultimate(_x: number, _y: number, kanji: string, name: string, hue: number, _follow?: Pt) {
     this.cine = { kanji, name, hue, t: 0, dur: 1.15 };
-    this.glow(x, y, 220, hue, 90, 70, 0.35);
-    this.shockwave(x, y, 360, { hue, life: 0.6, width: 18, lines: 18 });
-    this.shockwave(x, y, 220, { hue, life: 0.45, width: 8, delay: 0.08, light: 85 });
-    this.enso(x, y, 80, hue, { life: 0.9, width: 9, light: 65, follow });
-    this.burst(x, y, { count: 26, hue, light: 75, speed: 520, life: 0.5, w: 2.5 });
-    this.seal(x, y - 64, kanji, hue, 46, 1.0, follow);
   }
 
   abilityCast(x: number, y: number, kanji: string, hue: number, follow?: Pt) {

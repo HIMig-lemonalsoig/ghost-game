@@ -1,6 +1,8 @@
 // Consolidated game engine and supporting systems. No React dependencies.
 import { Fx, hueOf } from "./fx";
 import { Arena } from "./arena";
+import { ULT_STYLES, poseFrame, drawMotif, STRIKE } from "./ultimates";
+import type { UltMotif } from "./ultimates";
 // Sections: classes, weapons, shop, consumables, saves, biomes, audio, VFX, gameplay.
 
 // ============================================================================
@@ -4364,6 +4366,13 @@ export class GhostGame {
   quality = new QualityGuard();
   shakeScale = 1;
   fx = new Fx();
+  ultCutscene: { t: number; dur: number } | null = null;
+  ultCutscenes = true;
+  ultPose: { t: number; dur: number } | null = null;
+  ultPrayerTimer = 0;
+  ultPrayerTick = 0;
+  ultArrowTimer = 0;
+  ultArrowTick = 0;
   difficulty: Difficulty = "normal";
   bagFullWarnAt = -99;
   reaperCount = 0;
@@ -4487,6 +4496,10 @@ export class GhostGame {
     this.hazards = [];
     this.cinematicTimer = 0;
     this.fx.clear();
+    this.ultCutscene = null;
+    this.ultPose = null;
+    this.ultPrayerTimer = 0;
+    this.ultArrowTimer = 0;
     this.reaperCount = 0;
     this.foxTimer = 4;
     this.kappaHitChain = 0;
@@ -5744,6 +5757,17 @@ export class GhostGame {
     if (this.whiteFlashTimer > 0) this.whiteFlashTimer = Math.max(0, this.whiteFlashTimer - dtRaw);
     if (this.edgeBleedTimer > 0) this.edgeBleedTimer = Math.max(0, this.edgeBleedTimer - dtRaw);
 
+    // Ultimate cutscene: the world holds still while the class's cutscene plays.
+    if (this.ultCutscene && this.stats.state === "playing") {
+      this.ultCutscene.t += dtRaw;
+      if (this.ultCutscene.t >= this.ultCutscene.dur) {
+        this.ultCutscene = null;
+        this.executeUltimate();
+      }
+      this.emitStats();
+      return;
+    }
+
     // Phase 8 — final-boss death cinematic. While active, freeze gameplay
     // (slow-motion fade) and only tick visuals + the cinematic countdown.
     if (this.cinematicTimer > 0) {
@@ -5983,6 +6007,10 @@ export class GhostGame {
     if (this.abilityPose) {
       this.abilityPose.t += dt;
       if (this.abilityPose.t >= this.abilityPose.dur) this.abilityPose = null;
+    }
+    if (this.ultPose) {
+      this.ultPose.t += dt;
+      if (this.ultPose.t >= this.ultPose.dur) this.ultPose = null;
     }
     this.saiAnim[0] = Math.max(0, this.saiAnim[0] - dt * 6);
     this.saiAnim[1] = Math.max(0, this.saiAnim[1] - dt * 6);
@@ -6381,6 +6409,7 @@ export class GhostGame {
     // Death Mark — +50% damage from all sources while marked.
     if (e.markRemaining > 0) dmg *= 1.5;
     if (this.stats.classId === "yukionna" && e.slowRemaining > 0) dmg *= 1.15;
+    if (this.stats.classId === "yukionna" && this.stats.ultActive === false && e.stunTimer > 0.25 && e.slowRemaining > 3) dmg *= 1.5;
     if (this.perks.exploitMul > 0 && (e.stunTimer > 0 || e.slowRemaining > 0 || e.webbedRemaining > 0 || e.warHornSlowRemaining > 0)) {
       dmg *= 1 + this.perks.exploitMul;
     }
@@ -8556,6 +8585,7 @@ export class GhostGame {
 
     ctx.restore();
     this.fx.drawScreen(ctx, W, H);
+    if (this.ultCutscene) this.drawUltCutscene(ctx, W, H);
   }
 
   drawPlayer() {
@@ -8622,6 +8652,24 @@ export class GhostGame {
       if (spinWeapon === "twin_sai") { this.drawSai(1); ctx.rotate(Math.PI); this.drawSai(1); }
       else if (spinWeapon === "flame_spear") this.drawSpear(18);
       else this.drawPlayerWeapon(spinWeapon, true, weaponRange * 0.85);
+    } else if (this.ultPose && !swingingNow) {
+      // Hold the class's ultimate pose (post-strike frame) for a moment.
+      const style = ULT_STYLES[this.stats.classId];
+      const f = poseFrame(style.pose, STRIKE + 0.12 + 0.4 * (this.ultPose.t / this.ultPose.dur));
+      const m = this.abilityWeapon();
+      ctx.rotate(f.ang);
+      if (style.pose === "aim" && rangedHeld) this.drawRangedWeapon(rangedHeld);
+      else if (m === "twin_sai") this.drawSai(1);
+      else if (m === "flame_spear") this.drawSpear(14);
+      else this.drawPlayerWeapon(m, true, weaponRange);
+      if (f.glow > 0) {
+        const hue = hueOf(getClass(this.stats.classId).accent);
+        const g = ctx.createRadialGradient(12, 8, 0, 12, 8, 18);
+        g.addColorStop(0, `hsla(${hue}, 100%, 85%, ${0.9 * f.glow})`);
+        g.addColorStop(1, `hsla(${hue}, 100%, 55%, 0)`);
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(12, 8, 18, 0, Math.PI * 2); ctx.fill();
+      }
     } else if (pose) {
       this.drawAbilityPose(pose, weaponId ?? (held && isMeleeSecondary(held) ? held : null), weaponRange);
     } else if (this.player.deflectTimer > 0 && !swingingNow) {
@@ -10103,6 +10151,42 @@ export class GhostGame {
         }
       }
     }
+    if (this.ultPrayerTimer > 0) {
+      this.ultPrayerTimer = Math.max(0, this.ultPrayerTimer - dt);
+      this.ultPrayerTick -= dt;
+      if (this.ultPrayerTick <= 0) {
+        this.ultPrayerTick = 0.5;
+        const p = this.player;
+        p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.05);
+        this.fx.enso(p.pos.x, p.pos.y, 120, 42, { life: 0.5, width: 5, follow: p.pos });
+        for (const e of this.enemies) {
+          if (e.state === "dead") continue;
+          const dx = e.pos.x - p.pos.x, dy = e.pos.y - p.pos.y, d = Math.hypot(dx, dy);
+          if (d > 140 + e.size) continue;
+          this.dealDamage(e, 3, Math.atan2(dy, dx), e.isBoss ? 40 : 260);
+        }
+      }
+    }
+    if (this.ultArrowTimer > 0) {
+      this.ultArrowTimer = Math.max(0, this.ultArrowTimer - dt);
+      this.ultArrowTick -= dt;
+      while (this.ultArrowTick <= 0) {
+        this.ultArrowTick += 0.07;
+        const p = this.player;
+        const near = this.enemies.filter(e => e.state !== "dead" && Math.hypot(e.pos.x - p.pos.x, e.pos.y - p.pos.y) < 420);
+        const target = near.length && Math.random() < 0.65 ? near[Math.floor(Math.random() * near.length)] : null;
+        const a = Math.random() * Math.PI * 2, d = Math.random() * 320;
+        const tx = target ? target.pos.x + (Math.random() - 0.5) * 20 : p.pos.x + Math.cos(a) * d;
+        const ty = target ? target.pos.y + (Math.random() - 0.5) * 20 : p.pos.y + Math.sin(a) * d;
+        this.fx.streakLine(tx + 50, ty - 230, tx, ty, 200, 92, 3, 0.18);
+        this.fx.burst(tx, ty, { count: 2, hue: 200, light: 85, speed: 120, life: 0.15 });
+        for (const e of this.enemies) {
+          if (e.state === "dead" || Math.hypot(e.pos.x - tx, e.pos.y - ty) > 34 + e.size) continue;
+          this.dealDamage(e, 7, Math.PI / 2, 20);
+          e.slowRemaining = Math.max(e.slowRemaining, 2);
+        }
+      }
+    }
     if (this.ultThunderTimer > 0) {
       this.ultThunderTimer = Math.max(0, this.ultThunderTimer - dt);
       this.ultThunderTick -= dt;
@@ -10145,6 +10229,8 @@ export class GhostGame {
         this.ultDivineBeamTimer <= 0 &&
         this.ultShadowConsumeTimer <= 0 &&
         this.ultThunderTimer <= 0 &&
+        this.ultPrayerTimer <= 0 &&
+        this.ultArrowTimer <= 0 &&
         this.ultWindTimer <= 0 &&
         this.ultFinaleTimer <= 0) {
       this.stats.ultActive = false;
@@ -10627,11 +10713,13 @@ export class GhostGame {
       if (this.ultRoninTimer <= 0) {
         this.ultRoninTimer = 0.18;
         this.ultRoninRemaining--;
-        for (const e of this.enemies) {
-          if (e.state === "dead") continue;
+        const debtTargets = this.enemies
+          .filter(o => o.state !== "dead" && Math.hypot(o.pos.x - this.player.pos.x, o.pos.y - this.player.pos.y) <= 600)
+          .sort((a, b) => Math.hypot(a.pos.x - this.player.pos.x, a.pos.y - this.player.pos.y) - Math.hypot(b.pos.x - this.player.pos.x, b.pos.y - this.player.pos.y))
+          .slice(0, 8);
+        for (const e of debtTargets) {
           const dx = e.pos.x - this.player.pos.x;
           const dy = e.pos.y - this.player.pos.y;
-          if (Math.hypot(dx, dy) > 700) continue;
           this.fx.slash(e.pos.x, e.pos.y, Math.random() * Math.PI * 2, e.size + 16, Math.PI * 0.7, 1, { hue: 0, sat: 85, light: 70, width: 6, life: 0.18 });
           this.dealDamage(e, 8 * this.ultRoninMul, Math.atan2(dy, dx), 40);
         }
@@ -10743,6 +10831,140 @@ export class GhostGame {
     }
   }
 
+  // Freeze-frame ultimate cutscene: the class motif, the character in their
+  // signature pose holding their real weapon, then the strike.
+  drawUltCutscene(ctx: CanvasRenderingContext2D, W: number, H: number) {
+    const cs = this.ultCutscene!;
+    const k = Math.min(1, cs.t / cs.dur);
+    const cid = this.stats.classId;
+    const style = ULT_STYLES[cid];
+    const cls = getClass(cid);
+    const hue = hueOf(cls.accent);
+    const easeOut = (v: number) => 1 - Math.pow(1 - v, 3);
+    const vis = Math.min(1, k / 0.1) * (k > 0.86 ? 1 - (k - 0.86) / 0.14 : 1);
+    const cx = W * 0.27, cy = H * 0.56;
+    ctx.save();
+    ctx.globalAlpha = vis;
+    ctx.fillStyle = "rgba(6, 5, 4, 0.74)";
+    ctx.fillRect(0, 0, W, H);
+    const bg = ctx.createRadialGradient(cx, cy, 10, cx, cy, Math.max(W, H) * 0.7);
+    bg.addColorStop(0, `hsla(${hue}, 60%, 30%, 0.55)`);
+    bg.addColorStop(1, `hsla(${hue}, 60%, 8%, 0)`);
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+    drawMotif(ctx, style.motif, W, H, k, hue, cx, cy);
+
+    // Character, sliding in, performing the pose.
+    const S = Math.min(W, H) / 150;
+    const f = poseFrame(style.pose, k);
+    const slide = (1 - easeOut(Math.min(1, k / 0.22))) * -W * 0.35;
+    if (style.motif === "mirror") {
+      for (const off of [-1, 1]) {
+        ctx.save(); ctx.globalAlpha = vis * 0.3;
+        this.drawCutsceneCharacter(ctx, cx + slide + f.dx * S + off * 22 * S, cy + f.dy * S, S * 0.92, f, hue, style.pose);
+        ctx.restore();
+      }
+    }
+    this.drawCutsceneCharacter(ctx, cx + slide + f.dx * S, cy + f.dy * S, S, f, hue, style.pose);
+
+    // Strike flash
+    if (k >= STRIKE && k < STRIKE + 0.09) {
+      ctx.fillStyle = `hsla(${hue}, 60%, 95%, ${(1 - (k - STRIKE) / 0.09) * 0.7})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+    // Letterbox
+    const bar = H * 0.1 * Math.min(1, k / 0.12);
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, W, bar);
+    ctx.fillRect(0, H - bar, W, bar);
+
+    // Title block
+    const tk = Math.max(0, Math.min(1, (k - 0.16) / 0.14));
+    const tx = W * 0.57;
+    ctx.globalAlpha = vis * tk;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    const big = Math.min(130, H * 0.2);
+    ctx.font = `900 ${big * (1.5 - tk * 0.5)}px "Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif`;
+    ctx.lineWidth = 10;
+    ctx.strokeStyle = "rgba(0,0,0,0.85)";
+    ctx.strokeText(cls.ultKanji, tx, H * 0.4);
+    ctx.fillStyle = `hsl(${hue}, 90%, 72%)`;
+    ctx.fillText(cls.ultKanji, tx, H * 0.4);
+    ctx.font = `600 ${Math.min(13, H * 0.02)}px system-ui, sans-serif`;
+    ctx.lineWidth = 3;
+    ctx.strokeText(`${cls.name.toUpperCase()} · ULTIMATE`, tx + 4, H * 0.4 + big * 0.62);
+    ctx.fillStyle = `hsl(${hue}, 80%, 72%)`;
+    ctx.fillText(`${cls.name.toUpperCase()} · ULTIMATE`, tx + 4, H * 0.4 + big * 0.62);
+    // Shrink the title until it fits between the title column and the screen edge.
+    let nameSize = Math.min(40, H * 0.055);
+    ctx.font = `700 ${nameSize}px "Hiragino Mincho ProN","Yu Mincho",Georgia,serif`;
+    while (nameSize > 14 && ctx.measureText(cls.ultName.toUpperCase()).width > W - tx - 18) {
+      nameSize -= 2;
+      ctx.font = `700 ${nameSize}px "Hiragino Mincho ProN","Yu Mincho",Georgia,serif`;
+    }
+    ctx.lineWidth = 6;
+    ctx.strokeText(cls.ultName.toUpperCase(), tx, H * 0.4 + big * 0.62 + 34);
+    ctx.fillStyle = "#f3ead2";
+    ctx.fillText(cls.ultName.toUpperCase(), tx, H * 0.4 + big * 0.62 + 34);
+    const lk = Math.max(0, Math.min(1, (k - 0.32) / 0.15));
+    ctx.globalAlpha = vis * lk;
+    let quoteSize = Math.min(18, H * 0.028);
+    ctx.font = `italic 500 ${quoteSize}px Georgia, serif`;
+    while (quoteSize > 10 && ctx.measureText(`“${style.line}”`).width > W - tx - 18) {
+      quoteSize -= 1;
+      ctx.font = `italic 500 ${quoteSize}px Georgia, serif`;
+    }
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = "rgba(0,0,0,0.85)";
+    ctx.strokeText(`“${style.line}”`, tx, H * 0.4 + big * 0.62 + 72);
+    ctx.fillStyle = "hsla(36, 30%, 90%, 0.95)";
+    ctx.fillText(`“${style.line}”`, tx, H * 0.4 + big * 0.62 + 72);
+    if (k > 0.3) {
+      ctx.globalAlpha = vis * 0.6;
+      ctx.font = `500 11px system-ui, sans-serif`;
+      ctx.fillText("Attack or ultimate key to skip", W - 210, H - bar - 14);
+    }
+    ctx.restore();
+  }
+
+  private drawCutsceneCharacter(ctx: CanvasRenderingContext2D, x: number, y: number, S: number, f: { ang: number; squash: number; glow: number }, hue: number, pose: string) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(S, S * f.squash);
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.beginPath(); ctx.ellipse(2, 13, 15, 5, 0, 0, Math.PI * 2); ctx.fill();
+    // Weapon behind/through the body depending on angle.
+    ctx.save();
+    ctx.rotate(f.ang);
+    const held = this.stats.secondaryIds[this.stats.secondaryActiveSlot];
+    const ranged = held && held !== "katana" && !isMeleeSecondary(held);
+    const melee = this.abilityWeapon();
+    if (pose === "aim" && ranged) this.drawRangedWeapon(held!);
+    else if (melee === "twin_sai") { this.drawSai(1); ctx.rotate(0.5); this.drawSai(0.4); }
+    else if (melee === "flame_spear") this.drawSpear(10);
+    else this.drawPlayerWeapon(melee, true, 58);
+    ctx.restore();
+    // Body: dark lacquer armour with the class colour on the sash.
+    ctx.fillStyle = "hsl(0, 0%, 9%)";
+    ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = `hsl(${hue}, 75%, 55%)`;
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 0, 12.5, Math.PI * 0.55, Math.PI * 1.45); ctx.stroke();
+    ctx.strokeStyle = "hsl(358, 78%, 48%)";
+    ctx.beginPath(); ctx.arc(0, 0, 13, -Math.PI / 4, Math.PI / 4); ctx.stroke();
+    ctx.fillStyle = "hsl(36, 30%, 88%)";
+    ctx.beginPath(); ctx.arc(7, -1, 2.6, 0, Math.PI * 2); ctx.fill();
+    if (f.glow > 0) {
+      const g = ctx.createRadialGradient(13, 8, 0, 13, 8, 6 + f.glow * 16);
+      g.addColorStop(0, `hsla(${hue}, 100%, 88%, ${0.95 * f.glow})`);
+      g.addColorStop(1, `hsla(${hue}, 100%, 55%, 0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(13, 8, 6 + f.glow * 16, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
   // Short character poses for abilities that aren't sword swings.
   private drawAbilityPose(pose: { id: string; t: number; dur: number }, weaponId: SecondaryId | null, range: number) {
     const ctx = this.ctx;
@@ -10812,65 +11034,127 @@ export class GhostGame {
     }
   }
 
+  // World-space signature effect for each ultimate, by the class's motif.
   ultimateFx() {
     const cls = getClass(this.stats.classId);
     const hue = hueOf(cls.accent);
+    const style = ULT_STYLES[this.stats.classId];
     const { x, y } = this.player.pos;
-    this.fx.ultimate(x, y, cls.ultKanji, cls.ultName, hue, this.player.pos);
-    this.hitstop = Math.max(this.hitstop, 0.09);
-    switch (this.stats.classId) {
-      case "kappa":
-        this.fx.smoke(x, y, 10, 120, 70, 190, 50);
+    this.hitstop = Math.max(this.hitstop, 0.05);
+    this.ultPose = { t: 0, dur: 0.9 };
+    this.fx.seal(x, y - 50, cls.ultKanji, hue, 34, 1, this.player.pos);
+    this.ultWorldFx(style.motif, x, y, hue);
+  }
+
+  private ultWorldFx(motif: UltMotif, x: number, y: number, hue: number) {
+    const f = this.fx;
+    const face = this.player.facing;
+    switch (motif) {
+      case "moon":
+        f.slash(x, y, face, 150, Math.PI * 1.1, 1, { hue: 45, sat: 20, light: 96, width: 14, life: 0.5 });
+        f.glow(x, y, 160, 45, 30, 90, 0.4);
         break;
-      case "tengu":
-        this.fx.burst(x, y, { count: 30, hue: 150, sat: 50, light: 88, speed: 560, life: 0.6, w: 1.6 });
+      case "smoke": f.smoke(x, y, 18, 140, 14, 250, 20); break;
+      case "blood":
+        f.burst(x, y, { count: 40, hue: 358, sat: 85, light: 40, speed: 420, life: 0.6, w: 3 });
+        f.ground(x, y, 200, 358, 1.8);
         break;
-      case "kabuki":
-        this.fx.glow(x, y, 260, 45, 100, 80, 0.8);
+      case "leaves":
+        f.burst(x, y, { count: 34, hue: 100, sat: 50, light: 50, speed: 300, life: 0.9, grav: 60 });
+        f.enso(x, y, 90, 120, { life: 1.2, width: 8, follow: this.player.pos });
         break;
-      case "tetsubo": case "sohei": case "hatamoto": case "ashigaru":
-        this.fx.ground(x, y, 240, hue, 2);
-        this.fx.smoke(x, y, 10, 120, 35, 30, 20);
+      case "petals": f.burst(x, y, { count: 44, hue: 335, sat: 80, light: 78, speed: 360, life: 0.8 }); break;
+      case "ghosts":
+        f.smoke(x, y, 10, 100, 60, 180, 50);
+        f.burst(x, y, { count: 20, hue: 180, light: 80, speed: 160, life: 0.9, grav: -220 });
         break;
-      case "shinobi": case "kagemusha": case "kagebushi":
-        this.fx.smoke(x, y, 18, 140, 10, 250, 20);
-        break;
-      case "kitsune": case "berserker":
-        this.fx.flames2(x, y, 30, 70);
-        break;
-      case "yukionna":
-        this.fx.burst(x, y, { count: 40, hue: 195, sat: 80, light: 92, speed: 700, life: 0.7, w: 2 });
-        break;
-      case "yamabushi": case "miko":
-        this.fx.enso(x, y, 150, hue, { life: 1.4, width: 10, follow: this.player.pos });
-        break;
-      case "raijin": case "arashi":
+      case "mirror":
         for (let i = 0; i < 4; i++) {
-          const a = Math.random() * Math.PI * 2;
-          this.fx.bolt(x + Math.cos(a) * 30, y - 260, x + Math.cos(a) * 60, y + Math.sin(a) * 40, hue);
+          const a = (i / 4) * Math.PI * 2;
+          spawnGhostAfterimage(this.vfx, x + Math.cos(a) * 34, y + Math.sin(a) * 34, face, BASE.PLAYER_RADIUS);
+        }
+        f.enso(x, y, 60, hue, { life: 0.8, width: 5, follow: this.player.pos });
+        break;
+      case "embers":
+        f.flames2(x, y, 34, 60);
+        f.glow(x, y, 120, 5, 100, 50, 0.5);
+        break;
+      case "rain":
+        for (let i = 0; i < 10; i++) {
+          const tx = x + (Math.random() - 0.5) * 300, ty = y + (Math.random() - 0.5) * 300;
+          f.streakLine(tx + 60, ty - 260, tx, ty, 200, 92, 3, 0.4);
         }
         break;
-      case "dokkaebi": case "onmyoji": case "tsuchigumo":
-        this.fx.smoke(x, y, 12, 130, 18, hue, 40);
+      case "earth":
+        f.ground(x, y, 260, 30, 2.2);
+        f.smoke(x, y, 12, 140, 35, 30, 25);
         break;
+      case "gold":
+        f.glow(x, y, 200, 45, 95, 65, 0.5);
+        f.burst(x, y, { count: 24, hue: 45, light: 75, speed: 500, life: 0.5 });
+        break;
+      case "talismans":
+        f.burst(x, y, { count: 24, hue: 45, sat: 30, light: 94, speed: 260, life: 0.8, w: 4 });
+        f.enso(x, y, 110, 280, { life: 1.4, width: 7, follow: this.player.pos });
+        break;
+      case "banner": f.glow(x, y, 180, 45, 95, 60, 0.6); break;
+      case "ribbons": f.burst(x, y, { count: 30, hue: 320, light: 75, speed: 380, life: 0.6, w: 4 }); break;
+      case "web": f.ground(x, y, 300, 260, 2.5); break;
+      case "sun":
+        f.streakLine(x, y - 400, x, y, 50, 98, 40, 0.6);
+        f.glow(x, y, 170, 180, 80, 90, 0.6);
+        break;
+      case "void": f.smoke(x, y, 16, 120, 6, 260, 30); break;
+      case "fox": f.flames2(x, y, 26, 50); break;
+      case "lightning":
+        for (let i = 0; i < 3; i++) f.bolt(x + (Math.random() - 0.5) * 120, y - 340, x + (Math.random() - 0.5) * 60, y, 205, 0.35);
+        break;
+      case "snow":
+        f.burst(x, y, { count: 50, hue: 200, sat: 60, light: 95, speed: 640, life: 0.8, w: 2 });
+        f.glow(x, y, 260, 195, 70, 90, 0.5);
+        break;
+      case "wheel": f.enso(x, y, 130, 42, { life: 1.6, width: 10, light: 62, follow: this.player.pos }); break;
+      case "water":
+        f.smoke(x, y, 10, 120, 70, 190, 55);
+        f.burst(x, y, { count: 34, hue: 190, sat: 80, light: 80, speed: 520, life: 0.7, grav: 260 });
+        break;
+      case "wind": f.burst(x, y, { count: 34, hue: 140, sat: 40, light: 88, speed: 600, life: 0.6, w: 1.6 }); break;
+      case "spotlight":
+        f.glow(x, y, 120, 45, 100, 80, 0.9);
+        for (let i = 0; i < 24; i++) f.burst(x + (Math.random() - 0.5) * 160, y - 120, { count: 1, hue: Math.random() * 360, light: 65, speed: 80, life: 1.2, grav: 160 });
+        break;
+      case "spears": break;
     }
+    void hue;
   }
 
   triggerUltimate() {
-    // (Old "press R again" Standoff resolution removed — the Samurai ult
-    // is now an automatic chain teleport. See castIaiChain().)
-    if (!this.stats.ultReady || this.stats.ultActive) return;
-    this.ultimateFx();
+    if (!this.stats.ultReady || this.stats.ultActive || this.ultCutscene) return;
     this.stats.ultCharge = 0;
     this.stats.ultReady = false;
     this.stats.ultActive = true;
-    this.cameraShake = Math.max(this.cameraShake, 0.5);
-    // Phase 1 — quick zoom punch on ultimate activation: in 5% over 150ms,
-    // then settle back over 300ms.
+    audio.play("timeSlowSwell");
+    if (this.ultCutscenes) {
+      this.ultCutscene = { t: 0, dur: 1.35 };
+    } else {
+      const cls = getClass(this.stats.classId);
+      this.fx.ultimate(this.player.pos.x, this.player.pos.y, cls.ultKanji, cls.ultName, hueOf(cls.accent), this.player.pos);
+      this.executeUltimate();
+    }
+    this.emitStats();
+  }
+
+  skipUltCutscene() {
+    if (this.ultCutscene && this.ultCutscene.t > 0.25) this.ultCutscene.t = this.ultCutscene.dur;
+  }
+
+  executeUltimate() {
+    this.cameraShake = Math.max(this.cameraShake, 0.45);
     this.cameraZoom.setTarget(1.05, 13);
     setTimeout(() => this.cameraZoom.setTarget(1, 6), 150);
     audio.play("levelUp");
     this.flash(`${this.stats.ultName}!`);
+    this.ultimateFx();
 
     switch (this.stats.classId) {
       case "berserker": {
@@ -10984,20 +11268,10 @@ export class GhostGame {
         break;
       }
       case "arashi": {
-        // Storm of Heaven — leap, untargetable briefly, rain 20 piercing arrows.
-        this.player.invuln = Math.max(this.player.invuln, 1.2);
-        for (let i = 0; i < 20; i++) {
-          const ang = (i / 20) * Math.PI * 2 + Math.random() * 0.2;
-          const speed = 520 * this.perks.projectileSpeedMul;
-          this.projectiles.push({
-            pos: { x: this.player.pos.x, y: this.player.pos.y },
-            vel: { x: Math.cos(ang) * speed, y: Math.sin(ang) * speed },
-            life: 1.4, maxLife: 1.4,
-            damage: 9,
-            hitSet: new Set(),
-            slow: true,
-          });
-        }
+        // Storm of Heaven: arrows rain from the sky onto foes around you for 2.2s.
+        this.player.invuln = Math.max(this.player.invuln, 1);
+        this.ultArrowTimer = 2.2;
+        this.ultArrowTick = 0;
         this.screenFlashColor = "hsla(200, 80%, 75%, 0.45)";
         this.screenFlashTimer = 0.4;
         break;
@@ -11109,14 +11383,14 @@ export class GhostGame {
         break;
       }
       case "yukionna": {
-        this.timeSlowRemaining = Math.max(this.timeSlowRemaining, 3);
+        // Eternal Winter: no blast. Foes freeze solid (and take +50% while frozen), then stay chilled.
+        this.timeSlowRemaining = Math.max(this.timeSlowRemaining, 1.2);
         for (const e of this.enemies) {
           if (e.state === "dead") continue;
-          const dx = e.pos.x - this.player.pos.x;
-          const dy = e.pos.y - this.player.pos.y;
-          if (Math.hypot(dx, dy) > 650) continue;
-          e.slowRemaining = Math.max(e.slowRemaining, 6);
-          this.dealDamage(e, 10, Math.atan2(dy, dx), 60);
+          if (Math.hypot(e.pos.x - this.player.pos.x, e.pos.y - this.player.pos.y) > 650) continue;
+          e.stunTimer = Math.max(e.stunTimer, e.isBoss ? 1 : 3);
+          e.slowRemaining = Math.max(e.slowRemaining, 7);
+          this.fx.frost(e.pos.x, e.pos.y, 5);
         }
         this.floorRings.spawn(this.player.pos.x, this.player.pos.y, 650, 0.8, 195, 0.9);
         this.player.invuln = Math.max(this.player.invuln, 1);
@@ -11173,17 +11447,10 @@ export class GhostGame {
         break;
       }
       case "sohei": {
-        this.player.hp = Math.min(this.player.maxHp, this.player.hp + Math.round(this.player.maxHp * 0.35));
-        this.player.invuln = Math.max(this.player.invuln, 2.5);
-        this.shockwaves.push({
-          pos: { x: this.player.pos.x, y: this.player.pos.y },
-          radius: 0,
-          maxRadius: 320,
-          life: 0.6,
-          damage: 14,
-          hitSet: new Set(),
-        });
-        this.cameraShake = Math.max(this.cameraShake, 0.7);
+        // Prayer Wheel: a turning aura for 4s that heals in pulses and gently pushes foes away.
+        this.ultPrayerTimer = 4;
+        this.ultPrayerTick = 0;
+        this.player.invuln = Math.max(this.player.invuln, 1.5);
         this.screenFlashColor = "hsla(28, 70%, 70%, 0.4)";
         this.screenFlashTimer = 0.4;
         break;
