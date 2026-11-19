@@ -213,6 +213,14 @@ kbd {
 }
 .slot.ult .cdn { font-size: 13px; }
 .slot.ult.cooling .fill { opacity: .5; }
+.cell.held, .cell.stowed { position: relative; transition: opacity .2s, transform .2s; }
+.cell.held .slot.slot { border: 2px solid var(--gold); box-shadow: 0 0 0 1px rgba(0,0,0,.6), 0 0 18px rgba(217,173,91,.55); }
+.cell.held::before {
+  content: "IN HAND"; position: absolute; top: -17px; left: 50%; transform: translateX(-50%); white-space: nowrap;
+  font-size: 9px; font-weight: 800; letter-spacing: 1px; color: var(--ink); background: var(--gold); border-radius: 4px; padding: 1px 5px;
+}
+.cell.held .cell-name { color: var(--gold); }
+.cell.stowed { opacity: .45; transform: scale(.92); }
 .slot-label { position: absolute; top: -16px; left: 0; right: 0; text-align: center; font-size: 10px; color: var(--muted); white-space: nowrap; }
 .tips {
   position: absolute; bottom: 132px; left: 50%; transform: translateX(-50%);

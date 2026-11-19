@@ -479,6 +479,8 @@ function updateHud(s: GameStats) {
     tickSlot(c, `w${i}`, p, reloading, reloading ? fmtCd(s.secondaryReload[i]) : "");
     setText(c.slot.querySelector<HTMLElement>(".ammo"), `ammo${i}`, ammo);
     toggle(c.slot, "active", i === s.secondaryActiveSlot);
+    toggle(c.root, "held", i === s.secondaryActiveSlot);
+    toggle(c.root, "stowed", i !== s.secondaryActiveSlot);
   });
   if (!wGroup?.querySelector(".tab-hint")) wGroup?.insertAdjacentHTML("beforeend", `<div class="cell tab-hint"><div class="slot mini"><kbd style="position:static">Tab</kbd></div><div class="cell-name dim">Swap</div></div>`);
 

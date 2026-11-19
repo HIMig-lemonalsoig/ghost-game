@@ -5605,9 +5605,16 @@ export class GhostGame {
       // If the active secondary slot holds a melee weapon, the katana attack
       // button swings it instead of the katana. Katana buffs do NOT transfer —
       // the secondary uses its own damage/range/arc/cooldown via fireSecondary().
-      if (this.activeSecondaryIsMelee()) {
+      const slot = this.stats.secondaryActiveSlot;
+      const activeId = this.stats.secondaryIds[slot];
+      if (!activeId || activeId === "katana") {
+        this.doPlayerAttack();
+      } else if (this.activeSecondaryIsMelee()) {
+        this.fireSecondary();
+      } else if (this.stats.secondaryAmmo[slot] > 0 && this.stats.secondaryReload[slot] <= 0) {
         this.fireSecondary();
       } else {
+        // Out of ammo / reloading: fall back to a katana swing so attack never does nothing.
         this.doPlayerAttack();
       }
     }
@@ -10061,6 +10068,12 @@ export class GhostGame {
     this.stats.secondaryActiveSlot = this.stats.secondaryActiveSlot === 0 ? 1 : 0;
     audio.play("slash");
     this.onActiveSecondaryChanged();
+    const now = SECONDARIES[this.stats.secondaryIds[this.stats.secondaryActiveSlot]!];
+    this.flash(`${now.kanji} ${now.name}`);
+    if (this.player) {
+      this.fx.seal(this.player.pos.x, this.player.pos.y - 40, now.kanji, SLASH_HUE[now.id] ?? 42, 24, 0.6, this.player.pos);
+      this.fx.enso(this.player.pos.x, this.player.pos.y, 26, SLASH_HUE[now.id] ?? 42, { life: 0.35, width: 3, follow: this.player.pos });
+    }
   }
 
   // Called whenever the active secondary slot changes (Tab swap, freshly
