@@ -3456,6 +3456,11 @@ interface Enemy {
   launchDamage: number;        // damage to apply on landing
   // Aggro target — when a Kagemusha clone or decoy is present, enemies pick one.
   aggro: "player" | "clone" | "decoy";
+  // Stealth — while the player is hidden, enemies search the last place
+  // they saw them instead of tracking their true position.
+  lostTrack?: number;          // >0 while searching (seconds spent lost)
+  searchX?: number;
+  searchY?: number;
   // ===== New ability effects =====
   // Death Mark — cursed seal that increases damage taken; chains on kill.
   markRemaining: number;
@@ -7726,6 +7731,7 @@ export class GhostGame {
 
   updateEnemies(dt: number) {
     const p = this.player;
+    const hidden = this.stats.state === "playing" && this.playerHidden();
     for (const e of this.enemies) {
       e.hitFlash = Math.max(0, e.hitFlash - dt * 3);
       if (e.state === "dead") {
@@ -7798,6 +7804,43 @@ export class GhostGame {
         continue;
       }
 
+      // ===== Stealth — player is invisible / in smoke: enemies lose track. =====
+      // They drop their attack, stop shooting, and wander around the spot
+      // they last saw the player. Lit lanterns still go off where they are.
+      if (hidden && !(e.archetype === "lantern" && (e.fuse ?? 0) > 0)) {
+        if (!e.lostTrack) {
+          e.lostTrack = 0.0001;
+          e.searchX = p.pos.x + (Math.random() - 0.5) * 160;
+          e.searchY = p.pos.y + (Math.random() - 0.5) * 160;
+        }
+        e.lostTrack += dt;
+        e.attackTelegraph = 0;
+        e.attackAnim = 0;
+        if (e.state === "attacking") e.state = "alert";
+        const sx = (e.searchX ?? e.pos.x) - e.pos.x;
+        const sy = (e.searchY ?? e.pos.y) - e.pos.y;
+        const sd = Math.hypot(sx, sy);
+        if (sd < 24) {
+          // Reached the search spot — pick another nearby one and look around.
+          const a = Math.random() * Math.PI * 2;
+          const r = 60 + Math.random() * 140;
+          e.searchX = Math.max(30, Math.min(this.worldW - 30, e.pos.x + Math.cos(a) * r));
+          e.searchY = Math.max(30, Math.min(this.worldH - 30, e.pos.y + Math.sin(a) * r));
+        } else {
+          const ang = Math.atan2(sy, sx);
+          e.facing += Math.atan2(Math.sin(ang - e.facing), Math.cos(ang - e.facing)) * Math.min(1, dt * 5);
+          e.pos.x += (sx / sd) * e.speed * 0.45 * speedMul * dt;
+          e.pos.y += (sy / sd) * e.speed * 0.45 * speedMul * dt;
+        }
+        continue;
+      }
+      if (e.lostTrack) {
+        // Spotted again — short "!" beat before they resume the hunt.
+        e.lostTrack = 0;
+        e.attackCooldown = Math.max(e.attackCooldown, 0.35);
+        this.spawnFloatText(e.pos, "!", { color: "hsl(0 85% 65%)", size: 16 });
+      }
+
       // ===== Phase B — Jutte disarm: enemy can move but cannot attack =====
       if (e.disarmedRemaining > 0) {
         e.attackTelegraph = 0;
@@ -7816,8 +7859,68 @@ export class GhostGame {
         e.shieldFacing = angToPlayer;
       }
 
-      if (e.archetype === "priest" || e.archetype === "bomber") {
-        const ideal = e.archetype === "priest" ? 260 : 300;
+      if (e.archetype === "priest") {
+        // Healer — shadow the most-wounded ally (or the nearest one), standing
+        // just behind it relative to the player, so allies stay in the aura.
+        const HEAL_R = 200;
+        let ward: Enemy | null = null;
+        let best = -Infinity;
+        for (const o of this.enemies) {
+          if (o === e || o.state === "dead" || o.archetype === "priest") continue;
+          const od = Math.hypot(o.pos.x - e.pos.x, o.pos.y - e.pos.y);
+          if (od > 700) continue;
+          const score = (1 - o.hp / o.maxHp) * 600 + (o.isBoss ? 120 : 0) - od * 0.4;
+          if (score > best) { best = score; ward = o; }
+        }
+        let tx: number, ty: number;
+        if (ward) {
+          const wa = Math.atan2(ward.pos.y - p.pos.y, ward.pos.x - p.pos.x);
+          tx = ward.pos.x + Math.cos(wa) * 80;
+          ty = ward.pos.y + Math.sin(wa) * 80;
+        } else {
+          // No allies — keep away from the player.
+          tx = e.pos.x - Math.cos(angToPlayer) * 120;
+          ty = e.pos.y - Math.sin(angToPlayer) * 120;
+        }
+        const px = tx - e.pos.x, py = ty - e.pos.y;
+        const pd = Math.hypot(px, py);
+        let mx = 0, my = 0;
+        if (pd > 20) { mx = px / pd; my = py / pd; }
+        if (dist < 170) {
+          // Too close to the player — back off first.
+          mx = mx * 0.4 - Math.cos(angToPlayer);
+          my = my * 0.4 - Math.sin(angToPlayer);
+        }
+        const ml = Math.hypot(mx, my);
+        if (ml > 0.01) {
+          e.pos.x += (mx / ml) * e.speed * speedMul * dt;
+          e.pos.y += (my / ml) * e.speed * speedMul * dt;
+        }
+        e.facing = ward && dist > 220 ? Math.atan2(ward.pos.y - e.pos.y, ward.pos.x - e.pos.x) : angToPlayer;
+        e.special = (e.special ?? 2) - dt * speedMul;
+        if (e.special <= 0 && e.disarmedRemaining <= 0) {
+          let healed = 0;
+          for (const o of this.enemies) {
+            if (o === e || o.state === "dead" || o.hp >= o.maxHp) continue;
+            if (Math.hypot(o.pos.x - e.pos.x, o.pos.y - e.pos.y) > HEAL_R + o.size) continue;
+            o.hp = Math.min(o.maxHp, o.hp + o.maxHp * (o.isBoss ? 0.04 : 0.3));
+            healed++;
+            this.fx.burst(o.pos.x, o.pos.y, { count: 3, hue: 130, light: 70, speed: 120, life: 0.4, grav: -120 });
+          }
+          if (healed) {
+            e.special = 3.5;
+            this.fx.shockwave(e.pos.x, e.pos.y, HEAL_R, { hue: 130, light: 65, life: 0.6, width: 5 });
+            this.spawnFloatText(e.pos, "癒", { color: "hsl(130 70% 65%)", size: 16, jp: true });
+          } else {
+            // Nobody hurt in range — hold the charge and check again shortly.
+            e.special = 0.25;
+          }
+        }
+        continue;
+      }
+
+      if (e.archetype === "bomber") {
+        const ideal = 300;
         e.facing = angToPlayer;
         if (dist < ideal - 40) {
           e.pos.x -= Math.cos(angToPlayer) * e.speed * speedMul * dt;
@@ -7828,19 +7931,7 @@ export class GhostGame {
         }
         e.special = (e.special ?? 2) - dt * speedMul;
         if (e.special <= 0 && e.disarmedRemaining <= 0) {
-          if (e.archetype === "priest") {
-            e.special = 3.5;
-            let healed = 0;
-            for (const o of this.enemies) {
-              if (o === e || o.state === "dead" || o.hp >= o.maxHp) continue;
-              if (Math.hypot(o.pos.x - e.pos.x, o.pos.y - e.pos.y) > 170) continue;
-              o.hp = Math.min(o.maxHp, o.hp + o.maxHp * (o.isBoss ? 0.04 : 0.3));
-              healed++;
-              this.fx.burst(o.pos.x, o.pos.y, { count: 3, hue: 130, light: 70, speed: 120, life: 0.4, grav: -120 });
-            }
-            this.fx.shockwave(e.pos.x, e.pos.y, 170, { hue: 130, light: 65, life: 0.6, width: 5 });
-            if (healed) this.spawnFloatText(e.pos, "癒", { color: "hsl(130 70% 65%)", size: 16, jp: true });
-          } else if (dist < 560) {
+          if (dist < 560) {
             e.special = 2.8 + Math.random() * 0.8;
             const tx = this.player.pos.x + (Math.random() - 0.5) * 50;
             const ty = this.player.pos.y + (Math.random() - 0.5) * 50;
@@ -8314,6 +8405,7 @@ export class GhostGame {
     for (const e of this.enemies) if (e.state === "dead") this.drawEnemy(e, true);
     for (const p of this.particles) if (p.kind === "blood") this.drawParticle(p);
     for (const e of this.enemies) if (e.state !== "dead") this.drawEnemy(e, false);
+    this.drawSearchMarkers();
 
     this.drawPlayer();
     this.drawClassEntities();
@@ -9277,10 +9369,10 @@ export class GhostGame {
         ctx.lineWidth = 2;
         ctx.setLineDash([6, 8]);
         ctx.lineDashOffset = -t * 20;
-        ctx.beginPath(); ctx.arc(0, 0, 170, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0, 0, 200, 0, Math.PI * 2); ctx.stroke();
         ctx.setLineDash([]);
         ctx.fillStyle = `hsla(130, 70%, 55%, ${0.05 + charge * 0.1})`;
-        ctx.beginPath(); ctx.arc(0, 0, 170, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(0, 0, 200, 0, Math.PI * 2); ctx.fill();
         ctx.restore();
         ctx.save();
         ctx.rotate(e.facing);
@@ -9446,6 +9538,36 @@ export class GhostGame {
         break;
       }
     }
+  }
+
+  /** True while the player is untargetable: Shadow Step, smoke pellet, or standing in smoke. */
+  playerHidden(): boolean {
+    if (this.ultShadowStepTimer > 0 || this.stats.buffSmokeRemaining > 0) return true;
+    const p = this.player.pos;
+    for (const s of this.smokeClouds) {
+      if (Math.hypot(p.x - s.pos.x, p.y - s.pos.y) <= s.radius * 0.9) return true;
+    }
+    return false;
+  }
+
+  /** "?" over enemies that lost the player in stealth. */
+  private drawSearchMarkers() {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = "bold 18px serif";
+    for (const e of this.enemies) {
+      if (e.state === "dead" || !e.lostTrack) continue;
+      const bob = Math.sin(this.elapsed * 6 + e.pos.x) * 2;
+      const a = Math.min(1, e.lostTrack * 4);
+      const y = e.pos.y - e.size - (e.archetype === "priest" ? 44 : 24) + bob;
+      ctx.fillStyle = `hsla(0, 0%, 4%, ${0.6 * a})`;
+      ctx.beginPath(); ctx.arc(e.pos.x, y, 10, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `hsla(48, 95%, 70%, ${a})`;
+      ctx.fillText("?", e.pos.x, y + 1);
+    }
+    ctx.restore();
   }
 
   drawEnemy(e: Enemy, dead: boolean) {
