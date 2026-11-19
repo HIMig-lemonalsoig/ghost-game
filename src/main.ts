@@ -338,8 +338,13 @@ function toggle(el: HTMLElement | null, cls: string, on: boolean) {
 
 const PAUSE_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>`;
 
+let seenItemSeq = 0;
+let itemCardUntil = 0;
+
 function buildHud() {
   cache.clear();
+  seenItemSeq = game?.stats.lastItemSeq ?? 0;
+  itemCardUntil = 0;
   lastHp = Infinity;
   const cls = getClass(game!.stats.classId);
   hud.style.setProperty("--accent", cls.accent);
@@ -350,7 +355,9 @@ function buildHud() {
       <div class="bar hp"><i class="ghost" data-h="hpg"></i><i data-h="hp"></i><span class="num" data-h="hpt"></span></div>
       <div class="bar block" data-h="blockwrap"><i data-h="block"></i></div>
       <div class="bar xp"><i data-h="xp"></i></div>
+      <div class="buffs" data-h="buffs"></div>
     </div>
+    <div class="itemcard" data-h="itemcard"></div>
     <div class="hud-top">
       <div class="hud-wave" data-h="wave"></div>
       <div class="hud-sub num" data-h="sub"></div>
@@ -534,6 +541,36 @@ function updateHud(s: GameStats) {
     c.slot.title = d.desc;
     tickSlot(c, `i${i}`, 1, false, "");
   });
+
+  // Item used → card explaining exactly what it did
+  if (s.lastItemSeq !== seenItemSeq) {
+    seenItemSeq = s.lastItemSeq;
+    if (s.lastItemId) {
+      const d = CONSUMABLES[s.lastItemId];
+      const card = H("itemcard");
+      if (card) {
+        card.style.setProperty("--c", d.accent);
+        card.innerHTML = `<span class="kanji">${d.kanji}</span><div><b>${d.name}</b><p>${s.lastItemText}</p></div>`;
+        card.classList.remove("show"); void card.offsetWidth; card.classList.add("show");
+      }
+      itemCardUntil = performance.now() + 4000;
+    }
+  }
+  if (itemCardUntil && performance.now() > itemCardUntil) { itemCardUntil = 0; H("itemcard")?.classList.remove("show"); }
+
+  // Active timed effects
+  const fx: [boolean, string, string, string, number][] = [
+    [s.buffSakeRemaining > 0, "酒", "+30% damage", "hsl(20 70% 60%)", s.buffSakeRemaining],
+    [s.buffSmokeRemaining > 0, "煙", "Invulnerable", "hsl(220 20% 80%)", s.buffSmokeRemaining],
+    [s.buffIronPowderRemaining > 0, "鉄", "3× block regen", "hsl(210 30% 70%)", s.buffIronPowderRemaining],
+    [s.buffWindCharmRemaining > 0, "風", "+30% speed", "hsl(190 70% 70%)", s.buffWindCharmRemaining],
+    [s.buffHasteRemaining > 0, "旗", "+15 Dex", "hsl(358 75% 60%)", s.buffHasteRemaining],
+    [s.buffLuckRemaining > 0, "吉", "+40% crit", "hsl(140 60% 65%)", s.buffLuckRemaining],
+    [(game?.timeSlowRemaining ?? 0) > 0, "時", "Time slowed", "hsl(210 70% 75%)", game?.timeSlowRemaining ?? 0],
+    [!!game?.perks.hasSecondWind, "鳳", "Revive ready", "hsl(15 100% 65%)", -1],
+  ];
+  setHTML(H("buffs"), "buffs", fx.filter(f => f[0]).map(([, k, label, c, t]) =>
+    `<span class="buff" style="--c:${c}"><b class="kanji">${k}</b>${label}${t >= 0 ? ` <i class="num">${Math.ceil(t)}s</i>` : ""}</span>`).join(""));
 
   // Records
   if (s.wave > (best[s.classId] ?? 0) && (s.state === "defeat" || s.state === "victory" || s.state === "shop")) {

@@ -1009,7 +1009,9 @@ export type ConsumableId =
   | "smoke_pellet"  // 2.5s invulnerability + brief enemy slow
   | "spirit_pearl"  // instantly fill the ultimate gauge
   | "iron_powder"   // refill block HP + +50% block regen for 10s
-  | "wind_charm";   // +30% movement speed for 8s
+  | "wind_charm"    // +30% movement speed for 8s
+  | "thunder_scroll" | "fire_bomb" | "frost_talisman" | "elixir" | "war_banner"
+  | "golden_koban" | "shadow_scroll" | "lucky_charm" | "phoenix_feather" | "hourglass";
 
 export interface ConsumableDef {
   id: ConsumableId;
@@ -1053,10 +1055,62 @@ export const CONSUMABLES: Record<ConsumableId, ConsumableDef> = {
     desc: "+30% movement speed for 8 seconds.",
     accent: "hsl(190 70% 70%)", weight: 12,
   },
+  thunder_scroll: {
+    id: "thunder_scroll", kanji: "雷", name: "Thunder Scroll",
+    desc: "Lightning strikes the 6 nearest foes and stuns them.",
+    accent: "hsl(52 100% 65%)", weight: 10,
+  },
+  fire_bomb: {
+    id: "fire_bomb", kanji: "炎", name: "Fire Bomb",
+    desc: "Explodes around you and sets nearby foes ablaze.",
+    accent: "hsl(20 95% 60%)", weight: 11,
+  },
+  frost_talisman: {
+    id: "frost_talisman", kanji: "氷", name: "Frost Talisman",
+    desc: "Freezes nearby foes solid for 2.5s, then chills them.",
+    accent: "hsl(195 90% 78%)", weight: 9,
+  },
+  elixir: {
+    id: "elixir", kanji: "薬", name: "Vigor Elixir",
+    desc: "+10 max HP for the rest of the run, and heals 20.",
+    accent: "hsl(330 70% 70%)", weight: 7,
+  },
+  war_banner: {
+    id: "war_banner", kanji: "旗", name: "War Banner",
+    desc: "+15 Dexterity (faster attacks) for 10 seconds.",
+    accent: "hsl(358 75% 60%)", weight: 10,
+  },
+  golden_koban: {
+    id: "golden_koban", kanji: "金", name: "Golden Koban",
+    desc: "A gold coin worth more the later the wave.",
+    accent: "hsl(45 95% 60%)", weight: 10,
+  },
+  shadow_scroll: {
+    id: "shadow_scroll", kanji: "影", name: "Shadow Scroll",
+    desc: "Summons a shadow clone that fights beside you for 8s.",
+    accent: "hsl(250 40% 70%)", weight: 7,
+  },
+  lucky_charm: {
+    id: "lucky_charm", kanji: "吉", name: "Lucky Omamori",
+    desc: "+40% critical hit chance for 10 seconds.",
+    accent: "hsl(140 60% 65%)", weight: 9,
+  },
+  phoenix_feather: {
+    id: "phoenix_feather", kanji: "鳳", name: "Phoenix Feather",
+    desc: "Survive your next fatal blow at half HP.",
+    accent: "hsl(15 100% 65%)", weight: 4,
+  },
+  hourglass: {
+    id: "hourglass", kanji: "時", name: "Sand Hourglass",
+    desc: "Slows every foe to a crawl for 4 seconds.",
+    accent: "hsl(210 70% 75%)", weight: 7,
+  },
 };
 
 export const ALL_CONSUMABLE_IDS: ConsumableId[] = [
   "rice_ball", "sake", "smoke_pellet", "spirit_pearl", "iron_powder", "wind_charm",
+  "thunder_scroll", "fire_bomb", "frost_talisman", "elixir", "war_banner",
+  "golden_koban", "shadow_scroll", "lucky_charm", "phoenix_feather", "hourglass",
 ];
 
 // Roll a random consumable using weighted distribution.
@@ -3239,6 +3293,12 @@ export interface GameStats {
   buffSmokeRemaining: number;      // invuln
   buffIronPowderRemaining: number; // 3x block regen
   buffWindCharmRemaining: number;  // +30% move speed
+  buffHasteRemaining: number;      // +15 dexterity
+  buffLuckRemaining: number;       // +40% crit chance
+  // Last consumable used — the HUD shows a card describing what it did.
+  lastItemId: ConsumableId | null;
+  lastItemText: string;
+  lastItemSeq: number;
   // Biome (Phase 7) — current arena identity.
   biomeId: BiomeId;
   biomeName: string;
@@ -4135,6 +4195,11 @@ export class GhostGame {
       buffSmokeRemaining: 0,
       buffIronPowderRemaining: 0,
       buffWindCharmRemaining: 0,
+      buffHasteRemaining: 0,
+      buffLuckRemaining: 0,
+      lastItemId: null,
+      lastItemText: "",
+      lastItemSeq: 0,
       biomeId: "tsushima",
       biomeName: BIOMES.tsushima.name,
       biomeKanji: BIOMES.tsushima.kanji,
@@ -4285,6 +4350,7 @@ export class GhostGame {
   quality = new QualityGuard();
   shakeScale = 1;
   fx = new Fx();
+  bagFullWarnAt = -99;
   reaperCount = 0;
   foxTimer = 4;
   arena = new Arena();
@@ -4647,7 +4713,7 @@ export class GhostGame {
   // dexScale=1. Result is also clamped by MIN_ATTACK_COOLDOWN_MUL via the
   // attackCooldownMul, then by an additional Dex floor of 0.4.
   private dexCooldownMul(dexScale: number): number {
-    const dex = Math.max(0, this.perks.dexterity);
+    const dex = Math.max(0, this.perks.dexterity + (this.stats.buffHasteRemaining > 0 ? 15 : 0));
     const reduce = dex * 0.015 * Math.max(0, dexScale);
     return Math.max(0.40, 1 - reduce);
   }
@@ -6309,7 +6375,8 @@ export class GhostGame {
     }
     // Crit
     let isCrit = false;
-    if (this.ultFinaleTimer > 0 || (this.perks.critChance > 0 && Math.random() < this.perks.critChance)) {
+    const critChance = this.perks.critChance + (this.stats.buffLuckRemaining > 0 ? 0.4 : 0);
+    if (this.ultFinaleTimer > 0 || (critChance > 0 && Math.random() < critChance)) {
       dmg *= 3;
       isCrit = true;
       if (this.stats.classId === "kabuki" && this.kabukiHealCd <= 0 && this.player.hp < this.player.maxHp) {
@@ -12111,10 +12178,13 @@ export class GhostGame {
         if (slot !== -1) {
           this.stats.consumables[slot] = p.id;
           audio.play("monPing");
-          this.spawnFloatText(this.player.pos, `+${CONSUMABLES[p.id].kanji}`, {
+          this.spawnFloatText(this.player.pos, `+${CONSUMABLES[p.id].kanji} ${CONSUMABLES[p.id].name} [${slot + 1}]`, {
             color: CONSUMABLES[p.id].accent, size: 14, jp: true, vy: -65,
           });
           p.life = 0;
+        } else if (this.elapsed - this.bagFullWarnAt > 3) {
+          this.bagFullWarnAt = this.elapsed;
+          this.spawnFloatText(this.player.pos, "Item bag full — use one (1/2/3)", { color: "hsl(36 60% 80%)", size: 12, vy: -50 });
         }
       }
     }
@@ -12129,43 +12199,138 @@ export class GhostGame {
     const id = this.stats.consumables[slot];
     if (!id) return;
     const def = CONSUMABLES[id];
+    const p = this.player;
+    const near = (r: number) => this.enemies
+      .filter(e => e.state !== "dead" && Math.hypot(e.pos.x - p.pos.x, e.pos.y - p.pos.y) <= r)
+      .sort((a, b) => Math.hypot(a.pos.x - p.pos.x, a.pos.y - p.pos.y) - Math.hypot(b.pos.x - p.pos.x, b.pos.y - p.pos.y));
+    let text = def.desc;
     switch (id) {
       case "rice_ball": {
-        const heal = 35;
-        this.player.hp = Math.min(this.player.maxHp, this.player.hp + heal);
-        this.spawnFloatText(this.player.pos, `+${heal}`, {
-          color: "hsl(140 80% 65%)", size: 16, vy: -65,
-        });
+        const before = Math.ceil(p.hp);
+        p.hp = Math.min(p.maxHp, p.hp + 35);
+        const healed = Math.round(p.hp - before);
+        text = healed > 0 ? `+${healed} HP (${before} → ${Math.ceil(p.hp)})` : "Already at full HP";
+        this.spawnFloatText(p.pos, `+${healed}`, { color: "hsl(140 80% 65%)", size: 16, vy: -65 });
         break;
       }
       case "sake":
         this.stats.buffSakeRemaining = 8;
+        text = "+30% damage for 8s";
         break;
       case "smoke_pellet": {
         this.stats.buffSmokeRemaining = 2.5;
-        this.player.invuln = Math.max(this.player.invuln, 2.5);
-        // Drop a single smoke cloud at the player's feet (reuses smokeClouds).
-        this.smokeClouds.push({
-          pos: { x: this.player.pos.x, y: this.player.pos.y },
-          radius: 110, life: 3.5, maxLife: 3.5,
-        });
+        p.invuln = Math.max(p.invuln, 2.5);
+        this.smokeClouds.push({ pos: { x: p.pos.x, y: p.pos.y }, radius: 110, life: 3.5, maxLife: 3.5 });
+        this.fx.smoke(p.pos.x, p.pos.y, 14, 110, 30, 220, 10);
+        text = "Invulnerable for 2.5s inside a smoke cloud";
         break;
       }
       case "spirit_pearl":
         this.stats.ultCharge = this.stats.ultMax;
         this.stats.ultReady = true;
+        text = "Ultimate fully charged — press R";
         break;
       case "iron_powder":
-        this.stats.blockHp = this.stats.blockHpMax;
-        this.stats.buffIronPowderRemaining = 10;
+        if (this.stats.blockHpMax > 0) {
+          this.stats.blockHp = this.stats.blockHpMax;
+          this.stats.buffIronPowderRemaining = 10;
+          text = `Block restored to ${Math.round(this.stats.blockHpMax)} · 3× block regen for 10s`;
+        } else {
+          p.invuln = Math.max(p.invuln, 1.5);
+          text = "No block meter, so you're shielded for 1.5s instead";
+        }
         break;
       case "wind_charm":
         this.stats.buffWindCharmRemaining = 8;
+        text = "+30% movement speed for 8s";
+        break;
+      case "thunder_scroll": {
+        const targets = near(520).slice(0, 6);
+        const dmg = this.perks.damage * 4 + 8;
+        for (const e of targets) {
+          this.fx.bolt(e.pos.x + (Math.random() - 0.5) * 40, e.pos.y - 300, e.pos.x, e.pos.y, 52, 0.3);
+          e.stunTimer = Math.max(e.stunTimer, e.isBoss ? 0.4 : 1);
+          this.dealDamage(e, dmg, -Math.PI / 2, 20);
+        }
+        this.cameraShake = Math.max(this.cameraShake, 0.4);
+        text = targets.length ? `Lightning struck ${targets.length} ${targets.length === 1 ? "foe" : "foes"} for ${fmtNum(dmg * this.perks.classDamageMul)} each` : "Lightning crackled, but no foes were near";
+        break;
+      }
+      case "fire_bomb": {
+        const targets = near(170);
+        const dmg = this.perks.damage * 3 + 6;
+        for (const e of targets) {
+          this.dealDamage(e, dmg, Math.atan2(e.pos.y - p.pos.y, e.pos.x - p.pos.x), 160);
+          e.burnRemaining = Math.max(e.burnRemaining, 5);
+          e.burnDps = Math.max(e.burnDps, 6);
+        }
+        this.fx.shockwave(p.pos.x, p.pos.y, 190, { hue: 22, life: 0.5, width: 16, lines: 16 });
+        this.fx.flames2(p.pos.x, p.pos.y, 26, 120);
+        this.fx.glow(p.pos.x, p.pos.y, 170, 25, 100, 60, 0.35);
+        p.invuln = Math.max(p.invuln, 0.3);
+        this.cameraShake = Math.max(this.cameraShake, 0.5);
+        audio.play("bombBoom");
+        text = targets.length ? `Blast hit ${targets.length} ${targets.length === 1 ? "foe" : "foes"} and set them ablaze` : "Boom! No foes were close enough";
+        break;
+      }
+      case "frost_talisman": {
+        const targets = near(320);
+        for (const e of targets) {
+          e.stunTimer = Math.max(e.stunTimer, e.isBoss ? 0.8 : 2.5);
+          e.slowRemaining = Math.max(e.slowRemaining, 5);
+          this.fx.frost(e.pos.x, e.pos.y, 4);
+        }
+        this.fx.shockwave(p.pos.x, p.pos.y, 320, { hue: 195, light: 88, life: 0.6, width: 10, lines: 18 });
+        this.fx.burst(p.pos.x, p.pos.y, { count: 30, hue: 195, sat: 70, light: 92, speed: 500, life: 0.6 });
+        text = targets.length ? `Froze ${targets.length} ${targets.length === 1 ? "foe" : "foes"} for 2.5s` : "The air went cold, but no foes were near";
+        break;
+      }
+      case "elixir": {
+        this.perks.maxHpBonus += 10;
+        p.maxHp = 100 + this.perks.maxHpBonus;
+        const before = Math.ceil(p.hp);
+        p.hp = Math.min(p.maxHp, p.hp + 20);
+        text = `+10 max HP (now ${Math.round(p.maxHp)}) and +${Math.round(p.hp - before)} HP`;
+        break;
+      }
+      case "war_banner":
+        this.stats.buffHasteRemaining = 10;
+        text = "+15 Dexterity (faster attacks) for 10s";
+        break;
+      case "golden_koban": {
+        const coins = Math.round(40 * (1 + 0.15 * Math.max(0, this.stats.wave - 1)));
+        this.stats.mon += coins;
+        text = `+${coins} coins (you have ${this.stats.mon})`;
+        this.spawnFloatText(p.pos, `+${coins} 文`, { color: "hsl(45 95% 65%)", size: 16, jp: true, vy: -70 });
+        audio.play("monPing");
+        break;
+      }
+      case "shadow_scroll":
+        this.clones.push({ pos: { x: p.pos.x + 40, y: p.pos.y }, facing: p.facing, hp: 60, maxHp: 60, attackTimer: 0, life: 8, hitFlash: 0 });
+        this.fx.smoke(p.pos.x + 40, p.pos.y, 10, 50, 12, 250, 30);
+        text = "A shadow clone fights beside you for 8s";
+        break;
+      case "lucky_charm":
+        this.stats.buffLuckRemaining = 10;
+        text = "+40% critical hit chance for 10s";
+        break;
+      case "phoenix_feather":
+        this.perks.hasSecondWind = true;
+        text = "You'll survive your next fatal blow at half HP";
+        break;
+      case "hourglass":
+        this.timeSlowRemaining = Math.max(this.timeSlowRemaining, 4);
+        text = "Time slowed for 4s — foes move at a crawl";
         break;
     }
     this.stats.consumables[slot] = null;
+    this.stats.lastItemId = id;
+    this.stats.lastItemText = text;
+    this.stats.lastItemSeq++;
+    this.fx.seal(p.pos.x, p.pos.y - 44, def.kanji, hueOf(def.accent), 26, 0.8, p.pos);
+    this.fx.enso(p.pos.x, p.pos.y, 30, hueOf(def.accent), { life: 0.45, width: 4, follow: p.pos });
     audio.play("levelUp");
-    this.flash(def.name);
+    this.flash(`${def.kanji} ${def.name}: ${text}`);
     this.emitStats();
   }
 
@@ -12179,6 +12344,10 @@ export class GhostGame {
       this.stats.buffIronPowderRemaining = Math.max(0, this.stats.buffIronPowderRemaining - dt);
     if (this.stats.buffWindCharmRemaining > 0)
       this.stats.buffWindCharmRemaining = Math.max(0, this.stats.buffWindCharmRemaining - dt);
+    if (this.stats.buffHasteRemaining > 0)
+      this.stats.buffHasteRemaining = Math.max(0, this.stats.buffHasteRemaining - dt);
+    if (this.stats.buffLuckRemaining > 0)
+      this.stats.buffLuckRemaining = Math.max(0, this.stats.buffLuckRemaining - dt);
   }
 
   // ============= Resume-run save (Phase 4) =============
