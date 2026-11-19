@@ -3899,11 +3899,11 @@ const CLASS_META: Record<ClassId, {
   sohei:      { name: "Sohei",           kanji: "僧",  ultName: "Prayer Wheel",          ultKanji: "輪" },
 };
 
-const SLASH_HUE: Partial<Record<SecondaryId, number>> = {
+export const SLASH_HUE: Partial<Record<SecondaryId, number>> = {
   katana: 40, tessen: 330, jutte: 200, ono: 18, twin_sai: 160, tate: 45, odachi: 265,
 };
 
-const ABILITY_FX_HUE: Record<string, number> = {
+export const ABILITY_FX_HUE: Record<string, number> = {
   barrage: 40, flash: 200, whirlwind: 330, timeslow: 210, bladestorm: 0, phantom_slash: 358,
   death_mark: 358, soul_rend: 280, deflect: 45, smoke_bomb: 220, war_horn: 42, execution: 358,
   fireball: 20, lightning: 52,

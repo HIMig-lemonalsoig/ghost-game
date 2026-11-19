@@ -1,7 +1,8 @@
 import {
   GhostGame, CLASSES, CLASS_WEAPON_OPTIONS, SECONDARIES, ABILITY_POOL, CONSUMABLES, PERK_POOL,
-  audio, loadRun, hasSavedRun, clearSavedRun, getClass,
+  audio, loadRun, hasSavedRun, clearSavedRun, getClass, ABILITY_FX_HUE, SLASH_HUE,
 } from "./GhostGame";
+import { hueOf } from "./fx";
 import type { ClassId, GameStats, SecondaryId } from "./GhostGame";
 import { UI_CSS } from "./ui.css";
 
@@ -368,11 +369,60 @@ function buildHud() {
     <div class="hud-bottom">
       <div class="group" data-h="weapons"></div>
       <div class="group" data-h="abilities"></div>
-      <div class="slot ult" data-h="ult"><div class="fill" data-h="ultfill"></div><span class="kanji">${cls.ultKanji}</span><kbd>R</kbd></div>
+      <div class="cell ult-cell">
+        <div class="slot ult" data-h="ult" style="--h:${hueOf(cls.accent)}"><div class="fill" data-h="ultfill"></div>
+          <span class="kanji k-base">${cls.ultKanji}</span><span class="kanji k-fill">${cls.ultKanji}</span><span class="cdn num" data-h="ultpct"></span><kbd>R</kbd></div>
+        <div class="cell-name">${cls.ultName}</div>
+      </div>
       <div class="group" data-h="items"></div>
     </div>`;
   hud.querySelector<HTMLElement>("[data-act=pause]")!.style.pointerEvents = "auto";
 }
+
+
+// ─── Toolbar cells (persistent so cooldown colours refill smoothly) ───────────
+interface Cell { root: HTMLElement; slot: HTMLElement; }
+function ensureCells(group: HTMLElement | null, n: number): Cell[] {
+  if (!group) return [];
+  let cells = group.querySelectorAll<HTMLElement>(":scope > .cell:not(.tab-hint)");
+  while (cells.length < n) {
+    const el = h("div", "cell", `<div class="slot"></div><div class="cell-name"></div>`);
+    const hint = group.querySelector(".tab-hint");
+    hint ? group.insertBefore(el, hint) : group.appendChild(el);
+    cells = group.querySelectorAll<HTMLElement>(":scope > .cell:not(.tab-hint)");
+  }
+  return Array.from(cells).slice(0, n).map(root => ({ root, slot: root.querySelector<HTMLElement>(".slot")! }));
+}
+
+function setCell(c: Cell, key: string, kanji: string, name: string, hue: number, kb: string, empty: boolean) {
+  if (c.root.dataset.k === key) return;
+  c.root.dataset.k = key;
+  cache.delete(`ammo${key[1]}`);
+  c.slot.style.setProperty("--h", String(hue));
+  c.slot.className = `slot${empty ? " empty" : ""}`;
+  c.slot.innerHTML = `<div class="refill"></div><span class="kanji k-base">${kanji}</span><span class="kanji k-fill">${kanji}</span>`
+    + `<span class="cdn num"></span><span class="ammo num"></span>${kb ? `<kbd>${kb}</kbd>` : ""}`;
+  const nm = c.root.querySelector<HTMLElement>(".cell-name")!;
+  nm.textContent = name;
+  nm.classList.toggle("dim", empty);
+  for (const k of [...cache.keys()]) if (k.startsWith(`tick:${key.slice(0, 2)}`)) cache.delete(k);
+}
+
+function tickSlot(c: Cell, key: string, p: number, cooling: boolean, label: string) {
+  const pv = Math.max(0, Math.min(1, p)).toFixed(3);
+  if (cache.get(`tick:${key}:p`) !== pv) { cache.set(`tick:${key}:p`, pv); c.slot.style.setProperty("--p", pv); }
+  const was = cache.get(`tick:${key}:c`);
+  const now = cooling ? "1" : "0";
+  if (was !== now) {
+    cache.set(`tick:${key}:c`, now);
+    toggle(c.slot, "cooling", cooling);
+    toggle(c.slot, "ready", !cooling && !c.slot.classList.contains("empty"));
+    if (was === "1" && !cooling) { c.slot.classList.remove("pop"); void c.slot.offsetWidth; c.slot.classList.add("pop"); }
+  }
+  setText(c.slot.querySelector<HTMLElement>(".cdn"), `tick:${key}:t`, label);
+}
+
+const fmtCd = (sec: number) => (sec < 1 ? sec.toFixed(1) : String(Math.ceil(sec)));
 
 const H = (k: string) => hud.querySelector<HTMLElement>(`[data-h="${k}"]`);
 
@@ -416,46 +466,67 @@ function updateHud(s: GameStats) {
   if (tips) toggle(tips, "hide", performance.now() - runStartedAt > 14000 || s.wave > 1);
 
   // Weapons
-  const wHtml = s.secondaryIds.map((id, i) => {
-    if (!id) return `<div class="slot empty"><span class="kanji">—</span></div>`;
+  const wGroup = H("weapons");
+  const wCells = ensureCells(wGroup, 2);
+  s.secondaryIds.forEach((id, i) => {
+    const c = wCells[i];
+    if (!id) { setCell(c, `w${i}`, "—", "Empty", 40, "", true); return; }
     const w = SECONDARIES[id];
-    const active = i === s.secondaryActiveSlot;
+    setCell(c, `w${i}${id}`, w.kanji, w.name, SLASH_HUE[id] ?? 40, i === 0 ? "1st" : "2nd", false);
+    const reloading = s.secondaryReloadMax[i] > 0 && s.secondaryReload[i] > 0;
+    const p = reloading ? 1 - s.secondaryReload[i] / s.secondaryReloadMax[i] : 1;
     const ammo = s.secondaryAmmoMax[i] > 0 ? `${s.secondaryAmmo[i]}/${s.secondaryAmmoMax[i]}` : "∞";
-    const rl = s.secondaryReloadMax[i] > 0 && s.secondaryReload[i] > 0
-      ? `<div class="reload" style="width:${(1 - s.secondaryReload[i] / s.secondaryReloadMax[i]) * 100}%"></div>` : "";
-    return `<div class="slot${active ? " active" : ""}" title="${w.name}"><span class="ammo num">${ammo}</span><span class="kanji">${w.kanji}</span>${rl}</div>`;
-  }).join("") + `<div class="slot" style="width:34px;opacity:.8"><kbd style="position:static">Tab</kbd></div>`;
-  setHTML(H("weapons"), "weapons", wHtml);
+    tickSlot(c, `w${i}`, p, reloading, reloading ? fmtCd(s.secondaryReload[i]) : "");
+    setText(c.slot.querySelector<HTMLElement>(".ammo"), `ammo${i}`, ammo);
+    toggle(c.slot, "active", i === s.secondaryActiveSlot);
+  });
+  if (!wGroup?.querySelector(".tab-hint")) wGroup?.insertAdjacentHTML("beforeend", `<div class="cell tab-hint"><div class="slot mini"><kbd style="position:static">Tab</kbd></div><div class="cell-name dim">Swap</div></div>`);
 
   // Abilities
   const keys = ["Q", "E"];
-  const aHtml = [0, 1].map(i => {
+  const aCells = ensureCells(H("abilities"), 2);
+  [0, 1].forEach(i => {
+    const c = aCells[i];
     const id = s.equippedAbilities[i];
-    if (!id) return `<div class="slot empty" title="Unlock abilities by levelling up"><span class="kanji">?</span><kbd>${keys[i]}</kbd></div>`;
+    if (!id) {
+      setCell(c, `a${i}`, "?", "Level up to unlock", 40, keys[i], true);
+      tickSlot(c, `a${i}`, 1, false, "");
+      return;
+    }
     const info = abilityInfo(id);
+    setCell(c, `a${i}${id}`, info?.kanji ?? "技", info?.name ?? id, ABILITY_FX_HUE[id] ?? 40, keys[i], false);
     const cd = s.abilityCd[id] ?? 0;
     const max = s.abilityMax[id] || 1;
-    const ready = cd <= 0;
-    return `<div class="slot${ready ? " ready" : ""}" title="${info?.name ?? id}">
-      <div class="cd" style="--cd:${ready ? 0 : (cd / max).toFixed(3)}"></div>
-      <span class="kanji">${info?.kanji ?? "技"}</span>${ready ? "" : `<span class="cdn num">${Math.ceil(cd)}</span>`}<kbd>${keys[i]}</kbd></div>`;
-  }).join("");
-  setHTML(H("abilities"), "abilities", aHtml);
+    tickSlot(c, `a${i}`, cd > 0 ? 1 - cd / max : 1, cd > 0, cd > 0 ? fmtCd(cd) : "");
+  });
 
   // Ultimate
-  const ultFrac = s.ultMax > 0 ? s.ultCharge / s.ultMax : 0;
+  const ultFrac = Math.min(1, s.ultMax > 0 ? s.ultCharge / s.ultMax : 0);
+  const ult = H("ult");
   const fill = H("ultfill");
-  const fh = `${Math.round(Math.min(1, ultFrac) * 100)}%`;
+  const fh = `${Math.round(ultFrac * 100)}%`;
   if (fill && cache.get("ultfill") !== fh) { cache.set("ultfill", fh); fill.style.height = fh; }
-  toggle(H("ult"), "ready", s.ultReady && !s.ultActive);
+  const ultReady = s.ultReady && !s.ultActive;
+  if (ult) {
+    const pv = ultFrac.toFixed(3);
+    if (cache.get("ultp") !== pv) { cache.set("ultp", pv); ult.style.setProperty("--p", pv); }
+    toggle(ult, "cooling", !ultReady);
+    toggle(ult, "ready", ultReady);
+    if (ultReady && cache.get("ultwas") === "cool") { ult.classList.remove("pop"); void ult.offsetWidth; ult.classList.add("pop"); }
+    cache.set("ultwas", ultReady ? "ready" : "cool");
+  }
+  setText(H("ultpct"), "ultpct", ultReady ? "" : s.ultActive ? "ACTIVE" : `${Math.floor(ultFrac * 100)}%`);
 
   // Consumables
-  const iHtml = s.consumables.map((c, i) => {
-    if (!c) return `<div class="slot empty"><span class="kanji">·</span><kbd>${i + 1}</kbd></div>`;
-    const d = CONSUMABLES[c];
-    return `<div class="slot ready" title="${d.name}: ${d.desc}"><span class="kanji" style="color:${d.accent}">${d.kanji}</span><kbd>${i + 1}</kbd></div>`;
-  }).join("");
-  setHTML(H("items"), "items", iHtml);
+  const iCells = ensureCells(H("items"), s.consumables.length);
+  s.consumables.forEach((cid, i) => {
+    const c = iCells[i];
+    if (!cid) { setCell(c, `i${i}`, "·", "Empty", 40, String(i + 1), true); tickSlot(c, `i${i}`, 1, false, ""); return; }
+    const d = CONSUMABLES[cid];
+    setCell(c, `i${i}${cid}`, d.kanji, d.name, hueOf(d.accent), String(i + 1), false);
+    c.slot.title = d.desc;
+    tickSlot(c, `i${i}`, 1, false, "");
+  });
 
   // Records
   if (s.wave > (best[s.classId] ?? 0) && (s.state === "defeat" || s.state === "victory" || s.state === "shop")) {
