@@ -573,7 +573,7 @@ export const SECONDARIES: Record<SecondaryId, SecondaryDef> = {
     id: "twin_sai",
     kanji: "双",
     name: "Twin Sai",
-    desc: "Lightning-fast alternating stabs, one sai per strike. 15% chance to stun.",
+    desc: "Lightning-fast alternating stabs. Scales hardest with Dexterity, and every stab can trigger on-hit effects. 15% chance to stun.",
     aim: "self",
     maxAmmo: 9,
     startAmmo: 9,
@@ -583,7 +583,7 @@ export const SECONDARIES: Record<SecondaryId, SecondaryDef> = {
     projectiles: 1,
     spread: 0,
     accent: "hsl(280, 50%, 70%)",
-    dmgScale: 0.45, dexScale: 1.2,
+    dmgScale: 0.52, dexScale: 1.8,
     hitstun: 0.10,
   },
   odachi: {
