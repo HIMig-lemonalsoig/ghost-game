@@ -5474,6 +5474,92 @@ export class GhostGame {
     this.devTimeScale = Math.max(0.1, Math.min(8, mult));
   }
   devTimeScale = 1;
+  devShowHitboxes = false;
+
+  devLevelUp() {
+    this.gainXp(Math.max(1, this.stats.xpToNext - this.stats.xp));
+  }
+
+  devGivePerk(id: string) {
+    if (!PERK_POOL.some(p => p.id === id)) return;
+    this.applyPerk(id);
+    this.acquiredPerks.push(id);
+    this.stats.perks = [...this.acquiredPerks];
+    const def = PERK_POOL.find(p => p.id === id)!;
+    if (this.player) this.spawnFloatText(this.player.pos, `+ ${def.name}`, { color: "hsl(48 90% 70%)", size: 14, vy: -60 });
+    this.emitStats();
+  }
+
+  devGiveItem(id: ConsumableId) {
+    if (!CONSUMABLES[id]) return;
+    let slot = this.stats.consumables.findIndex(c => c === null);
+    if (slot === -1) slot = 0;
+    this.stats.consumables[slot] = id;
+    this.emitStats();
+  }
+
+  devSetWeapon(slot: 0 | 1, id: SecondaryId) {
+    const ids: [SecondaryId, SecondaryId] = [this.stats.secondaryIds[0] as SecondaryId, this.stats.secondaryIds[1] as SecondaryId];
+    ids[slot] = id;
+    const active = this.stats.secondaryActiveSlot;
+    this.equipWeapons(ids);
+    this.stats.secondaryActiveSlot = active;
+    this.onActiveSecondaryChanged();
+    this.emitStats();
+  }
+
+  devRefillAmmo() {
+    for (let s = 0; s < 2; s++) {
+      this.stats.secondaryAmmo[s] = this.stats.secondaryAmmoMax[s];
+      this.stats.secondaryReload[s] = 0;
+    }
+    this.emitStats();
+  }
+
+  devSetAbility(slot: 0 | 1, id: string) {
+    if (!ABILITY_POOL.some(a => a.id === id)) return;
+    const other = this.stats.equippedAbilities[1 - slot];
+    if (other === id) return;
+    const old = this.stats.equippedAbilities[slot];
+    if (old) { delete this.stats.abilityCd[old]; delete this.stats.abilityMax[old]; }
+    if (slot >= this.stats.equippedAbilities.length) this.equipAbilityInternal(id);
+    else this.equipAbilityInternal(id, slot);
+    this.emitStats();
+  }
+
+  devSpawnBoss(kind: BossKind | "final") {
+    if (this.stats.state !== "playing") return;
+    if (kind === "final") { this.devSpawnEnemy("final"); return; }
+    const n = this.enemies.length;
+    this.spawnSingleEnemy(Math.max(5, this.stats.wave), "boss");
+    const b = this.enemies[this.enemies.length - 1];
+    if (this.enemies.length > n && b) {
+      // Undo the wave's default boss tweaks, then apply the requested kind.
+      if (b.bossKind === "kitsune") { b.maxHp = Math.round(b.maxHp / 0.85); b.speed /= 1.1; }
+      else if (b.bossKind === "gasha") { b.maxHp = Math.round(b.maxHp / 1.3); b.speed /= 0.75; b.size -= 8; }
+      b.hp = b.maxHp;
+      const order: BossKind[] = ["oni", "kitsune", "gasha", "raijin"];
+      this.decorateBoss(b, (order.indexOf(kind) + 1) * 5);
+    }
+    this.stats.enemiesLeft = this.enemies.filter(e => e.state !== "dead").length;
+    this.emitStats();
+  }
+
+  devClearWave() {
+    // Kill everything (bosses too) so the wave ends normally into the shop.
+    if (this.stats.state !== "playing") return;
+    for (const e of [...this.enemies]) {
+      if (e.state === "dead") continue;
+      e.hp = 0;
+      this.killEnemy(e, "honor");
+    }
+    this.stats.enemiesLeft = 0;
+    // Waves end on their timer — expire it so the next frame runs the
+    // normal wave-clear path (level-ups, then the shop).
+    this.stats.isBossWave = false;
+    this.stats.waveTimer = Math.min(this.stats.waveTimer, 0.0001);
+    this.emitStats();
+  }
 
   // Called from update() so god-mode/time-scale stay sticky.
   private devTickHooks() {
@@ -8406,6 +8492,7 @@ export class GhostGame {
     for (const p of this.particles) if (p.kind === "blood") this.drawParticle(p);
     for (const e of this.enemies) if (e.state !== "dead") this.drawEnemy(e, false);
     this.drawSearchMarkers();
+    if (this.devShowHitboxes) this.drawDevHitboxes();
 
     this.drawPlayer();
     this.drawClassEntities();
@@ -9548,6 +9635,29 @@ export class GhostGame {
       if (Math.hypot(p.x - s.pos.x, p.y - s.pos.y) <= s.radius * 0.9) return true;
     }
     return false;
+  }
+
+  /** Dev overlay: hit circles, enemy HP/state and the player's stealth state. */
+  private drawDevHitboxes() {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.lineWidth = 1;
+    ctx.font = "10px monospace";
+    ctx.textAlign = "center";
+    for (const e of this.enemies) {
+      if (e.state === "dead") continue;
+      ctx.strokeStyle = e.isBoss ? "hsla(0, 100%, 60%, 0.9)" : "hsla(0, 90%, 65%, 0.7)";
+      ctx.beginPath(); ctx.arc(e.pos.x, e.pos.y, e.size, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = "hsla(0, 0%, 100%, 0.85)";
+      ctx.fillText(`${e.archetype} ${Math.ceil(e.hp * 10) / 10}/${e.maxHp}${e.lostTrack ? " lost" : ""}`, e.pos.x, e.pos.y + e.size + 12);
+    }
+    const p = this.player.pos;
+    const hidden = this.playerHidden();
+    ctx.strokeStyle = hidden ? "hsla(200, 90%, 70%, 0.9)" : "hsla(120, 80%, 60%, 0.8)";
+    ctx.beginPath(); ctx.arc(p.x, p.y, BASE.PLAYER_RADIUS, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.fillText(hidden ? "HIDDEN" : `hp ${Math.ceil(this.player.hp)}`, p.x, p.y + BASE.PLAYER_RADIUS + 12);
+    ctx.restore();
   }
 
   /** "?" over enemies that lost the player in stealth. */

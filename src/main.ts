@@ -5,6 +5,7 @@ import {
 import { hueOf } from "./fx";
 import type { ClassId, GameStats, SecondaryId, Difficulty } from "./GhostGame";
 import { UI_CSS } from "./ui.css";
+import { initDevMode } from "./devmode";
 
 // ─── Persistent settings & records ────────────────────────────────────────────
 const SETTINGS_KEY = "ghostgame.settings.v1";
@@ -699,7 +700,7 @@ function updateHud(s: GameStats) {
 
   // Records
   const bk = bestKey(s.classId, game?.difficulty ?? "normal");
-  if (s.wave > (best[bk] ?? 0) && (s.state === "defeat" || s.state === "victory" || s.state === "shop")) {
+  if (!game?.devMode && s.wave > (best[bk] ?? 0) && (s.state === "defeat" || s.state === "victory" || s.state === "shop")) {
     best[bk] = s.wave;
     writeJSON(BEST_KEY, best);
     if (s.state === "defeat" || s.state === "victory") recordSet = true;
@@ -928,6 +929,9 @@ function overlayKeys(e: KeyboardEvent, s: GameStats): boolean {
 }
 
 window.addEventListener("keydown", e => {
+  // Typing into the dev panel's fields shouldn't drive the game.
+  const tgt = e.target as HTMLElement | null;
+  if (tgt?.closest?.("#devpanel") && (tgt.tagName === "INPUT" || tgt.tagName === "SELECT")) return;
   if (capturing) {
     e.preventDefault();
     e.stopPropagation();
@@ -1000,5 +1004,6 @@ document.addEventListener("visibilitychange", () => {
 });
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
+initDevMode(() => game);
 applySettings();
 showMenu();
