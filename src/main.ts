@@ -441,7 +441,8 @@ function updateHud(s: GameStats) {
   if (bw) bw.style.display = s.blockHpMax > 0 ? "" : "none";
   setScale(H("block"), "block", s.blockHpMax > 0 ? s.blockHp / s.blockHpMax : 0);
   setScale(H("xp"), "xp", s.xpToNext > 0 ? s.xp / s.xpToNext : 0);
-  setText(H("lvl"), "lvl", `· Lv ${s.level}`);
+  const banked = game?.pendingLevelUps ?? 0;
+  setText(H("lvl"), "lvl", `· Lv ${s.level}${banked > 0 && s.state === "playing" ? ` · ✦${banked} after wave` : ""}`);
 
   const waveLabel = s.isBossWave ? `BOSS · WAVE ${s.wave}` : `WAVE ${s.wave}`;
   setText(H("wave"), "wave", waveLabel);

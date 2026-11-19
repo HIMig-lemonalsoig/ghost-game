@@ -1,5 +1,6 @@
 // Consolidated game engine and supporting systems. No React dependencies.
 import { Fx, hueOf } from "./fx";
+import { Arena } from "./arena";
 // Sections: classes, weapons, shop, consumables, saves, biomes, audio, VFX, gameplay.
 
 // ============================================================================
@@ -852,24 +853,24 @@ export const SHOP_POOL: PoolEntry[] = [
   { effect: "hp_regen",      kanji: "息", name: "Steady Breath",     desc: "+0.5 HP/s passive regeneration.",          priceMin: 30, priceMax: 45, rarity: "rare"     },
   // ===== Stat upgrades (rarity-tiered) =====
   // Damage — Katana (always available).
-  { effect: "dmg_katana_common", kanji: "刃", name: "Whetstone",          desc: "+15% katana damage.",                       priceMin: 28, priceMax: 42, rarity: "common"    },
-  { effect: "dmg_katana_rare",   kanji: "刃", name: "Honed Whetstone",    desc: "+5 flat katana damage.",                    priceMin: 50, priceMax: 70, rarity: "rare"      },
-  { effect: "dmg_katana_leg",    kanji: "刃", name: "Masterforged Edge",  desc: "+25 flat katana damage.",                   priceMin: 95, priceMax: 130, rarity: "legendary" },
+  { effect: "dmg_katana_common", kanji: "刃", name: "Whetstone",          desc: "+12% katana damage.",                       priceMin: 28, priceMax: 42, rarity: "common"    },
+  { effect: "dmg_katana_rare",   kanji: "刃", name: "Honed Whetstone",    desc: "+30% katana damage.",                       priceMin: 50, priceMax: 70, rarity: "rare"      },
+  { effect: "dmg_katana_leg",    kanji: "刃", name: "Masterforged Edge",  desc: "+75% katana damage.",                       priceMin: 95, priceMax: 130, rarity: "legendary" },
   // Dexterity (replaces flat attack-speed perks).
-  { effect: "dex_common", kanji: "敏", name: "Light Hands",      desc: "+15% dexterity (attack speed scales with weapon).", priceMin: 28, priceMax: 42, rarity: "common"   },
-  { effect: "dex_rare",   kanji: "敏", name: "Trained Reflexes", desc: "+5 dexterity.",                                     priceMin: 50, priceMax: 70, rarity: "rare"     },
-  { effect: "dex_leg",    kanji: "敏", name: "Wind's Grace",     desc: "+25 dexterity.",                                    priceMin: 95, priceMax: 130, rarity: "legendary" },
+  { effect: "dex_common", kanji: "敏", name: "Light Hands",      desc: "+3 dexterity (attack speed scales with weapon).", priceMin: 28, priceMax: 42, rarity: "common"   },
+  { effect: "dex_rare",   kanji: "敏", name: "Trained Reflexes", desc: "+6 dexterity.",                                     priceMin: 50, priceMax: 70, rarity: "rare"     },
+  { effect: "dex_leg",    kanji: "敏", name: "Wind's Grace",     desc: "+12 dexterity.",                                    priceMin: 95, priceMax: 130, rarity: "legendary" },
   // Movement speed.
-  { effect: "spd_common", kanji: "風", name: "Wind Step",        desc: "+15% movement speed.",                              priceMin: 25, priceMax: 38, rarity: "common"   },
-  { effect: "spd_rare",   kanji: "風", name: "Swift Sandals",    desc: "+5% flat movement speed.",                          priceMin: 42, priceMax: 60, rarity: "rare"     },
-  { effect: "spd_leg",    kanji: "風", name: "Boots of the Gale",desc: "+25% flat movement speed.",                         priceMin: 90, priceMax: 120, rarity: "legendary" },
+  { effect: "spd_common", kanji: "風", name: "Wind Step",        desc: "+5% movement speed.",                               priceMin: 25, priceMax: 38, rarity: "common"   },
+  { effect: "spd_rare",   kanji: "風", name: "Swift Sandals",    desc: "+8% movement speed.",                               priceMin: 42, priceMax: 60, rarity: "rare"     },
+  { effect: "spd_leg",    kanji: "風", name: "Boots of the Gale",desc: "+15% movement speed.",                              priceMin: 90, priceMax: 120, rarity: "legendary" },
   // Defense (no common variant).
-  { effect: "def_rare",   kanji: "盾", name: "Lacquered Plate",  desc: "+5 defense (flat damage reduction).",              priceMin: 55, priceMax: 75, rarity: "rare"      },
-  { effect: "def_leg",    kanji: "盾", name: "Daimyo's Cuirass", desc: "+25 defense.",                                     priceMin: 100, priceMax: 140, rarity: "legendary" },
+  { effect: "def_rare",   kanji: "盾", name: "Lacquered Plate",  desc: "+1 defense (−1 damage from every hit).",          priceMin: 55, priceMax: 75, rarity: "rare"      },
+  { effect: "def_leg",    kanji: "盾", name: "Daimyo's Cuirass", desc: "+3 defense (−3 damage from every hit).",          priceMin: 100, priceMax: 140, rarity: "legendary" },
   // Max HP (cap removed).
-  { effect: "hp_common",  kanji: "命", name: "Iron Resolve",     desc: "+15% max HP and heals fully.",                     priceMin: 32, priceMax: 48, rarity: "common"    },
-  { effect: "hp_rare",    kanji: "命", name: "Steel Heart",      desc: "+5 max HP and heals 5.",                            priceMin: 48, priceMax: 65, rarity: "rare"      },
-  { effect: "hp_leg",     kanji: "命", name: "Oni's Vigor",      desc: "+25 max HP and heals 25.",                          priceMin: 95, priceMax: 130, rarity: "legendary" },
+  { effect: "hp_common",  kanji: "命", name: "Iron Resolve",     desc: "+10% max HP and heals fully.",                     priceMin: 32, priceMax: 48, rarity: "common"    },
+  { effect: "hp_rare",    kanji: "命", name: "Steel Heart",      desc: "+15 max HP and heals 15.",                         priceMin: 48, priceMax: 65, rarity: "rare"      },
+  { effect: "hp_leg",     kanji: "命", name: "Oni's Vigor",      desc: "+40 max HP and heals 40.",                         priceMin: 95, priceMax: 130, rarity: "legendary" },
   // ===== Per-weapon damage upgrades (only shown when equipped) =====
   ...buildWeaponDamagePool(),
   // ===== Phase A — 12 new purchasable perks =====
@@ -917,21 +918,21 @@ function buildWeaponDamagePool(): PoolEntry[] {
       effect: `dmg_${wid}_common`,
       kanji: def.kanji,
       name: `${def.name} Mastery`,
-      desc: `+15% ${def.name} damage.`,
+      desc: `+12% ${def.name} damage.`,
       priceMin: 28, priceMax: 42, rarity: "common",
     });
     out.push({
       effect: `dmg_${wid}_rare`,
       kanji: def.kanji,
       name: `${def.name} Honed`,
-      desc: `+5 flat ${def.name} damage.`,
+      desc: `+30% ${def.name} damage.`,
       priceMin: 50, priceMax: 70, rarity: "rare",
     });
     out.push({
       effect: `dmg_${wid}_leg`,
       kanji: def.kanji,
       name: `${def.name} Forged`,
-      desc: `+25 flat ${def.name} damage.`,
+      desc: `+75% ${def.name} damage.`,
       priceMin: 95, priceMax: 130, rarity: "legendary",
     });
   }
@@ -3650,7 +3651,7 @@ export const PERK_POOL: Omit<PerkChoice, never>[] = [
   { id: "crit_strike", kanji: "斬", name: "Killing Edge", desc: "+20% chance to deal 3× damage", rarity: "rare" },
   { id: "barrage_master", kanji: "閃", name: "Barrage Mastery", desc: "−30% Sword Barrage cooldown", rarity: "rare" },
   { id: "flash_master", kanji: "瞬", name: "Flash Mastery", desc: "−30% Flash Step cooldown", rarity: "rare" },
-  { id: "kensei", kanji: "剣", name: "Way of the Kensei", desc: "+2 katana damage", rarity: "legendary" },
+  { id: "kensei", kanji: "剣", name: "Way of the Kensei", desc: "+60% katana damage", rarity: "legendary" },
   { id: "tempest", kanji: "嵐", name: "Tempest", desc: "Every katana swing strikes twice", rarity: "legendary" },
   { id: "shadow_lord", kanji: "暗", name: "Shadow Lord", desc: "Stealth kills heal 6 HP", rarity: "legendary" },
   { id: "executioner", kanji: "首", name: "Executioner", desc: "+200% damage to foes below 30% HP", rarity: "legendary" },
@@ -3975,6 +3976,13 @@ export function fmtNum(n: number): string {
   return Number.isInteger(r) ? String(r) : r.toFixed(1);
 }
 
+// XP needed to go from `level` to `level + 1`. Quadratic so levels arrive
+// about once per wave after the first, instead of in early bursts.
+export const xpForLevel = (level: number): number => Math.round(42 + 7 * level * level);
+
+// Shop prices rise with the wave so late-game income can't buy everything.
+const shopInflation = (wave: number): number => 1 + 0.15 * Math.max(0, wave - 1);
+
 export class GhostGame {
   ctx: CanvasRenderingContext2D;
   width = 0;
@@ -4015,7 +4023,7 @@ export class GhostGame {
       honor: 0, ghost: 0, mon: 0,
       wave: 1, enemiesLeft: 0,
       message: "Defend Tsushima", messageTimer: 3,
-      level: 1, xp: 0, xpToNext: BASE.XP_BASE,
+      level: 1, xp: 0, xpToNext: xpForLevel(1),
       perks: [], pendingChoices: [],
       isBossWave: false,
       waveTimer: 30, waveDuration: 30,
@@ -4202,6 +4210,8 @@ export class GhostGame {
   quality = new QualityGuard();
   shakeScale = 1;
   fx = new Fx();
+  arena = new Arena();
+  baseKatanaDamage = 1;
   fireAnim = 0;
   saiAnim: [number, number] = [0, 0];
   autoSwapTimer = 0;
@@ -4274,6 +4284,7 @@ export class GhostGame {
     const cid = this.lastClassId;
     this.perks = defaultPerks();
     this.applyClassBonuses(cid);
+    this.baseKatanaDamage = this.perks.damage;
     this.acquiredPerks = [];
     this.pendingLevelUps = 0;
     this.pendingShopOpen = false;
@@ -4708,7 +4719,7 @@ export class GhostGame {
     // enemies need to keep up to remain a threat into the late waves.
     // Steeper HP curve so wave 5 grunts feel meaty (~10 HP) instead of
     // being two-shot trash. Bosses use computeBossHpScale separately.
-    const hpScale = 1 + (wave - 1) * 0.55;
+    const hpScale = 1 + (wave - 1) * 0.45;
     const dmgScale = 1 + (wave - 1) * 0.10;
     // Kept under the player's base speed so kiting stays possible late-game.
     const speedScale = 1 + Math.min(0.25, (wave - 1) * 0.015);
@@ -5259,11 +5270,16 @@ export class GhostGame {
     this.emitStats();
   }
 
+  // Damage upgrades add a percent of the run's *starting* damage, so buying
+  // several stacks linearly (+30% +30% = +60%) instead of compounding.
+  private addKatanaDamagePct(pct: number) {
+    this.perks.damage = Math.min(MAX_KATANA_DAMAGE, this.perks.damage + this.baseKatanaDamage * pct);
+  }
+
   applyPerk(id: string) {
     switch (id) {
       case "blade_edge":
-        // +15% base damage (rebalanced for the new rarity model).
-        this.perks.damage = Math.min(MAX_KATANA_DAMAGE, Math.round(this.perks.damage * 1.15));
+        this.addKatanaDamagePct(0.15);
         break;
       case "swift_strike":
         // Re-skinned as Dexterity. +5 Dex per pick.
@@ -5294,7 +5310,7 @@ export class GhostGame {
       case "wave_clear": this.perks.healBetweenWaves += 25; break;
       case "phantom": this.perks.invulnBonus += 1; break;
       case "kensei":
-        this.perks.damage = Math.min(MAX_KATANA_DAMAGE, this.perks.damage + 2);
+        this.addKatanaDamagePct(0.60);
         break;
       case "tempest": this.perks.doubleStrike = true; break;
       case "shadow_lord": this.perks.stealthHeal += 6; break;
@@ -5406,19 +5422,37 @@ export class GhostGame {
 
   gainXp(amount: number) {
     this.stats.xp += amount;
+    let gained = false;
     while (this.stats.xp >= this.stats.xpToNext) {
       this.stats.xp -= this.stats.xpToNext;
       this.stats.level += 1;
-      this.stats.xpToNext = Math.round(BASE.XP_BASE * Math.pow(BASE.XP_GROWTH, this.stats.level - 1));
+      this.stats.xpToNext = xpForLevel(this.stats.level);
       this.pendingLevelUps += 1;
+      gained = true;
     }
-    if (this.pendingLevelUps > 0 && this.stats.state === "playing") {
-      this.stats.state = "levelup";
-      this.stats.pendingChoices = this.rollPerkChoices();
-      this.flash(`Level ${this.stats.level}!`);
-      audio.play("levelUp");
-      this.fx.levelUp(this.player.pos.x, this.player.pos.y);
+    if (!gained) return;
+    this.flash(`Level ${this.stats.level}! · blessing after the wave`);
+    audio.play("levelUp");
+    this.fx.levelUp(this.player.pos.x, this.player.pos.y);
+    // Mid-wave level-ups are banked so combat isn't interrupted.
+    if (this.stats.state === "playing" && this.stats.waveTimer <= 0) this.openPendingLevelUp();
+  }
+
+  private openPendingLevelUp() {
+    this.stats.state = "levelup";
+    this.stats.pendingChoices = this.rollPerkChoices();
+    this.emitStats();
+  }
+
+  // Wave over: spend banked level-ups first, then visit the shop.
+  private finishWave() {
+    if ((this.stats.state as string) === "levelup") { this.pendingShopOpen = true; return; }
+    if (this.pendingLevelUps > 0) {
+      this.pendingShopOpen = true;
+      this.openPendingLevelUp();
+      return;
     }
+    this.openShop();
   }
 
   update(dtRaw: number) {
@@ -5515,11 +5549,7 @@ export class GhostGame {
         // again when the shop closes (see closeShop) so resumed runs start
         // on the next wave, fully spent.
         this.persistResumeSnapshot();
-        if ((this.stats.state as string) === "levelup" || this.pendingLevelUps > 0) {
-          this.pendingShopOpen = true;
-        } else {
-          this.openShop();
-        }
+        this.finishWave();
       }
     }
 
@@ -5890,7 +5920,7 @@ export class GhostGame {
     if (type === "honor") this.stats.honor++;
     else this.stats.ghost++;
     // Mon coin drop — stealth kills (ghost) earn a 50% bonus.
-    const monGain = Math.max(0, Math.round(e.monReward * (type === "ghost" ? 1.5 : 1)));
+    const monGain = Math.max(0, Math.round(e.monReward * 0.75 * (type === "ghost" ? 1.5 : 1)));
     this.stats.mon += monGain;
     if (monGain > 0) {
       // Floating gold popup, larger for bosses + bigger drops.
@@ -5981,11 +6011,7 @@ export class GhostGame {
         this.cameraZoom.setTarget(0.96, 3);
         setTimeout(() => this.cameraZoom.setTarget(1, 4), 800);
         this.cleanupWaveEnd();
-        if ((this.stats.state as string) === "levelup" || this.pendingLevelUps > 0) {
-          this.pendingShopOpen = true;
-        } else {
-          this.openShop();
-        }
+        this.finishWave();
       }
     }
     this.emitStats();
@@ -7644,50 +7670,9 @@ export class GhostGame {
     ctx.translate(shakeX, shakeY);
 
     const biome = this.currentBiome;
-    const grad = ctx.createRadialGradient(W / 2, H / 2, 50, W / 2, H / 2, Math.max(W, H) * 0.7);
-    grad.addColorStop(0, biome.skyInner);
-    grad.addColorStop(0.6, biome.skyMid);
-    grad.addColorStop(1, biome.skyOuter);
-    ctx.fillStyle = grad;
+    this.arena.build(biome.id, this.worldW, this.worldH, ctx);
+    ctx.fillStyle = this.arena.edgeColor();
     ctx.fillRect(-shakeX - 20, -shakeY - 20, W + 40, H + 40);
-
-    ctx.globalAlpha = 0.04;
-    ctx.strokeStyle = biome.groundLine;
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 8; i++) {
-      ctx.beginPath();
-      const y = (i / 8) * H + Math.sin(i) * 20;
-      ctx.moveTo(0, y);
-      ctx.bezierCurveTo(W * 0.3, y + 30, W * 0.7, y - 30, W, y);
-      ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
-
-    if (biome.sunVisible) {
-      const sunX = W * 0.85;
-      const sunY = H * 0.18;
-      const sunR = Math.min(W, H) * 0.18;
-      const sunGrad = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunR);
-      sunGrad.addColorStop(0, biome.sunInner);
-      sunGrad.addColorStop(0.5, biome.sunMid);
-      sunGrad.addColorStop(1, biome.sunOuter);
-      ctx.fillStyle = sunGrad;
-      ctx.beginPath();
-      ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
-      ctx.fill();
-    } else {
-      // Overcast wash for snowfield — soft horizontal band of pale light.
-      const overcast = ctx.createLinearGradient(0, 0, 0, H * 0.6);
-      overcast.addColorStop(0, "hsla(210, 30%, 70%, 0.18)");
-      overcast.addColorStop(1, "hsla(210, 30%, 70%, 0)");
-      ctx.fillStyle = overcast;
-      ctx.fillRect(-shakeX - 20, -shakeY - 20, W + 40, H * 0.6);
-    }
-
-    // Phase 1 — parallax silhouettes drift at 20% camera speed.
-    if (this.quality.state.drawParallax) {
-      this.parallax.draw(ctx, this.cameraX, this.cameraY, W, H, biome.groundLine);
-    }
 
     // ===== World-space rendering (camera follows player) =====
     this.updateCamera();
@@ -7700,32 +7685,8 @@ export class GhostGame {
     }
     ctx.translate(-this.cameraX, -this.cameraY);
 
-    // Subtle ground texture so the larger world feels open, not empty.
-    // Drawn only over the visible area for performance.
-    const tile = 120;
-    const x0 = Math.floor(this.cameraX / tile) * tile;
-    const y0 = Math.floor(this.cameraY / tile) * tile;
-    ctx.globalAlpha = 0.06;
-    ctx.strokeStyle = biome.groundLine;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    for (let x = x0; x < this.cameraX + W + tile; x += tile) {
-      ctx.moveTo(x, this.cameraY - 10);
-      ctx.lineTo(x, this.cameraY + H + 10);
-    }
-    for (let y = y0; y < this.cameraY + H + tile; y += tile) {
-      ctx.moveTo(this.cameraX - 10, y);
-      ctx.lineTo(this.cameraX + W + 10, y);
-    }
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-
-    // World boundary — a faint ink border at the edges of the arena
-    ctx.globalAlpha = 0.5;
-    ctx.strokeStyle = "hsl(0, 30%, 8%)";
-    ctx.lineWidth = 6;
-    ctx.strokeRect(0, 0, this.worldW, this.worldH);
-    ctx.globalAlpha = 1;
+    const zoomPad = this.cameraZoom.zoom < 1 ? (1 / this.cameraZoom.zoom - 1) * Math.max(W, H) : 0;
+    this.arena.draw(ctx, this.cameraX - zoomPad, this.cameraY - zoomPad, W + zoomPad * 2, H + zoomPad * 2, performance.now() / 1000);
 
     for (const p of this.petals) {
       ctx.save();
@@ -8005,7 +7966,7 @@ export class GhostGame {
 
     const vg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.7);
     vg.addColorStop(0, "hsla(0, 0%, 0%, 0)");
-    vg.addColorStop(1, "hsla(0, 0%, 0%, 0.35)");
+    vg.addColorStop(1, "hsla(0, 0%, 0%, 0.22)");
     ctx.fillStyle = vg;
     ctx.fillRect(-shakeX - 20, -shakeY - 20, W + 40, H + 40);
 
@@ -11804,8 +11765,9 @@ export class GhostGame {
     // runs after a wave ends and we never run two intermissions back-to-back.
     if (this.stats.state !== "playing") return;
     const equipped = this.stats.secondaryIds.filter((s): s is SecondaryId => !!s);
-    this.stats.shopOffer = rollShopOffer(6, equipped);
-    this.stats.shopRerollCost = SHOP_REROLL_COST;
+    const infl = shopInflation(this.stats.wave);
+    this.stats.shopOffer = rollShopOffer(6, equipped).map(it => ({ ...it, price: Math.round(it.price * infl) }));
+    this.stats.shopRerollCost = Math.round(SHOP_REROLL_COST * infl);
     this.stats.shopPurchasedIds = [];
     this.stats.state = "shop";
     audio.play("levelUp");
@@ -11817,7 +11779,8 @@ export class GhostGame {
     if (this.stats.mon < this.stats.shopRerollCost) return;
     this.stats.mon -= this.stats.shopRerollCost;
     const equipped = this.stats.secondaryIds.filter((s): s is SecondaryId => !!s);
-    this.stats.shopOffer = rollShopOffer(6, equipped);
+    const infl = shopInflation(this.stats.wave);
+    this.stats.shopOffer = rollShopOffer(6, equipped).map(it => ({ ...it, price: Math.round(it.price * infl) }));
     // Slight escalation so reroll spam isn't free.
     this.stats.shopRerollCost = Math.round(this.stats.shopRerollCost * 1.5);
     this.stats.shopPurchasedIds = [];
@@ -11910,52 +11873,52 @@ export class GhostGame {
         break;
       // ===== Stats rework — rarity-tiered upgrades =====
       case "hp_common":
-        this.perks.maxHpBonus = Math.round(this.perks.maxHpBonus + (100 + this.perks.maxHpBonus) * 0.15);
+        this.perks.maxHpBonus = Math.round(this.perks.maxHpBonus + (100 + this.perks.maxHpBonus) * 0.10);
         p.maxHp = 100 + this.perks.maxHpBonus;
         p.hp = p.maxHp;
         break;
       case "hp_rare":
-        this.perks.maxHpBonus += 5;
+        this.perks.maxHpBonus += 15;
         p.maxHp = 100 + this.perks.maxHpBonus;
-        p.hp = Math.min(p.maxHp, p.hp + 5);
+        p.hp = Math.min(p.maxHp, p.hp + 15);
         break;
       case "hp_leg":
-        this.perks.maxHpBonus += 25;
+        this.perks.maxHpBonus += 40;
         p.maxHp = 100 + this.perks.maxHpBonus;
-        p.hp = Math.min(p.maxHp, p.hp + 25);
+        p.hp = Math.min(p.maxHp, p.hp + 40);
         break;
       case "dmg_katana_common":
-        this.perks.damage = Math.min(MAX_KATANA_DAMAGE, Math.round(this.perks.damage * 1.15));
+        this.addKatanaDamagePct(0.12);
         break;
       case "dmg_katana_rare":
-        this.perks.damage = Math.min(MAX_KATANA_DAMAGE, this.perks.damage + 5);
+        this.addKatanaDamagePct(0.30);
         break;
       case "dmg_katana_leg":
-        this.perks.damage = Math.min(MAX_KATANA_DAMAGE, this.perks.damage + 25);
+        this.addKatanaDamagePct(0.75);
         break;
       case "dex_common":
-        this.perks.dexterity = Math.round((this.perks.dexterity || 0) * 1.15) + (this.perks.dexterity === 0 ? 2 : 0);
+        this.perks.dexterity += 3;
         break;
       case "dex_rare":
-        this.perks.dexterity += 5;
+        this.perks.dexterity += 6;
         break;
       case "dex_leg":
-        this.perks.dexterity += 25;
+        this.perks.dexterity += 12;
         break;
       case "spd_common":
-        this.perks.speedMul *= 1.15;
+        this.perks.speedMul *= 1.05;
         break;
       case "spd_rare":
-        this.perks.speedMul += 0.05;
+        this.perks.speedMul *= 1.08;
         break;
       case "spd_leg":
-        this.perks.speedMul += 0.25;
+        this.perks.speedMul *= 1.15;
         break;
       case "def_rare":
-        this.perks.defense += 5;
+        this.perks.defense += 1;
         break;
       case "def_leg":
-        this.perks.defense += 25;
+        this.perks.defense += 3;
         break;
       case "crit":
         this.perks.critChance = Math.min(0.9, this.perks.critChance + 0.08);
@@ -12072,17 +12035,11 @@ export class GhostGame {
           const wid = m[1] as SecondaryId;
           const tier = m[2];
           const cur = this.perks.weaponDamageBonus[wid] || 0;
-          if (tier === "common") {
-            // +15% of the weapon's *current* effective damage on the
-            // bonus channel — keeps it interesting late game.
-            const def = SECONDARIES[wid];
-            const base = this.perks.damage * def.damageMul * def.dmgScale;
-            this.perks.weaponDamageBonus[wid] = cur + Math.max(1, Math.round(base * 0.15));
-          } else if (tier === "rare") {
-            this.perks.weaponDamageBonus[wid] = cur + 5;
-          } else {
-            this.perks.weaponDamageBonus[wid] = cur + 25;
-          }
+          // Percent of the weapon's current base damage, added on the bonus channel.
+          const def = SECONDARIES[wid];
+          const base = this.baseKatanaDamage * def.damageMul * def.dmgScale;
+          const pct = tier === "common" ? 0.12 : tier === "rare" ? 0.30 : 0.75;
+          this.perks.weaponDamageBonus[wid] = cur + base * pct;
           this.flash(`${SECONDARIES[wid].name} +dmg`);
           break;
         }
