@@ -4290,6 +4290,7 @@ export class GhostGame {
   arena = new Arena();
   baseKatanaDamage = 1;
   fireAnim = 0;
+  abilityPose: { id: string; t: number; dur: number } | null = null;
   saiAnim: [number, number] = [0, 0];
   autoSwapTimer = 0;
   kappaHitChain = 0;
@@ -5896,6 +5897,10 @@ export class GhostGame {
     if (p.dashTimer <= 0 && p.dashHitIds.size > 0) p.dashHitIds.clear();
     p.hitFlash = Math.max(0, p.hitFlash - dt * 4);
     this.fireAnim = Math.max(0, this.fireAnim - dt * 5);
+    if (this.abilityPose) {
+      this.abilityPose.t += dt;
+      if (this.abilityPose.t >= this.abilityPose.dur) this.abilityPose = null;
+    }
     this.saiAnim[0] = Math.max(0, this.saiAnim[0] - dt * 6);
     this.saiAnim[1] = Math.max(0, this.saiAnim[1] - dt * 6);
     if (p.attackAnim > 0) {
@@ -7031,7 +7036,8 @@ export class GhostGame {
   barrageSwing() {
     const p = this.player;
     p.attackAnim = 1;
-    p.swingWeaponId = null;
+    p.swingWeaponId = this.abilityWeapon();
+    this.kickAbilityWeapon();
     p.swingDir = (p.swingDir === 1 ? -1 : 1);
     const range = BASE.ATTACK_RANGE * this.perks.attackRangeMul * 1.05;
     const arc = BASE.ATTACK_ARC * this.perks.attackArcMul;
@@ -7121,6 +7127,8 @@ export class GhostGame {
       if (perp > e.size + 24) continue;
       const ang = Math.atan2(uy, ux);
       this.dealDamage(e, ABILITY.FLASH_DAMAGE + this.perks.damage, ang, 30);
+      this.fx.slash(e.pos.x, e.pos.y, ang + Math.PI / 2, e.size + 20, Math.PI * 0.7, 1,
+        { hue: 200, sat: 70, light: 92, width: 6, life: 0.3, delay: 0.16 });
     }
 
     // Lay down trail markers (slash echoes)
@@ -7170,7 +7178,8 @@ export class GhostGame {
   whirlwindSwing() {
     const p = this.player;
     p.attackAnim = 1;
-    p.swingWeaponId = null;
+    p.swingWeaponId = this.abilityWeapon();
+    this.kickAbilityWeapon();
     const range = BASE.ATTACK_RANGE * this.perks.attackRangeMul * 0.95;
     let hit = false;
     for (const e of this.enemies) {
@@ -7223,7 +7232,8 @@ export class GhostGame {
   bladeStormSwing(launch: boolean) {
     const p = this.player;
     p.attackAnim = 1;
-    p.swingWeaponId = null;
+    p.swingWeaponId = this.abilityWeapon();
+    this.kickAbilityWeapon();
     const range = BASE.ATTACK_RANGE * this.perks.attackRangeMul * 1.0;
     let hit = false;
     for (const e of this.enemies) {
@@ -8228,6 +8238,28 @@ export class GhostGame {
       ctx.restore();
     }
 
+    // Time Slow — a ghostly clock face turns slowly around the player.
+    if (this.timeSlowRemaining > 0) {
+      const p = this.player;
+      const a = Math.min(1, this.timeSlowRemaining / 0.4);
+      ctx.save();
+      ctx.translate(p.pos.x, p.pos.y);
+      ctx.strokeStyle = `hsla(210, 80%, 80%, ${0.45 * a})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, 0, 74, 0, Math.PI * 2); ctx.stroke();
+      for (let i = 0; i < 12; i++) {
+        const ang = (i / 12) * Math.PI * 2;
+        const r0 = i % 3 === 0 ? 62 : 67;
+        ctx.beginPath(); ctx.moveTo(Math.cos(ang) * r0, Math.sin(ang) * r0); ctx.lineTo(Math.cos(ang) * 74, Math.sin(ang) * 74); ctx.stroke();
+      }
+      const hand = this.elapsed * 0.6;
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(hand) * 56, Math.sin(hand) * 56); ctx.stroke();
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(hand * 12) * 66, Math.sin(hand * 12) * 66); ctx.stroke();
+      ctx.restore();
+    }
+
     // Deflect stance — pulsing crimson ring around the player.
     if (this.player.deflectTimer > 0) {
       const p = this.player;
@@ -8241,6 +8273,27 @@ export class GhostGame {
       ctx.restore();
     }
 
+    // Phantom Slash — a crescent blade-wave travels the line, leaving a glowing trail.
+    for (const w of this.phantomSlashes) {
+      const prog = Math.min(1, (1 - w.life / w.maxLife) * 1.6);
+      const ang = Math.atan2(w.ey - w.sy, w.ex - w.sx);
+      const reach = Math.min(Math.hypot(w.ex - w.sx, w.ey - w.sy), 1100);
+      const hx = w.sx + Math.cos(ang) * reach * prog, hy = w.sy + Math.sin(ang) * reach * prog;
+      if (prog < 1) {
+        ctx.save();
+        ctx.translate(hx, hy);
+        ctx.rotate(ang);
+        ctx.globalCompositeOperation = "lighter";
+        for (const [r, w2, a] of [[46, 16, 0.35], [44, 7, 0.95]] as const) {
+          ctx.fillStyle = a > 0.5 ? "hsla(20, 90%, 92%, 0.95)" : `hsla(358, 90%, 60%, ${a})`;
+          ctx.beginPath();
+          ctx.arc(-r * 0.6, 0, r, -1.1, 1.1);
+          ctx.arc(-r * 0.6 - w2, 0, r, 1.1, -1.1, true);
+          ctx.closePath(); ctx.fill();
+        }
+        ctx.restore();
+      }
+    }
     // Phantom Slash — glowing ink-trail line across the arena.
     for (const w of this.phantomSlashes) {
       const t = w.life / w.maxLife;
@@ -8466,7 +8519,35 @@ export class GhostGame {
       ? swingDir * (-weaponArc / 2 + (1 - p.attackAnim) * weaponArc)
       : 0.4 * swingDir;
     ctx.save();
-    if (rangedHeld) {
+    const spinning = this.whirlwindActive || this.bladeStormActive;
+    const spinWeapon = spinning ? (this.abilityWeapon() ?? null) : null;
+    const pose = this.abilityPose && !swingingNow && !spinning ? this.abilityPose : null;
+    if (spinning) {
+      // Whirlwind / Blade Storm: the weapon whirls in a continuous circle.
+      const spin = this.elapsed * (this.bladeStormActive ? 30 : 22);
+      const ring = (weaponRange + 6);
+      ctx.save();
+      ctx.strokeStyle = this.bladeStormActive ? "hsla(358, 90%, 60%, 0.35)" : "hsla(330, 80%, 75%, 0.3)";
+      ctx.lineWidth = 10;
+      ctx.beginPath(); ctx.arc(0, 0, ring * 0.8, spin, spin + 2.4); ctx.stroke();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "hsla(40, 60%, 95%, 0.55)";
+      ctx.beginPath(); ctx.arc(0, 0, ring * 0.92, spin + 1.2, spin + 2.4); ctx.stroke();
+      ctx.restore();
+      ctx.rotate(spin);
+      if (spinWeapon === "twin_sai") { this.drawSai(1); ctx.rotate(Math.PI); this.drawSai(1); }
+      else if (spinWeapon === "flame_spear") this.drawSpear(18);
+      else this.drawPlayerWeapon(spinWeapon, true, weaponRange * 0.85);
+    } else if (pose) {
+      this.drawAbilityPose(pose, weaponId ?? (held && isMeleeSecondary(held) ? held : null), weaponRange);
+    } else if (this.player.deflectTimer > 0 && !swingingNow) {
+      // Deflect: blade held crosswise in front, catching light.
+      ctx.translate(12, 0);
+      ctx.rotate(-Math.PI / 2 + Math.sin(this.elapsed * 20) * 0.05);
+      ctx.translate(-14, 0);
+      if (weaponId === "twin_sai") this.drawSai(0); else if (weaponId === "flame_spear") this.drawSpear(0);
+      else this.drawPlayerWeapon(rangedHeld ? null : weaponId, false, weaponRange);
+    } else if (rangedHeld) {
       this.drawRangedWeapon(rangedHeld);
     } else if (weaponId === "twin_sai") {
       this.drawTwinSai();
@@ -8476,6 +8557,15 @@ export class GhostGame {
       ctx.rotate(p.attackAnim > 0 ? 0 : 0.18 * swingDir);
       this.drawSpear(ext * 46);
     } else {
+      if (this.barrageActive && swingingNow) {
+        for (const off of [-0.35, -0.7]) {
+          ctx.save();
+          ctx.globalAlpha = off === -0.35 ? 0.4 : 0.2;
+          ctx.rotate(swingAng + off * swingDir);
+          this.drawPlayerWeapon(weaponId, true, weaponRange);
+          ctx.restore();
+        }
+      }
       ctx.rotate(swingAng);
       this.drawPlayerWeapon(weaponId, p.attackAnim > 0, weaponRange);
     }
@@ -10500,7 +10590,142 @@ export class GhostGame {
     if (!this.player) return;
     const info = ABILITY_POOL.find(a => a.id === id);
     const kanji = info?.kanji ?? (id === "fireball" ? "炎" : id === "lightning" ? "雷" : "技");
-    this.fx.abilityCast(this.player.pos.x, this.player.pos.y, kanji, ABILITY_FX_HUE[id] ?? 40, this.player.pos);
+    const hue = ABILITY_FX_HUE[id] ?? 40;
+    const p = this.player;
+    const { x, y } = p.pos;
+    const fwd = (d: number) => ({ x: x + Math.cos(p.facing) * d, y: y + Math.sin(p.facing) * d });
+    this.fx.seal(x, y - 44, kanji, hue, 26, 0.7, p.pos);
+    const POSE: Record<string, number> = {
+      timeslow: 0.7, death_mark: 0.45, soul_rend: 0.55, war_horn: 0.7, smoke_bomb: 0.4,
+      execution: 0.45, fireball: 0.4, lightning: 0.45, phantom_slash: 0.45, deflect: 0,
+    };
+    if (POSE[id]) this.abilityPose = { id, t: 0, dur: POSE[id] };
+    switch (id) {
+      case "barrage": {
+        // Golden storm of ghost blades fanning forward.
+        const f = fwd(40);
+        this.fx.burst(f.x, f.y, { count: 14, hue: 45, light: 80, speed: 380, dir: p.facing, spread: 1.4, life: 0.35 });
+        this.fx.glow(f.x, f.y, 60, 45, 90, 70, 0.25);
+        break;
+      }
+      case "flash":
+        this.fx.glow(x, y, 50, 200, 90, 80, 0.2);
+        break;
+      case "whirlwind":
+        this.fx.enso(x, y, 70, 330, { life: 0.9, width: 6, light: 72, follow: p.pos });
+        this.fx.smoke(x, y, 8, 60, 70, 330, 25);
+        break;
+      case "timeslow":
+        this.fx.glow(x, y, 120, 210, 80, 75, 0.5);
+        break;
+      case "bladestorm":
+        this.fx.enso(x, y, 85, 0, { life: 1.2, width: 8, light: 55, follow: p.pos });
+        this.fx.ground(x, y, 110, 358, 1.4);
+        break;
+      case "phantom_slash": {
+        const f = fwd(24);
+        this.fx.glow(f.x, f.y, 70, 358, 90, 60, 0.3);
+        break;
+      }
+      case "death_mark":
+      case "soul_rend": {
+        const f = fwd(18);
+        this.fx.burst(f.x, f.y, { count: 10, hue, light: 60, speed: 160, life: 0.45 });
+        break;
+      }
+      case "deflect":
+        this.fx.enso(x, y, 30, 45, { life: 0.5, width: 4, light: 75, follow: p.pos });
+        break;
+      case "smoke_bomb":
+        break;
+      case "war_horn": {
+        const f = fwd(16);
+        this.fx.burst(f.x, f.y, { count: 12, hue: 42, light: 75, speed: 260, dir: p.facing, spread: 1.2, life: 0.4 });
+        break;
+      }
+      case "execution":
+        this.fx.glow(x, y, 70, 358, 95, 45, 0.35);
+        break;
+      case "fireball":
+        this.fx.flames2(fwd(26).x, fwd(26).y, 8, 10);
+        break;
+      case "lightning": {
+        const f = fwd(20);
+        this.fx.bolt(f.x, f.y - 140, f.x, f.y, 52, 0.2);
+        break;
+      }
+      default:
+        this.fx.abilityCast(x, y, kanji, hue, p.pos);
+    }
+  }
+
+  // Short character poses for abilities that aren't sword swings.
+  private drawAbilityPose(pose: { id: string; t: number; dur: number }, weaponId: SecondaryId | null, range: number) {
+    const ctx = this.ctx;
+    const k = pose.t / pose.dur;              // 0 → 1
+    const rise = Math.sin(Math.min(1, k * 2.2) * Math.PI / 2) * (1 - Math.max(0, (k - 0.7) / 0.3));
+    const hue = ABILITY_FX_HUE[pose.id] ?? 40;
+    const orb = (ox: number, oy: number, r: number) => {
+      const g = ctx.createRadialGradient(ox, oy, 0, ox, oy, r);
+      g.addColorStop(0, `hsla(${hue}, 100%, 85%, ${0.9 * rise})`);
+      g.addColorStop(1, `hsla(${hue}, 100%, 55%, 0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(ox, oy, r, 0, Math.PI * 2); ctx.fill();
+    };
+    const drawHeld = (swinging: boolean) => {
+      if (weaponId === "twin_sai") this.drawSai(swinging ? 1 : 0);
+      else if (weaponId === "flame_spear") this.drawSpear(swinging ? 20 : 0);
+      else this.drawPlayerWeapon(weaponId, swinging, range);
+    };
+    switch (pose.id) {
+      case "war_horn": {
+        // Conch horn raised to the lips.
+        ctx.save();
+        ctx.translate(12 + rise * 4, -6);
+        ctx.rotate(-0.4);
+        ctx.fillStyle = "hsl(36, 50%, 85%)";
+        ctx.beginPath();
+        ctx.moveTo(0, -3); ctx.quadraticCurveTo(14, -12, 20, -2); ctx.quadraticCurveTo(14, 10, 0, 3); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = "hsl(20, 40%, 50%)";
+        ctx.lineWidth = 1;
+        for (let i = 1; i < 4; i++) { ctx.beginPath(); ctx.arc(14, -1, i * 2.2, -1, 1.2); ctx.stroke(); }
+        ctx.restore();
+        orb(30, -8, 22 * rise);
+        break;
+      }
+      case "smoke_bomb": {
+        // Overhand throw: arm whips forward.
+        ctx.save();
+        ctx.rotate(-1.4 + k * 2.2);
+        ctx.translate(14, 0);
+        if (k < 0.5) {
+          ctx.fillStyle = "hsl(0, 0%, 12%)";
+          ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+        ctx.save(); ctx.rotate(0.6); drawHeld(false); ctx.restore();
+        break;
+      }
+      case "execution":
+      case "phantom_slash": {
+        // Overhead raise, then a hard downward cut.
+        const a = k < 0.45 ? -1.6 * (k / 0.45) : -1.6 + ((k - 0.45) / 0.55) * 2.4;
+        ctx.save(); ctx.rotate(a); drawHeld(true); ctx.restore();
+        orb(18, 0, 26 * rise);
+        break;
+      }
+      default: {
+        // Casting stance: weapon lifted high, free hand glowing with the ability's colour.
+        ctx.save(); ctx.rotate(-1.15 * rise - 0.2); drawHeld(false); ctx.restore();
+        orb(14, 6, 20 * rise + 6);
+        if (pose.id === "timeslow") {
+          ctx.strokeStyle = `hsla(210, 80%, 80%, ${0.7 * rise})`;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.arc(14, 6, 9, 0, Math.PI * 2); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(14, 6); ctx.lineTo(14 + Math.cos(k * 12) * 7, 6 + Math.sin(k * 12) * 7); ctx.stroke();
+        }
+      }
+    }
   }
 
   ultimateFx() {
@@ -10974,6 +11199,10 @@ export class GhostGame {
     p.facing = Math.atan2(best.pos.y - p.pos.y, best.pos.x - p.pos.x);
 
     // Slash visual + ink splash centered on the victim.
+    p.attackAnim = 1;
+    p.swingDir = (p.swingDir === 1 ? -1 : 1);
+    p.swingWeaponId = this.abilityWeapon();
+    this.kickAbilityWeapon();
     this.fx.streakLine(startX, startY, p.pos.x, p.pos.y, 45, 95, 10, 0.3);
     this.fx.glow(best.pos.x, best.pos.y, 60, 45, 90, 70, 0.2);
     this.spawnSlash(p.pos, p.facing, BASE.ATTACK_RANGE * 0.95, Math.PI * 0.85);
@@ -11231,6 +11460,19 @@ export class GhostGame {
   }
 
   // Fire the active secondary if cooldown clear and ammo available.
+  // Abilities swing whatever melee weapon is in hand; ranged weapons fall back to the katana.
+  abilityWeapon(): SecondaryId | null {
+    const held = this.stats.secondaryIds[this.stats.secondaryActiveSlot];
+    return held && held !== "katana" && isMeleeSecondary(held) ? held : null;
+  }
+
+  private kickAbilityWeapon() {
+    if (this.abilityWeapon() === "twin_sai") {
+      this.saiAnim[this.saiNext] = 1;
+      this.saiNext = 1 - this.saiNext;
+    }
+  }
+
   // Distance from the player's centre to the weapon's tip, so shots leave the weapon.
   muzzleDist(id: SecondaryId): number {
     switch (id) {

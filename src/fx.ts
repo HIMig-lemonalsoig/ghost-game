@@ -5,7 +5,7 @@
 
 type Pt = { x: number; y: number };
 
-interface Arc { x: number; y: number; ang: number; r: number; arc: number; dir: number; hue: number; sat: number; light: number; width: number; life: number; max: number; follow?: Pt; }
+interface Arc { x: number; y: number; ang: number; r: number; arc: number; dir: number; hue: number; sat: number; light: number; width: number; life: number; max: number; follow?: Pt; delay?: number; }
 interface Shock { x: number; y: number; r: number; hue: number; sat: number; light: number; life: number; max: number; delay: number; width: number; lines: number; }
 interface Streak { x: number; y: number; vx: number; vy: number; hue: number; sat: number; light: number; life: number; max: number; w: number; drag: number; grav: number; }
 interface Bolt { pts: Pt[]; branch: Pt[]; ax: number; ay: number; bx: number; by: number; hue: number; life: number; max: number; rejit: number; }
@@ -68,10 +68,10 @@ export class Fx {
 
   // ───────── Spawners ─────────
   slash(x: number, y: number, ang: number, r: number, arc: number, dir = 1,
-        o: { hue?: number; sat?: number; light?: number; width?: number; life?: number; follow?: Pt } = {}) {
+        o: { hue?: number; sat?: number; light?: number; width?: number; life?: number; follow?: Pt; delay?: number } = {}) {
     const life = o.life ?? (arc >= TAU - 0.01 ? 0.26 : 0.2);
     this.arcs.push({ x, y, ang, r, arc: Math.min(arc, TAU), dir, hue: o.hue ?? 40, sat: o.sat ?? 40,
-      light: o.light ?? 92, width: o.width ?? Math.max(6, r * 0.16), life, max: life, follow: o.follow });
+      light: o.light ?? 92, width: o.width ?? Math.max(6, r * 0.16), life, max: life, follow: o.follow, delay: o.delay });
   }
 
   shockwave(x: number, y: number, r: number, o: { hue?: number; sat?: number; light?: number; life?: number; delay?: number; width?: number; lines?: number } = {}) {
@@ -234,7 +234,10 @@ export class Fx {
         b.pts = jaggedPath(b.ax, b.ay, b.bx, b.by, b.pts.length - 1, 18);
       }
     }
-    for (const a of this.arcs) if (a.follow) { a.x = a.follow.x; a.y = a.follow.y; }
+    for (const a of this.arcs) {
+      if (a.follow) { a.x = a.follow.x; a.y = a.follow.y; }
+      if (a.delay && a.delay > 0) { a.delay -= dt; a.life = Math.min(a.max, a.life + dt); }
+    }
     for (const s of this.seals) if (s.follow) { s.x = s.follow.x; s.y = s.follow.y - 54; }
     for (const e of this.ensos) if (e.follow) { e.x = e.follow.x; e.y = e.follow.y; }
     tick(this.arcs); tick(this.shocks); tick(this.streaks); tick(this.bolts); tick(this.seals);
@@ -357,6 +360,7 @@ export class Fx {
     }
     // Blade arcs (crescents that sweep then fade)
     for (const a of this.arcs) {
+      if (a.delay && a.delay > 0) continue;
       const t = a.life / a.max;
       const sweep = easeOut(Math.min(1, (1 - t) / 0.45));
       const full = a.arc >= TAU - 0.01;
