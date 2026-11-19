@@ -4136,6 +4136,7 @@ export class GhostGame {
   quality = new QualityGuard();
   shakeScale = 1;
   fx = new Fx();
+  fireAnim = 0;
   inkGrain = new InkGrain();
   parallax = new ParallaxLayer();
   cameraZoom = new CameraZoom();
@@ -5596,6 +5597,7 @@ export class GhostGame {
     p.dashTimer = Math.max(0, p.dashTimer - dt);
     if (p.dashTimer <= 0 && p.dashHitIds.size > 0) p.dashHitIds.clear();
     p.hitFlash = Math.max(0, p.hitFlash - dt * 4);
+    this.fireAnim = Math.max(0, this.fireAnim - dt * 5);
     if (p.attackAnim > 0) {
       p.attackAnim -= dt * 3.5;
       if (p.attackAnim < 0) p.attackAnim = 0;
@@ -7965,7 +7967,11 @@ export class GhostGame {
     // mid-melee-secondary-swing). Each melee secondary gets its own per-weapon
     // arc/range, model, and color; all of them honor swingDir so successive
     // swings alternate left→right→left→right.
-    const weaponId = p.attackAnim > 0 ? p.swingWeaponId : null;
+    const heldRaw = this.stats.secondaryIds[this.stats.secondaryActiveSlot];
+    const held = heldRaw && heldRaw !== "katana" ? heldRaw : null;
+    const swingingNow = p.attackAnim > 0;
+    const weaponId = swingingNow ? p.swingWeaponId : (held && isMeleeSecondary(held) ? held : null);
+    const rangedHeld = !swingingNow && held && !isMeleeSecondary(held) ? held : null;
     let weaponRange: number;
     let weaponArc: number;
     if (weaponId === "tessen") { weaponRange = 90; weaponArc = Math.PI * 0.95; }
@@ -7973,6 +7979,7 @@ export class GhostGame {
     else if (weaponId === "ono") { weaponRange = 110; weaponArc = Math.PI * 0.55; }
     else if (weaponId === "twin_sai") { weaponRange = 88; weaponArc = Math.PI * 0.55; }
     else if (weaponId === "odachi") { weaponRange = 150; weaponArc = Math.PI * 1.5; }
+    else if (weaponId === "tate") { weaponRange = 75; weaponArc = Math.PI * 0.5; }
     else {
       // Katana defaults — also used when idle.
       weaponRange = BASE.ATTACK_RANGE * this.perks.attackRangeMul;
@@ -7984,8 +7991,12 @@ export class GhostGame {
       ? swingDir * (-weaponArc / 2 + (1 - p.attackAnim) * weaponArc)
       : 0.4 * swingDir;
     ctx.save();
-    ctx.rotate(swingAng);
-    this.drawPlayerWeapon(weaponId, p.attackAnim > 0, weaponRange);
+    if (rangedHeld) {
+      this.drawRangedWeapon(rangedHeld);
+    } else {
+      ctx.rotate(swingAng);
+      this.drawPlayerWeapon(weaponId, p.attackAnim > 0, weaponRange);
+    }
     ctx.restore();
 
     // Phase 1 — sample the swung weapon's tip into the ink-brush trail.
@@ -8024,24 +8035,63 @@ export class GhostGame {
   private drawPlayerWeapon(id: SecondaryId | null, swinging: boolean, range: number) {
     const ctx = this.ctx;
     const r0 = BASE.PLAYER_RADIUS * 0.6;     // grip starts here
-    const tip = swinging ? range * 0.95 : 28;
+    const tip = swinging ? range * 0.95 : Math.max(id === null ? 36 : 28, Math.min(64, range * 0.45));
 
     if (id === null) {
-      // ===== Katana (default) =====
-      ctx.strokeStyle = "hsl(36, 30%, 92%)";
-      ctx.lineWidth = 3;
+      // ===== Katana — curved single-edge blade, tsuba, wrapped tsuka =====
+      const bladeStart = r0 + 3;
+      const curve = -Math.max(2, (tip - bladeStart) * 0.06);
       ctx.lineCap = "round";
+      ctx.fillStyle = "hsl(210, 12%, 82%)";
       ctx.beginPath();
-      ctx.moveTo(r0, 0);
-      ctx.lineTo(tip, 0);
+      ctx.moveTo(bladeStart, -1.6);
+      ctx.quadraticCurveTo((bladeStart + tip) / 2, -1.6 + curve, tip, curve * 0.9);
+      ctx.lineTo(tip - 6, curve * 0.3 + 1.6);
+      ctx.quadraticCurveTo((bladeStart + tip) / 2, 1.8 + curve * 0.6, bladeStart, 1.8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "hsla(200, 60%, 96%, 0.9)";
+      ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(bladeStart + 2, 1.2);
+      ctx.quadraticCurveTo((bladeStart + tip) / 2, 1.2 + curve * 0.6, tip - 5, curve * 0.3 + 1);
       ctx.stroke();
-      // Crimson grip
-      ctx.strokeStyle = "hsl(0, 60%, 30%)";
+      ctx.fillStyle = "hsl(42, 65%, 45%)";
+      ctx.beginPath();
+      ctx.ellipse(r0 + 1, 0, 1.8, 4.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "hsl(0, 60%, 28%)";
       ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(-3, 0); ctx.lineTo(r0, 0); ctx.stroke();
+      ctx.strokeStyle = "hsl(36, 40%, 80%)";
+      ctx.lineWidth = 0.8;
+      for (let x = -2; x < r0 - 1; x += 3) {
+        ctx.beginPath(); ctx.moveTo(x, -2); ctx.lineTo(x + 1.5, 2); ctx.stroke();
+      }
+      return;
+    }
+
+    if (id === "tate") {
+      // ===== Tate — wooden war shield with iron rim and clan crest =====
+      const raised = this.isBlocking();
+      const x = swinging ? Math.min(tip, 40) : raised ? 20 : 14;
+      const h = raised ? 40 : 32;
+      ctx.fillStyle = "hsl(25, 35%, 28%)";
+      ctx.strokeStyle = "hsl(210, 10%, 55%)";
+      ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(r0, 0);
-      ctx.stroke();
+      ctx.roundRect(x - 4, -h / 2, 9, h, 3);
+      ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = "hsl(25, 30%, 18%)";
+      ctx.lineWidth = 1;
+      for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.moveTo(x - 3, i * h / 4); ctx.lineTo(x + 4, i * h / 4); ctx.stroke(); }
+      ctx.fillStyle = "hsl(358, 70%, 45%)";
+      ctx.beginPath(); ctx.arc(x + 0.5, 0, 3.2, 0, Math.PI * 2); ctx.fill();
+      if (raised) {
+        ctx.strokeStyle = "hsla(45, 90%, 65%, 0.6)";
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(0, 0, x + 10, -0.8, 0.8); ctx.stroke();
+      }
       return;
     }
 
@@ -8146,17 +8196,25 @@ export class GhostGame {
     }
 
     if (id === "odachi") {
-      // ===== Odachi (Greatsword) — extra-long blade, thicker than katana =====
-      ctx.strokeStyle = "hsl(0, 0%, 88%)";
-      ctx.lineWidth = 5;
+      // ===== Odachi (Greatsword) — long, broad curved blade =====
+      const bs = r0 + 4;
+      const curve = -Math.max(3, (tip - bs) * 0.07);
       ctx.lineCap = "round";
+      ctx.fillStyle = "hsl(250, 10%, 80%)";
       ctx.beginPath();
-      ctx.moveTo(r0, 0); ctx.lineTo(tip, 0); ctx.stroke();
-      // Edge highlight
-      ctx.strokeStyle = "hsla(0, 80%, 75%, 0.5)";
-      ctx.lineWidth = 1.5;
+      ctx.moveTo(bs, -2.6);
+      ctx.quadraticCurveTo((bs + tip) / 2, -2.6 + curve, tip, curve * 0.9);
+      ctx.lineTo(tip - 9, curve * 0.3 + 2.6);
+      ctx.quadraticCurveTo((bs + tip) / 2, 2.8 + curve * 0.6, bs, 2.8);
+      ctx.closePath();
+      ctx.fill();
+      // Hamon (temper line) highlight
+      ctx.strokeStyle = "hsla(265, 70%, 85%, 0.8)";
+      ctx.lineWidth = 1.1;
       ctx.beginPath();
-      ctx.moveTo(r0 + 6, -2); ctx.lineTo(tip - 4, -2); ctx.stroke();
+      ctx.moveTo(bs + 3, 1.8);
+      ctx.quadraticCurveTo((bs + tip) / 2, 1.8 + curve * 0.6, tip - 8, curve * 0.3 + 1.6);
+      ctx.stroke();
       // Crossguard
       ctx.strokeStyle = "hsl(45, 70%, 45%)";
       ctx.lineWidth = 3;
@@ -8167,6 +8225,203 @@ export class GhostGame {
       ctx.lineWidth = 5;
       ctx.beginPath(); ctx.moveTo(-4, 0); ctx.lineTo(r0, 0); ctx.stroke();
       return;
+    }
+  }
+
+  // Ranged / thrown weapon models. Drawn pointing along +X (the aim direction).
+  private drawRangedWeapon(id: SecondaryId) {
+    const ctx = this.ctx;
+    const slot = this.stats.secondaryActiveSlot;
+    const loaded = this.stats.secondaryAmmo[slot] > 0 && this.stats.secondaryReload[slot] <= 0;
+    const ready = loaded && this.stats.secondaryCooldown <= 0;
+    const fa = this.fireAnim;
+    const t = this.elapsed;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    const throwArm = (len: number) => {
+      // Thrown weapons swing back then whip forward when released.
+      ctx.rotate(fa > 0 ? -0.9 * fa : 0.35);
+      ctx.translate(len, 0);
+    };
+    switch (id) {
+      case "yumi": {
+        // Tall asymmetric longbow; string draws back with an arrow nocked.
+        const bx = 16;
+        const draw = ready ? 9 : fa > 0 ? 0 : 4;
+        ctx.strokeStyle = "hsl(28, 45%, 32%)";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(bx - 2, -30);
+        ctx.quadraticCurveTo(bx + 16, -6, bx + 2, 22);
+        ctx.stroke();
+        ctx.strokeStyle = "hsl(0, 60%, 35%)";
+        ctx.lineWidth = 3.5;
+        ctx.beginPath(); ctx.moveTo(bx + 5, -4); ctx.lineTo(bx + 6, 3); ctx.stroke();
+        ctx.strokeStyle = "hsla(40, 30%, 90%, 0.85)";
+        ctx.lineWidth = 0.9;
+        ctx.beginPath();
+        ctx.moveTo(bx - 2, -30); ctx.lineTo(bx - draw, 0); ctx.lineTo(bx + 2, 22);
+        ctx.stroke();
+        if (loaded && fa <= 0.2) {
+          ctx.strokeStyle = "hsl(36, 35%, 70%)";
+          ctx.lineWidth = 1.6;
+          ctx.beginPath(); ctx.moveTo(bx - draw, 0); ctx.lineTo(bx + 24, 0); ctx.stroke();
+          ctx.fillStyle = "hsl(210, 15%, 75%)";
+          ctx.beginPath(); ctx.moveTo(bx + 30, 0); ctx.lineTo(bx + 23, -3); ctx.lineTo(bx + 23, 3); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = "hsl(0, 0%, 92%)";
+          ctx.beginPath(); ctx.moveTo(bx - draw, 0); ctx.lineTo(bx - draw + 6, -3); ctx.lineTo(bx - draw + 6, 3); ctx.closePath(); ctx.fill();
+        }
+        break;
+      }
+      case "crossbow": {
+        ctx.translate(-fa * 6, 0);
+        ctx.fillStyle = "hsl(25, 40%, 30%)";
+        ctx.beginPath(); ctx.roundRect(2, -3, 34, 6, 2); ctx.fill();
+        ctx.fillStyle = "hsl(25, 35%, 22%)";
+        ctx.beginPath(); ctx.roundRect(4, 2, 8, 6, 2); ctx.fill();
+        ctx.strokeStyle = "hsl(210, 10%, 50%)";
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(26, -16); ctx.quadraticCurveTo(33, 0, 26, 16); ctx.stroke();
+        const sx = loaded ? 18 : 25;
+        ctx.strokeStyle = "hsla(40, 30%, 90%, 0.8)";
+        ctx.lineWidth = 0.9;
+        ctx.beginPath(); ctx.moveTo(26, -16); ctx.lineTo(sx, 0); ctx.lineTo(26, 16); ctx.stroke();
+        if (loaded) {
+          ctx.strokeStyle = "hsl(36, 70%, 60%)";
+          ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(38, 0); ctx.stroke();
+          ctx.fillStyle = "hsl(210, 15%, 80%)";
+          ctx.beginPath(); ctx.moveTo(42, 0); ctx.lineTo(37, -2.5); ctx.lineTo(37, 2.5); ctx.closePath(); ctx.fill();
+        } else if (this.stats.secondaryReload[slot] > 0) {
+          ctx.strokeStyle = "hsla(200, 80%, 70%, 0.8)";
+          ctx.lineWidth = 2;
+          const pr = 1 - this.stats.secondaryReload[slot] / Math.max(0.01, this.stats.secondaryReloadMax[slot]);
+          ctx.beginPath(); ctx.arc(10, -10, 5, -Math.PI / 2, -Math.PI / 2 + pr * Math.PI * 2); ctx.stroke();
+        }
+        break;
+      }
+      case "blowgun": {
+        ctx.translate(-fa * 3, 0);
+        ctx.strokeStyle = "hsl(80, 30%, 45%)";
+        ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(4, 0); ctx.lineTo(46, 0); ctx.stroke();
+        ctx.strokeStyle = "hsl(80, 25%, 28%)";
+        ctx.lineWidth = 4.6;
+        for (const x of [14, 26, 38]) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + 1, 0); ctx.stroke(); }
+        ctx.strokeStyle = "hsl(0, 0%, 12%)";
+        ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.moveTo(2, 0); ctx.lineTo(6, 0); ctx.stroke();
+        if (loaded && fa <= 0.2) {
+          ctx.fillStyle = "hsl(120, 60%, 55%)";
+          ctx.beginPath(); ctx.arc(45, 0, 1.6, 0, Math.PI * 2); ctx.fill();
+        }
+        break;
+      }
+      case "flame_spear": {
+        const thrust = fa * 14;
+        ctx.translate(thrust - 4, 0);
+        ctx.strokeStyle = "hsl(20, 40%, 26%)";
+        ctx.lineWidth = 3.5;
+        ctx.beginPath(); ctx.moveTo(-8, 0); ctx.lineTo(40, 0); ctx.stroke();
+        ctx.strokeStyle = "hsl(358, 65%, 40%)";
+        ctx.lineWidth = 4.5;
+        ctx.beginPath(); ctx.moveTo(36, 0); ctx.lineTo(39, 0); ctx.stroke();
+        ctx.fillStyle = "hsl(20, 30%, 70%)";
+        ctx.beginPath(); ctx.moveTo(54, 0); ctx.lineTo(40, -4); ctx.lineTo(40, 4); ctx.closePath(); ctx.fill();
+        const fl = 4 + Math.sin(t * 22) * 1.5;
+        ctx.fillStyle = "hsla(25, 100%, 55%, 0.8)";
+        ctx.beginPath(); ctx.ellipse(48, 0, 8 + fl, 4 + fl * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "hsla(50, 100%, 75%, 0.9)";
+        ctx.beginPath(); ctx.ellipse(49, 0, 4, 2, 0, 0, Math.PI * 2); ctx.fill();
+        break;
+      }
+      case "kunai": {
+        throwArm(14);
+        if (fa > 0.4) break;
+        ctx.strokeStyle = "hsl(0, 0%, 25%)";
+        ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.arc(-3, 0, 3, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = "hsl(0, 55%, 30%)";
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(7, 0); ctx.stroke();
+        ctx.fillStyle = "hsl(210, 10%, 60%)";
+        ctx.beginPath(); ctx.moveTo(7, -3.5); ctx.lineTo(20, 0); ctx.lineTo(7, 3.5); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = "hsla(200, 50%, 90%, 0.8)";
+        ctx.lineWidth = 0.7;
+        ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(18, 0); ctx.stroke();
+        break;
+      }
+      case "shuriken_wheel": {
+        const out = this.secProjectiles.some(pr => pr.kind === "shuriken");
+        throwArm(16);
+        if (out || fa > 0.4) break;
+        ctx.rotate(t * 3);
+        ctx.fillStyle = "hsl(210, 8%, 62%)";
+        ctx.beginPath();
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2;
+          const r = i % 2 === 0 ? 10 : 3.5;
+          i === 0 ? ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r) : ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "hsl(0, 0%, 10%)";
+        ctx.beginPath(); ctx.arc(0, 0, 2, 0, Math.PI * 2); ctx.fill();
+        break;
+      }
+      case "kusarigama": {
+        const hookOut = this.secProjectiles.some(pr => pr.kind === "hook");
+        ctx.strokeStyle = "hsl(20, 40%, 28%)";
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(4, 0); ctx.lineTo(20, 0); ctx.stroke();
+        ctx.fillStyle = "hsl(210, 10%, 70%)";
+        ctx.beginPath();
+        ctx.moveTo(20, -2);
+        ctx.quadraticCurveTo(30, -16, 16, -20);
+        ctx.quadraticCurveTo(24, -12, 18, 1);
+        ctx.closePath();
+        ctx.fill();
+        if (!hookOut) {
+          ctx.strokeStyle = "hsl(0, 0%, 45%)";
+          ctx.lineWidth = 1.2;
+          ctx.setLineDash([2, 2]);
+          ctx.beginPath();
+          ctx.moveTo(4, 0);
+          ctx.bezierCurveTo(-6, 14, 10, 18, 12, 8 + Math.sin(t * 4) * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = "hsl(0, 0%, 30%)";
+          ctx.beginPath(); ctx.arc(12, 8 + Math.sin(t * 4) * 2, 3, 0, Math.PI * 2); ctx.fill();
+        }
+        break;
+      }
+      case "smoke_bomb": {
+        throwArm(14);
+        if (fa > 0.4) break;
+        ctx.fillStyle = "hsl(0, 0%, 14%)";
+        ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "hsl(36, 40%, 60%)";
+        ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(3, -4); ctx.quadraticCurveTo(7, -9, 5, -12); ctx.stroke();
+        ctx.fillStyle = `hsla(${30 + Math.sin(t * 30) * 15}, 100%, 65%, 0.95)`;
+        ctx.beginPath(); ctx.arc(5, -12, 1.8 + Math.random(), 0, Math.PI * 2); ctx.fill();
+        break;
+      }
+      case "tetsubishi": {
+        throwArm(14);
+        if (fa > 0.4) break;
+        ctx.fillStyle = "hsl(20, 25%, 22%)";
+        ctx.beginPath(); ctx.arc(0, 0, 6.5, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "hsl(210, 8%, 60%)";
+        ctx.lineWidth = 1.6;
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * Math.PI * 2 + t;
+          ctx.beginPath(); ctx.moveTo(Math.cos(a) * 5, Math.sin(a) * 5); ctx.lineTo(Math.cos(a) * 10, Math.sin(a) * 10); ctx.stroke();
+        }
+        break;
+      }
+      default:
+        this.drawPlayerWeapon(null, false, 28);
     }
   }
 
@@ -10086,6 +10341,20 @@ export class GhostGame {
   }
 
   // Fire the active secondary if cooldown clear and ammo available.
+  // Distance from the player's centre to the weapon's tip, so shots leave the weapon.
+  muzzleDist(id: SecondaryId): number {
+    switch (id) {
+      case "yumi": return 30;
+      case "crossbow": return 36;
+      case "blowgun": return 44;
+      case "flame_spear": return 46;
+      case "kusarigama": return 26;
+      case "shuriken_wheel": return 24;
+      case "kunai": return 24;
+      default: return 20;
+    }
+  }
+
   fireSecondary() {
     if (this.stats.secondaryCooldown > 0) return;
     const slot = this.stats.secondaryActiveSlot;
@@ -10109,6 +10378,7 @@ export class GhostGame {
       }
     }
     this.stats.secondaryCooldown = this.effectiveSecondaryCooldown(id);
+    if (!melee) this.fireAnim = 1;
 
     const p = this.player;
     const baseAng = p.facing;
@@ -10162,7 +10432,7 @@ export class GhostGame {
       const horizSpeed = dist / T;
       const vh = (G * T) / 2;
       this.arcBombs.push({
-        pos: { x: p.pos.x, y: p.pos.y },
+        pos: { x: p.pos.x + Math.cos(ang) * 18, y: p.pos.y + Math.sin(ang) * 18 },
         vel: { x: Math.cos(ang) * horizSpeed, y: Math.sin(ang) * horizSpeed },
         height: 0,
         vh,
@@ -10200,8 +10470,9 @@ export class GhostGame {
         id === "flame_spear" ? "spear" :
         id === "blowgun" ? "dart" :
         "kunai";
+      const md = this.muzzleDist(id);
       const proj: SecondaryProjectile = {
-        pos: { x: p.pos.x, y: p.pos.y },
+        pos: { x: p.pos.x + Math.cos(baseAng) * md, y: p.pos.y + Math.sin(baseAng) * md },
         vel: { x: Math.cos(ang) * speed, y: Math.sin(ang) * speed },
         life: kind === "hook" ? 0.5 : kind === "shuriken" ? 2.4 : kind === "spear" ? 0.55 : 1.0,
         maxLife: kind === "hook" ? 0.5 : kind === "shuriken" ? 2.4 : kind === "spear" ? 0.55 : 1.0,
@@ -10231,7 +10502,10 @@ export class GhostGame {
       id === "flame_spear" ? "hsl(15 95% 70%)" :
       id === "blowgun" ? "hsl(120 60% 70%)" :
       "hsl(260 60% 80%)";
-    this.spawnMuzzleFlash(p.pos, baseAng, flashColor);
+    {
+      const md = this.muzzleDist(id) - 14;
+      this.spawnMuzzleFlash({ x: p.pos.x + Math.cos(baseAng) * md, y: p.pos.y + Math.sin(baseAng) * md }, baseAng, flashColor);
+    }
     if (id === "crossbow") audio.play("crossbowSnap");
     else if (id === "kusarigama") audio.play("hookClink");
     else if (id === "flame_spear") audio.play("slash");
