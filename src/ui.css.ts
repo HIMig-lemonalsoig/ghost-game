@@ -237,6 +237,17 @@ kbd {
 .itemcard .kanji { font-size: 30px; color: var(--c); line-height: 1; }
 .itemcard b { font-size: 14px; }
 .itemcard p { font-size: 12.5px; color: var(--bone); opacity: .85; margin-top: 2px; line-height: 1.35; }
+#overlay.top { z-index: 40; }
+.binds { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px 20px; }
+.bind-group h5 { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--dim); margin-bottom: 6px; }
+.bind-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 36px; font-size: 13px; color: var(--muted); }
+.keycap {
+  min-width: 64px; min-height: 30px; padding: 0 10px; border-radius: 6px; font-weight: 700; font-size: 12px; color: var(--bone);
+  background: rgba(0,0,0,.4); border: 1px solid var(--line-strong); border-bottom-width: 3px; transition: border-color .15s, background .15s;
+}
+.keycap:hover { border-color: var(--gold); }
+.keycap.listening { border-color: var(--gold); background: rgba(217,173,91,.18); color: var(--gold); animation: listen 1s ease-in-out infinite; }
+@keyframes listen { 50% { box-shadow: 0 0 0 3px rgba(217,173,91,.35); } }
 .slot-label { position: absolute; top: -16px; left: 0; right: 0; text-align: center; font-size: 10px; color: var(--muted); white-space: nowrap; }
 .tips {
   position: absolute; bottom: 132px; left: 50%; transform: translateX(-50%);

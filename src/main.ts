@@ -28,6 +28,97 @@ const settings: Settings = readJSON(SETTINGS_KEY, { sound: true, shake: true, ti
 const best: Record<string, number> = readJSON(BEST_KEY, {});
 let lastPick: LastPick | null = readJSON<LastPick | null>(LAST_KEY, null);
 
+// ─── Keybinds (rebindable, saved per browser) ────────────────────────────────
+const KEYS_KEY = "ghostgame.keys.v1";
+type Action = "up" | "down" | "left" | "right" | "attack" | "dash" | "block" | "ability1" | "ability2"
+  | "ult" | "swap" | "item1" | "item2" | "item3" | "pause";
+const ACTIONS: { id: Action; label: string; group: string }[] = [
+  { id: "up", label: "Move up", group: "Movement" },
+  { id: "down", label: "Move down", group: "Movement" },
+  { id: "left", label: "Move left", group: "Movement" },
+  { id: "right", label: "Move right", group: "Movement" },
+  { id: "attack", label: "Attack (hold)", group: "Combat" },
+  { id: "dash", label: "Dash", group: "Combat" },
+  { id: "block", label: "Block (shields)", group: "Combat" },
+  { id: "ability1", label: "Ability 1", group: "Combat" },
+  { id: "ability2", label: "Ability 2", group: "Combat" },
+  { id: "ult", label: "Ultimate", group: "Combat" },
+  { id: "swap", label: "Swap weapon", group: "Combat" },
+  { id: "item1", label: "Use item 1", group: "Items & menu" },
+  { id: "item2", label: "Use item 2", group: "Items & menu" },
+  { id: "item3", label: "Use item 3", group: "Items & menu" },
+  { id: "pause", label: "Pause (Esc also works)", group: "Items & menu" },
+];
+const DEFAULT_KEYS: Record<Action, string> = {
+  up: "KeyW", down: "KeyS", left: "KeyA", right: "KeyD",
+  attack: "Space", dash: "ShiftLeft", block: "KeyF", ability1: "KeyQ", ability2: "KeyE",
+  ult: "KeyR", swap: "Tab", item1: "Digit1", item2: "Digit2", item3: "Digit3", pause: "KeyP",
+};
+const keys: Record<Action, string> = readJSON(KEYS_KEY, { ...DEFAULT_KEYS });
+let capturing: Action | null = null;
+let controlsOpen = false;
+
+// Left/right modifier keys count as the same key.
+const normKey = (c: string) => c.replace(/Right$/, (m) => (/^(Shift|Control|Alt|Meta)/.test(c) ? "Left" : m));
+const NAMED: Record<string, string> = {
+  Space: "Space", Escape: "Esc", Enter: "Enter", Tab: "Tab", Backspace: "Bksp", CapsLock: "Caps",
+  ShiftLeft: "Shift", ControlLeft: "Ctrl", AltLeft: "Alt", MetaLeft: "Meta",
+  ArrowUp: "↑", ArrowDown: "↓", ArrowLeft: "←", ArrowRight: "→",
+  Backquote: "`", Minus: "-", Equal: "=", BracketLeft: "[", BracketRight: "]", Backslash: "\\",
+  Semicolon: ";", Quote: "'", Comma: ",", Period: ".", Slash: "/",
+};
+function keyLabel(code: string): string {
+  if (NAMED[code]) return NAMED[code];
+  const m = /^(?:Key|Digit)(.)$/.exec(code);
+  if (m) return m[1];
+  if (code.startsWith("Numpad")) return "Num " + code.slice(6);
+  return code;
+}
+const K = (a: Action) => keyLabel(keys[a]);
+function actionOf(code: string): Action | null {
+  for (const a of ACTIONS) if (keys[a.id] === code) return a.id;
+  return null;
+}
+function bindKey(a: Action, code: string) {
+  const other = actionOf(code);
+  if (other && other !== a) keys[other] = keys[a];   // swap so nothing is left unbound
+  keys[a] = code;
+  writeJSON(KEYS_KEY, keys);
+}
+const ARROWS: Record<string, "up" | "down" | "left" | "right"> = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" };
+
+function controlsPanel(): string {
+  const groups = [...new Set(ACTIONS.map(a => a.group))];
+  return `<div class="binds">${groups.map(gname => `<div class="bind-group"><h5>${gname}</h5>${
+    ACTIONS.filter(a => a.group === gname).map(a => `<div class="bind-row"><span>${a.label}</span>
+      <button class="keycap${capturing === a.id ? " listening" : ""}" data-bind="${a.id}" aria-label="Rebind ${a.label}">${capturing === a.id ? "Press a key…" : K(a.id)}</button></div>`).join("")
+  }</div>`).join("")}</div>
+  <p class="hint" style="margin-top:10px">Click a key, then press the new one (Esc cancels). Mouse: left-click attacks, right-click dashes. Arrow keys always move and Esc always pauses.</p>
+  <div style="margin-top:10px"><button class="btn ghost" data-act="resetkeys">Reset to defaults</button></div>`;
+}
+
+function showControlsModal() {
+  controlsOpen = true;
+  overlay.classList.add("show", "top");
+  overlay.innerHTML = `<div class="panel" style="text-align:left;max-width:720px">
+    <div class="panel-title" style="text-align:center">CONTROLS</div>
+    <div class="pane" style="margin-top:16px">${controlsPanel()}</div>
+    <div class="panel-actions"><button class="btn primary" data-act="closecontrols">Done · Esc</button></div></div>`;
+}
+function closeControlsModal() {
+  controlsOpen = false;
+  capturing = null;
+  overlay.classList.remove("show", "top");
+  overlay.innerHTML = "";
+  renderMenu();
+}
+function refreshControls() {
+  if (controlsOpen) showControlsModal();
+  else overlayKey = "";
+  if (game) buildHud();
+  if (menu.style.display !== "none" && !controlsOpen) renderMenu();
+}
+
 // ─── DOM scaffolding ──────────────────────────────────────────────────────────
 const style = document.createElement("style");
 style.textContent = UI_CSS;
@@ -156,7 +247,7 @@ function renderMenu() {
   <div class="menu-wrap">
     <div class="menu-top">
       <div class="logo"><span class="kanji">幽</span><div><h1>GHOST GAME</h1><p>Survive the waves. Forge your legend.</p></div></div>
-      <div class="menu-actions">${continueBtn}<button class="btn ghost" data-act="random">Random class</button></div>
+      <div class="menu-actions">${continueBtn}<button class="btn ghost" data-act="controls">Controls</button><button class="btn ghost" data-act="random">Random class</button></div>
     </div>
     <div class="menu-body">
       <div class="class-grid" role="listbox" aria-label="Classes">${cards}</div>
@@ -165,11 +256,11 @@ function renderMenu() {
         <div class="detail-head"><span class="kanji">${cls.kanji}</span><div><h2>${cls.name}</h2><div class="role">${cls.role}</div></div></div>
         <h3>Passives</h3>
         <ul>${cls.bonuses.filter(b => !/secondary|Starts with/i.test(b)).map(b => `<li>${b}</li>`).join("") || "<li>Balanced fighter</li>"}</ul>
-        <h3>Ultimate · R</h3>
+        <h3>Ultimate · ${K("ult")}</h3>
         <div class="ult-box"><b><span class="kanji">${cls.ultKanji}</span> ${cls.ultName}</b><p>${cls.ultDesc}</p></div>
         <h3>Weapons · pick 2</h3>
         <div class="weapons">${weapons}</div>
-        <p class="hint">Press Tab in a fight to swap between your two weapons.</p>
+        <p class="hint">Press ${K("swap")} in a fight to swap between your two weapons.</p>
         <div class="start-row">
           <button class="btn primary" data-act="start" ${currentWeapons.length === 2 ? "" : "disabled"}>Begin · Enter</button>
         </div>
@@ -177,16 +268,17 @@ function renderMenu() {
       </aside>
     </div>
     <div class="controls-strip">
-      <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move</span>
+      <span><kbd>${K("up")}</kbd><kbd>${K("left")}</kbd><kbd>${K("down")}</kbd><kbd>${K("right")}</kbd> Move</span>
       <span>Mouse Aim</span>
-      <span><kbd>Click</kbd>/<kbd>Space</kbd> Attack (hold)</span>
-      <span><kbd>Shift</kbd>/<kbd>Right-click</kbd> Dash</span>
-      <span><kbd>Q</kbd><kbd>E</kbd> Abilities</span>
-      <span><kbd>R</kbd> Ultimate</span>
-      <span><kbd>Tab</kbd> Swap weapon</span>
-      <span><kbd>F</kbd> Block (shields)</span>
-      <span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> Items</span>
+      <span><kbd>Click</kbd>/<kbd>${K("attack")}</kbd> Attack (hold)</span>
+      <span><kbd>${K("dash")}</kbd>/<kbd>Right-click</kbd> Dash</span>
+      <span><kbd>${K("ability1")}</kbd><kbd>${K("ability2")}</kbd> Abilities</span>
+      <span><kbd>${K("ult")}</kbd> Ultimate</span>
+      <span><kbd>${K("swap")}</kbd> Swap weapon</span>
+      <span><kbd>${K("block")}</kbd> Block (shields)</span>
+      <span><kbd>${K("item1")}</kbd><kbd>${K("item2")}</kbd><kbd>${K("item3")}</kbd> Items</span>
       <span><kbd>Esc</kbd> Pause</span>
+      <span><button class="btn ghost" style="min-height:30px;padding:0 10px" data-act="controls">Change keys</button></span>
     </div>
   </div>`;
 }
@@ -218,6 +310,7 @@ menu.addEventListener("click", e => {
   const act = t.closest<HTMLElement>("[data-act]")?.dataset.act;
   if (act === "start") startGame(currentClass, currentWeapons);
   else if (act === "continue") continueRun();
+  else if (act === "controls") showControlsModal();
   else if (act === "random") {
     const pool = CLASSES.filter(c => c.id !== currentClass);
     selectClass(pool[Math.floor(Math.random() * pool.length)].id);
@@ -370,15 +463,15 @@ function buildHud() {
     </div>
     <div class="toast" data-h="toast"></div>
     ${settings.tips ? `<div class="tips" data-h="tips">
-      <span><kbd>WASD</kbd> move</span><span><kbd>Click</kbd> hold to attack</span><span><kbd>Shift</kbd> dash through foes</span>
-      <span><kbd>R</kbd> ultimate when gold</span><span><kbd>Tab</kbd> swap weapon</span><span><kbd>Esc</kbd> pause</span>
+      <span><kbd>${K("up")}${K("left")}${K("down")}${K("right")}</kbd> move</span><span><kbd>Click</kbd> hold to attack</span><span><kbd>${K("dash")}</kbd> dash through foes</span>
+      <span><kbd>${K("ult")}</kbd> ultimate when gold</span><span><kbd>${K("swap")}</kbd> swap weapon</span><span><kbd>Esc</kbd> pause</span>
     </div>` : ""}
     <div class="hud-bottom">
       <div class="group" data-h="weapons"></div>
       <div class="group" data-h="abilities"></div>
       <div class="cell ult-cell">
         <div class="slot ult" data-h="ult" style="--h:${hueOf(cls.accent)}"><div class="fill" data-h="ultfill"></div>
-          <span class="kanji k-base">${cls.ultKanji}</span><span class="kanji k-fill">${cls.ultKanji}</span><span class="cdn num" data-h="ultpct"></span><kbd>R</kbd></div>
+          <span class="kanji k-base">${cls.ultKanji}</span><span class="kanji k-fill">${cls.ultKanji}</span><span class="cdn num" data-h="ultpct"></span><kbd>${K("ult")}</kbd></div>
         <div class="cell-name">${cls.ultName}</div>
       </div>
       <div class="group" data-h="items"></div>
@@ -494,21 +587,21 @@ function updateHud(s: GameStats) {
     toggle(c.root, "held", i === s.secondaryActiveSlot);
     toggle(c.root, "stowed", i !== s.secondaryActiveSlot);
   });
-  if (!wGroup?.querySelector(".tab-hint")) wGroup?.insertAdjacentHTML("beforeend", `<div class="cell tab-hint"><div class="slot mini"><kbd style="position:static">Tab</kbd></div><div class="cell-name dim">Swap</div></div>`);
+  if (!wGroup?.querySelector(".tab-hint")) wGroup?.insertAdjacentHTML("beforeend", `<div class="cell tab-hint"><div class="slot mini"><kbd style="position:static">${K("swap")}</kbd></div><div class="cell-name dim">Swap</div></div>`);
 
   // Abilities
-  const keys = ["Q", "E"];
+  const keysAb = [K("ability1"), K("ability2")];
   const aCells = ensureCells(H("abilities"), 2);
   [0, 1].forEach(i => {
     const c = aCells[i];
     const id = s.equippedAbilities[i];
     if (!id) {
-      setCell(c, `a${i}`, "?", "Level up to unlock", 40, keys[i], true);
+      setCell(c, `a${i}`, "?", "Level up to unlock", 40, keysAb[i], true);
       tickSlot(c, `a${i}`, 1, false, "");
       return;
     }
     const info = abilityInfo(id);
-    setCell(c, `a${i}${id}`, info?.kanji ?? "技", info?.name ?? id, ABILITY_FX_HUE[id] ?? 40, keys[i], false);
+    setCell(c, `a${i}${id}`, info?.kanji ?? "技", info?.name ?? id, ABILITY_FX_HUE[id] ?? 40, keysAb[i], false);
     const cd = s.abilityCd[id] ?? 0;
     const max = s.abilityMax[id] || 1;
     tickSlot(c, `a${i}`, cd > 0 ? 1 - cd / max : 1, cd > 0, cd > 0 ? fmtCd(cd) : "");
@@ -535,9 +628,10 @@ function updateHud(s: GameStats) {
   const iCells = ensureCells(H("items"), s.consumables.length);
   s.consumables.forEach((cid, i) => {
     const c = iCells[i];
-    if (!cid) { setCell(c, `i${i}`, "·", "Empty", 40, String(i + 1), true); tickSlot(c, `i${i}`, 1, false, ""); return; }
+    const itemKey = K((["item1", "item2", "item3"] as const)[i] ?? "item1");
+    if (!cid) { setCell(c, `i${i}`, "·", "Empty", 40, itemKey, true); tickSlot(c, `i${i}`, 1, false, ""); return; }
     const d = CONSUMABLES[cid];
-    setCell(c, `i${i}${cid}`, d.kanji, d.name, hueOf(d.accent), String(i + 1), false);
+    setCell(c, `i${i}${cid}`, d.kanji, d.name, hueOf(d.accent), itemKey, false);
     c.slot.title = d.desc;
     tickSlot(c, `i${i}`, 1, false, "");
   });
@@ -600,7 +694,7 @@ function syncOverlay(s: GameStats) {
   if (s.state === "levelup") key += s.pendingChoices.map(c => c.id).join(",");
   if (s.state === "swap") key += s.pendingAbilityId;
   if (s.state === "shop") key += s.shopOffer.map(i => i.id).join(",") + "|" + s.shopPurchasedIds.join(",") + "|" + s.mon;
-  if (s.state === "paused") key += "|" + JSON.stringify(settings);
+  if (s.state === "paused") key += "|" + JSON.stringify(settings) + JSON.stringify(keys) + capturing;
   if (key === overlayKey) return;
   overlayKey = key;
   if (s.state === "playing") { overlay.classList.remove("show"); overlay.innerHTML = ""; return; }
@@ -687,16 +781,7 @@ function renderPause(s: GameStats) {
           <div>HP regen <b>${d.hpRegen.toFixed(1)}/s</b></div><div>Weapon dmg <b>×${d.secondaryDmgMul.toFixed(2)}</b></div>
         </div></div>
         <div class="pane"><h4>Blessings</h4><div class="perk-list">${perks}</div></div>
-        <div class="pane"><h4>Controls</h4><div class="ctrl-list">
-          <span><kbd>WASD</kbd></span><span>Move · mouse to aim</span>
-          <span><kbd>Click</kbd><kbd>Space</kbd></span><span>Attack (hold to keep swinging)</span>
-          <span><kbd>Shift</kbd><kbd>RMB</kbd></span><span>Dash: brief invincibility, damages foes you pass</span>
-          <span><kbd>Q</kbd><kbd>E</kbd></span><span>Abilities (earned from level-ups)</span>
-          <span><kbd>R</kbd></span><span>Ultimate, charges from hits and kills</span>
-          <span><kbd>Tab</kbd></span><span>Swap weapon</span>
-          <span><kbd>F</kbd></span><span>Hold to block (shield weapons)</span>
-          <span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></span><span>Use item</span>
-        </div></div>
+        <div class="pane"><h4>Controls · click a key to change it</h4>${controlsPanel()}</div>
       </div>
     </div></div>`);
 }
@@ -726,8 +811,13 @@ function pauseGame() { if (game?.stats.state === "playing") { releaseInputs(); g
 function resumeGame() { game?.resume(); }
 
 overlay.addEventListener("click", e => {
-  if (!game) return;
   const t = e.target as HTMLElement;
+  const bind = t.closest<HTMLElement>("[data-bind]");
+  if (bind) { capturing = bind.dataset.bind as Action; refreshControls(); return; }
+  const cact = t.closest<HTMLElement>("[data-act]")?.dataset.act;
+  if (cact === "resetkeys") { Object.assign(keys, DEFAULT_KEYS); writeJSON(KEYS_KEY, keys); capturing = null; refreshControls(); return; }
+  if (cact === "closecontrols") { closeControlsModal(); return; }
+  if (!game) return;
   const perk = t.closest<HTMLElement>("[data-perk]");
   if (perk) { game.selectPerk(perk.dataset.perk!); return; }
   const sw = t.closest<HTMLElement>("[data-swap]");
@@ -771,10 +861,11 @@ function releaseInputs() {
   game?.setInput({ up: false, down: false, left: false, right: false, blockHeld: false, attack: false });
 }
 
-const MOVE: Record<string, "up" | "down" | "left" | "right"> = {
-  KeyW: "up", ArrowUp: "up", KeyS: "down", ArrowDown: "down",
-  KeyA: "left", ArrowLeft: "left", KeyD: "right", ArrowRight: "right",
-};
+function moveDir(code: string): "up" | "down" | "left" | "right" | null {
+  if (ARROWS[code]) return ARROWS[code];
+  const a = actionOf(code);
+  return a === "up" || a === "down" || a === "left" || a === "right" ? a : null;
+}
 
 function overlayKeys(e: KeyboardEvent, s: GameStats): boolean {
   if (!game) return false;
@@ -793,7 +884,7 @@ function overlayKeys(e: KeyboardEvent, s: GameStats): boolean {
       if (e.code === "Enter") { e.preventDefault(); game.closeShop(); }
       return true;
     case "paused":
-      if (e.code === "Escape" || e.code === "KeyP") resumeGame();
+      if (e.code === "Escape" || normKey(e.code) === keys.pause) resumeGame();
       return true;
     case "defeat":
     case "victory":
@@ -805,35 +896,50 @@ function overlayKeys(e: KeyboardEvent, s: GameStats): boolean {
 }
 
 window.addEventListener("keydown", e => {
+  if (capturing) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.code !== "Escape") bindKey(capturing, normKey(e.code));
+    capturing = null;
+    refreshControls();
+    return;
+  }
+  if (controlsOpen) { if (e.code === "Escape") closeControlsModal(); return; }
   if (menu.style.display !== "none") { menuKeys(e); return; }
   if (!game) return;
   const s = game.stats;
   if (s.state !== "playing") { if (!e.repeat) overlayKeys(e, s); return; }
 
-  const dir = MOVE[e.code];
+  const code = normKey(e.code);
+  const dir = moveDir(code);
   if (dir) { game.setInput({ [dir]: true }); e.preventDefault(); return; }
+  const act = actionOf(code);
+  if (act || code === "Escape") e.preventDefault();
   if (e.repeat) return;
-  switch (e.code) {
-    case "ShiftLeft": case "ShiftRight": game.triggerDash(); break;
-    case "Space": e.preventDefault(); attackHeld = true; game.triggerAttack(); break;
-    case "KeyQ": if (s.equippedAbilities[0]) game.triggerAbility(s.equippedAbilities[0]); break;
-    case "KeyE": if (s.equippedAbilities[1]) game.triggerAbility(s.equippedAbilities[1]); break;
-    case "KeyR": game.triggerUlt(); break;
-    case "KeyF": blockHeld = true; game.setInput({ blockHeld: true }); break;
-    case "Tab": case "KeyX": e.preventDefault(); game.triggerSwap(); break;
-    case "Digit1": game.useConsumable(0); break;
-    case "Digit2": game.useConsumable(1); break;
-    case "Digit3": game.useConsumable(2); break;
-    case "Escape": case "KeyP": pauseGame(); break;
+  if (code === "Escape") { pauseGame(); return; }
+  switch (act) {
+    case "dash": game.triggerDash(); break;
+    case "attack": attackHeld = true; game.triggerAttack(); break;
+    case "ability1": if (s.equippedAbilities[0]) game.triggerAbility(s.equippedAbilities[0]); break;
+    case "ability2": if (s.equippedAbilities[1]) game.triggerAbility(s.equippedAbilities[1]); break;
+    case "ult": game.triggerUlt(); break;
+    case "block": blockHeld = true; game.setInput({ blockHeld: true }); break;
+    case "swap": game.triggerSwap(); break;
+    case "item1": game.useConsumable(0); break;
+    case "item2": game.useConsumable(1); break;
+    case "item3": game.useConsumable(2); break;
+    case "pause": pauseGame(); break;
   }
 });
 
 window.addEventListener("keyup", e => {
   if (!game) return;
-  const dir = MOVE[e.code];
+  const code = normKey(e.code);
+  const dir = moveDir(code);
   if (dir) game.setInput({ [dir]: false });
-  if (e.code === "Space") attackHeld = false;
-  if (e.code === "KeyF") { blockHeld = false; game.setInput({ blockHeld: false }); }
+  const act = actionOf(code);
+  if (act === "attack") attackHeld = false;
+  if (act === "block") { blockHeld = false; game.setInput({ blockHeld: false }); }
 });
 
 canvas.addEventListener("mousemove", e => {
