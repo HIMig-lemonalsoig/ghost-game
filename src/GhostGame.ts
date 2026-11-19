@@ -27,7 +27,11 @@ export type ClassId =
   | "kunoichi"
   | "tsuchigumo"
   | "miko"
-  | "kagebushi";
+  | "kagebushi"
+  | "kitsune"
+  | "raijin"
+  | "yukionna"
+  | "sohei";
 
 export interface ClassDef {
   id: ClassId;
@@ -230,6 +234,50 @@ export const CLASSES: ClassDef[] = [
     ultKanji: "闇",
     ultDesc: "Merge with shadow for 6s: 2× damage, +30% speed. Every hit doubles damage. Explodes on end.",
     accent: "hsl(250, 30%, 40%)",
+  },
+  {
+    id: "kitsune",
+    kanji: "狐",
+    name: "Kitsune",
+    role: "Fox Spirit",
+    bonuses: ["+10% movement speed", "15% chance on hit to set foes ablaze", "25% chance on kill to release a homing foxfire"],
+    ultName: "Nine Tails",
+    ultKanji: "九",
+    ultDesc: "Unleash 9 homing foxfires that burn everything they touch, and ignite all nearby foes.",
+    accent: "hsl(24, 95%, 60%)",
+  },
+  {
+    id: "raijin",
+    kanji: "雷",
+    name: "Raijin",
+    role: "Thunder Drummer",
+    bonuses: ["+10 max HP", "Every 6th hit calls a chain-lightning bolt (3 jumps)"],
+    ultName: "Heaven's Drum",
+    ultKanji: "鼓",
+    ultDesc: "For 4s, lightning strikes a nearby foe every 0.3s, stunning on impact.",
+    accent: "hsl(52, 100%, 62%)",
+  },
+  {
+    id: "yukionna",
+    kanji: "雪",
+    name: "Yuki-onna",
+    role: "Snow Witch",
+    bonuses: ["+10 max HP", "Every hit chills the target (slowed 1.5s)", "+15% damage to chilled foes"],
+    ultName: "Eternal Winter",
+    ultKanji: "冬",
+    ultDesc: "Freeze time for 3s, frost-burst every foe on screen and leave them chilled for 6s.",
+    accent: "hsl(195, 85%, 80%)",
+  },
+  {
+    id: "sohei",
+    kanji: "僧",
+    name: "Sohei",
+    role: "Warrior Monk",
+    bonuses: ["+35 max HP", "−5% movement speed", "Thorns: attackers take 60% of the damage they deal you"],
+    ultName: "Prayer Wheel",
+    ultKanji: "輪",
+    ultDesc: "Heal 35% of max HP, become immune for 2.5s and release a shockwave.",
+    accent: "hsl(28, 55%, 58%)",
   },
 ];
 
@@ -618,6 +666,10 @@ export const CLASS_WEAPON_OPTIONS: Record<ClassId, SecondaryId[]> = {
   tsuchigumo: ["kusarigama", "blowgun", "katana", "tessen"],
   miko:       ["tessen", "blowgun", "katana", "tate"],
   kagebushi:  ["odachi", "kusarigama", "shuriken_wheel", "katana"],
+  kitsune:    ["katana", "blowgun", "tessen", "kunai"],
+  raijin:     ["katana", "ono", "shuriken_wheel", "crossbow"],
+  yukionna:   ["katana", "tessen", "yumi", "kunai"],
+  sohei:      ["katana", "ono", "tate", "tetsubishi"],
 };
 
 // Back-compat alias. Old call sites take a tuple of two; new code uses
@@ -3313,6 +3365,8 @@ interface AllyGhost {
   hitSet: Set<number>;       // ids of enemies already hit (for piercing projectiles)
   curse: boolean;            // applies cursed debuff?
   size: number;
+  homing?: boolean;
+  burn?: boolean;
 }
 
 // Kagemusha clone — mirrors the player and draws aggro.
@@ -3460,7 +3514,7 @@ interface XpOrb {
 
 // Base stats (some modified by perks)
 const BASE = {
-  PLAYER_SPEED: 200,
+  PLAYER_SPEED: 215,
   PLAYER_RADIUS: 14,
   ENEMY_RADIUS: 14,
   ATTACK_RANGE: 64,
@@ -3471,7 +3525,7 @@ const BASE = {
   // ===== Dash (Shift / RMB) =====
   DASH_DISTANCE: 180,    // total px traveled
   DASH_DURATION: 0.18,   // seconds
-  DASH_COOLDOWN: 3.8,    // seconds
+  DASH_COOLDOWN: 2.4,    // seconds
   DASH_IFRAMES: 0.22,    // i-frame window from dash start
   DASH_DAMAGE: 6,        // contact damage per enemy passed through
   DASH_HIT_RADIUS: 28,   // contact radius while dashing
@@ -3525,7 +3579,7 @@ const MIN_ATTACK_COOLDOWN_MUL = 1 / 3.0;
 const MAX_HEAL_PER_KILL = 6;
 
 // All available perks. Some can stack.
-const PERK_POOL: Omit<PerkChoice, never>[] = [
+export const PERK_POOL: Omit<PerkChoice, never>[] = [
   { id: "blade_edge", kanji: "刃", name: "Honed Edge", desc: "+15% base damage", rarity: "common" },
   { id: "swift_strike", kanji: "敏", name: "Light Hands", desc: "+5 dexterity (scales attack speed per weapon)", rarity: "common" },
   { id: "long_blade", kanji: "長", name: "Long Blade", desc: "+20% attack range", rarity: "common" },
@@ -3838,6 +3892,10 @@ const CLASS_META: Record<ClassId, {
   tsuchigumo: { name: "Tsuchigumo",      kanji: "蜘",  ultName: "Death Web",             ultKanji: "網" },
   miko:       { name: "Miko",            kanji: "巫",  ultName: "Divine Judgement",      ultKanji: "神" },
   kagebushi:  { name: "Kagebushi",       kanji: "黒",  ultName: "Shadow Consume",        ultKanji: "闇" },
+  kitsune:    { name: "Kitsune",         kanji: "狐",  ultName: "Nine Tails",            ultKanji: "九" },
+  raijin:     { name: "Raijin",          kanji: "雷",  ultName: "Heaven's Drum",         ultKanji: "鼓" },
+  yukionna:   { name: "Yuki-onna",       kanji: "雪",  ultName: "Eternal Winter",        ultKanji: "冬" },
+  sohei:      { name: "Sohei",           kanji: "僧",  ultName: "Prayer Wheel",          ultKanji: "輪" },
 };
 
 export class GhostGame {
@@ -4028,6 +4086,10 @@ export class GhostGame {
   ultBannerActive = false;      // Hatamoto Shogun's Decree
   ultBannerTimer = 0;
   ultBannerPos: Vec2 = { x: 0, y: 0 };
+  raijinHitChain = 0;
+  raijinZapping = false;
+  ultThunderTimer = 0;
+  ultThunderTick = 0;
   ultPhantomTimer = 0;          // Kunoichi Phantom Dance
   ultPhantomImages: { pos: Vec2; vel: Vec2; facing: number; tickAccum: number }[] = [];
   ultEarthshakerTimer = 0;      // Sumo charge
@@ -4061,6 +4123,7 @@ export class GhostGame {
   // ===== Phase 1 VFX systems =====
   vfx = new VfxPool(300);
   quality = new QualityGuard();
+  shakeScale = 1;
   inkGrain = new InkGrain();
   parallax = new ParallaxLayer();
   cameraZoom = new CameraZoom();
@@ -4164,6 +4227,9 @@ export class GhostGame {
     this.secProjectiles = [];
     this.enemyProjectiles = [];
     this.cinematicTimer = 0;
+    this.raijinHitChain = 0;
+    this.ultThunderTimer = 0;
+    this.ultThunderTick = 0;
     this.arcBombs = [];
     this.caltrops = [];
     this.smokeClouds = [];
@@ -4332,6 +4398,22 @@ export class GhostGame {
       case "kagebushi":
         this.perks.classDamageMul *= 1.15;
         // Shadow clone handled in Phase C.
+        break;
+      case "kitsune":
+        this.perks.speedMul *= 1.10;
+        this.perks.fireChance = Math.max(this.perks.fireChance, 0.15);
+        break;
+      case "raijin":
+        this.perks.maxHpBonus += 10;
+        break;
+      case "yukionna":
+        this.perks.maxHpBonus += 10;
+        break;
+      case "sohei":
+        this.perks.maxHpBonus += 35;
+        this.perks.speedMul *= 0.95;
+        this.perks.blockHpBase += 15;
+        this.perks.blockRegen += 1.0;
         break;
     }
     // Enforce HP cap after class bonuses are applied so no class can
@@ -4522,7 +4604,8 @@ export class GhostGame {
     // being two-shot trash. Bosses use computeBossHpScale separately.
     const hpScale = 1 + (wave - 1) * 0.55;
     const dmgScale = 1 + (wave - 1) * 0.10;
-    const speedScale = 1 + Math.min(0.8, (wave - 1) * 0.04);
+    // Kept under the player's base speed so kiting stays possible late-game.
+    const speedScale = 1 + Math.min(0.25, (wave - 1) * 0.015);
     const isBigSpawn = kind === "boss" || kind === "final";
     const s = this.pickSpawnAwayFromPlayer(isBigSpawn ? 460 : 360);
 
@@ -4536,7 +4619,7 @@ export class GhostGame {
         archetype: "final",
         hp: Math.round(220 * hpScale * (1 + tier * 0.5) * bossScale),
         damage: Math.round(42 * dmgScale),
-        speed: 232 * speedScale,
+        speed: 190 * speedScale,
         size: 34 + tier * 2,
         xpReward: 240 + tier * 40,
         monReward: 220 + tier * 60 + Math.floor(Math.random() * 60),
@@ -4549,7 +4632,7 @@ export class GhostGame {
         archetype: "boss",
         hp: Math.round(90 * hpScale * (1 + tier * 0.6) * bossScale),
         damage: Math.round(36 * dmgScale),
-        speed: 243 * speedScale,
+        speed: 178 * speedScale,
         size: 24 + tier * 2,
         xpReward: 60 + tier * 20,
         monReward: 80 + tier * 40 + Math.floor(Math.random() * 30),
@@ -4562,7 +4645,7 @@ export class GhostGame {
         archetype: "shielded",
         hp: Math.round(5 * hpScale),
         damage: Math.round(16 * dmgScale),
-        speed: 232 * speedScale,
+        speed: 150 * speedScale,
         size: BASE.ENEMY_RADIUS + 4,
         xpReward: 18,
         monReward: 8 + tier * 2 + Math.floor(Math.random() * 4),
@@ -4576,7 +4659,7 @@ export class GhostGame {
         archetype: "archer",
         hp: Math.max(1, Math.round(2 * hpScale)),
         damage: Math.round(10 * dmgScale),
-        speed: 243 * speedScale,
+        speed: 170 * speedScale,
         size: BASE.ENEMY_RADIUS - 1,
         xpReward: 16,
         monReward: 5 + tier + Math.floor(Math.random() * 4),
@@ -4589,7 +4672,7 @@ export class GhostGame {
         archetype: "assassin",
         hp: Math.max(1, Math.round(2.5 * hpScale)),
         damage: Math.round(16 * dmgScale),
-        speed: 265 * speedScale,
+        speed: 185 * speedScale,
         size: BASE.ENEMY_RADIUS,
         xpReward: 20,
         monReward: 7 + tier + Math.floor(Math.random() * 5),
@@ -4601,7 +4684,7 @@ export class GhostGame {
         archetype: "heavy",
         hp: Math.round(4 * hpScale),
         damage: Math.round(18 * dmgScale),
-        speed: 238 * speedScale,
+        speed: 150 * speedScale,
         size: BASE.ENEMY_RADIUS + 5,
         xpReward: 14,
         monReward: 6 + tier * 2 + Math.floor(Math.random() * 4),
@@ -4613,7 +4696,7 @@ export class GhostGame {
         archetype: "normal",
         hp: Math.max(1, Math.round(2 * hpScale)),
         damage: Math.round(12 * dmgScale),
-        speed: 218 * speedScale,
+        speed: 165 * speedScale,
         size: BASE.ENEMY_RADIUS,
         xpReward: 8 + tier * 2,
         monReward: 2 + tier + Math.floor(Math.random() * 3),
@@ -5614,6 +5697,7 @@ export class GhostGame {
   }
 
   killEnemy(e: Enemy, type: "honor" | "ghost") {
+    if (e.state === "dead") return;
     e.state = "dead";
     e.deathTimer = 1.4;
     e.hp = 0;
@@ -5726,6 +5810,9 @@ export class GhostGame {
     // Dokkaebi passive: 5% chance on kill to spawn an allied ghost
     if (this.stats.classId === "dokkaebi" && Math.random() < 0.05) {
       this.spawnAllyGhost(e.pos.x, e.pos.y, false);
+    }
+    if (this.stats.classId === "kitsune" && Math.random() < 0.25) {
+      this.spawnFoxfire(e.pos.x, e.pos.y, 5);
     }
     // ===== Phase C — Tsuchigumo: 15% on kill, web nearby foes (2s) =====
     if (this.stats.classId === "tsuchigumo" && Math.random() < 0.15) {
@@ -5857,6 +5944,7 @@ export class GhostGame {
     if (e.webbedRemaining && e.webbedRemaining > 0) dmg *= 2;
     // Death Mark — +50% damage from all sources while marked.
     if (e.markRemaining > 0) dmg *= 1.5;
+    if (this.stats.classId === "yukionna" && e.slowRemaining > 0) dmg *= 1.15;
     // Executioner perk
     if (this.perks.executionerThreshold > 0 && e.maxHp > 0) {
       const ratio = e.hp / e.maxHp;
@@ -5910,6 +5998,16 @@ export class GhostGame {
       if (this.kunoichiHitChain >= 4) {
         this.kunoichiHitChain = 0;
         e.poisonRemaining = Math.min(8, e.poisonRemaining + 4);
+      }
+    }
+    if (this.stats.classId === "yukionna") {
+      e.slowRemaining = Math.max(e.slowRemaining, 1.5);
+    }
+    if (this.stats.classId === "raijin" && !this.raijinZapping) {
+      this.raijinHitChain++;
+      if (this.raijinHitChain >= 6) {
+        this.raijinHitChain = 0;
+        this.chainZap(e, 7, 3);
       }
     }
     // ===== Phase 3 — Generic status effect chances =====
@@ -6006,6 +6104,13 @@ export class GhostGame {
     const bannerMul = this.ultBannerActive ? 0.7 : 1;
     baseDamage = Math.max(1, Math.round(this.scaleEnemyDamage(baseDamage) * bannerMul));
     this.player.hp -= baseDamage;
+    if (this.stats.classId === "sohei" && e.state !== "dead") {
+      const thorns = Math.max(1, Math.round(baseDamage * 0.6));
+      e.hp -= thorns;
+      e.hitFlash = 1;
+      this.spawnFloatText(e.pos, `${thorns}`, { color: "hsl(28 80% 65%)", size: 13 });
+      if (e.hp <= 0) this.killEnemy(e, "honor");
+    }
     // Damage taken — red float text above the player.
     this.spawnFloatText(this.player.pos, `-${Math.max(1, Math.round(baseDamage))}`, {
       color: "hsl(358 90% 65%)",
@@ -6853,6 +6958,42 @@ export class GhostGame {
     }
   }
 
+  // Lightning that arcs outward from `source` (not hitting it) to nearby foes,
+  // or from the player onto `source` when `includeSource` is set. Guarded so
+  // its own hits don't re-trigger class on-hit lightning.
+  chainZap(source: Enemy, dmg: number, jumps: number, includeSource = false) {
+    this.raijinZapping = true;
+    const hit = new Set<number>();
+    let origin = includeSource
+      ? { x: this.player.pos.x, y: this.player.pos.y }
+      : { x: source.pos.x, y: source.pos.y };
+    if (!includeSource) hit.add(source.id);
+    const pickNext = (): Enemy | null => {
+      let next: Enemy | null = null;
+      let bestD = 240;
+      for (const o of this.enemies) {
+        if (o.state === "dead" || o.hp <= 0 || hit.has(o.id)) continue;
+        const d = Math.hypot(o.pos.x - origin.x, o.pos.y - origin.y);
+        if (d < bestD) { bestD = d; next = o; }
+      }
+      return next;
+    };
+    let target: Enemy | null = includeSource ? source : pickNext();
+    for (let i = 0; i < jumps && target; i++) {
+      hit.add(target.id);
+      this.lightningBolts.push({ ax: origin.x, ay: origin.y, bx: target.pos.x, by: target.pos.y, life: 0.25, maxLife: 0.25 });
+      const ang = Math.atan2(target.pos.y - origin.y, target.pos.x - origin.x);
+      origin = { x: target.pos.x, y: target.pos.y };
+      if (target.state !== "dead" && target.hp > 0) {
+        target.stunTimer = Math.max(target.stunTimer, 0.3);
+        this.dealDamage(target, dmg, ang, 20);
+      }
+      target = pickNext();
+    }
+    audio.play("crossbowSnap");
+    this.raijinZapping = false;
+  }
+
   // Helper: nearest live enemy to the player.
   findNearestEnemy(): Enemy | null {
     let best: Enemy | null = null;
@@ -6929,9 +7070,14 @@ export class GhostGame {
       // Half-second windup before every melee swing (bosses match).
       const telegraph = 0.5;
 
-      // Enemies are no longer slowed by perks, War Horn, or generic slow effects.
-      // Only the Time Slow ability and the brief Tetsubo "launched" CC still affect them.
       let speedMul = this.timeSlowRemaining > 0 ? 0.25 : 1;
+      const tough = e.isBoss || e.archetype === "final";
+      if (e.slowRemaining > 0) speedMul *= tough ? 0.8 : 0.55;
+      if (e.warHornSlowRemaining > 0) speedMul *= e.warHornSlowFactor;
+      if (e.webbedRemaining > 0) speedMul *= tough ? 0.7 : 0.3;
+      if (this.ultBannerActive && Math.hypot(e.pos.x - this.ultBannerPos.x, e.pos.y - this.ultBannerPos.y) < 260) {
+        speedMul *= tough ? 0.85 : 0.65;
+      }
       if (e.launched) speedMul = 0;
 
       // Smoke Bomb disorient — wander aimlessly, cannot attack.
@@ -7083,35 +7229,14 @@ export class GhostGame {
                 Math.atan2(this.player.pos.y - e.pos.y, this.player.pos.x - e.pos.x) + Math.PI,
                 { count: 20, spread: Math.PI * 2, hue: 50, speed: 280 });
               if (e.hp <= 0) this.killEnemy(e, "honor");
-            } else if (this.player.invuln <= 0 &&
-                       this.ultMountainTimer <= 0 &&
-                       this.ultBloodRageTimer <= 0 &&
-                       this.ultShadowStepTimer <= 0) {
-              // Yamabushi Mountain's Endurance — absorb instead of taking damage
-              if (this.stats.classId === "yamabushi" && false) {
-                this.ultMountainAbsorbed += e.damage;
-              } else {
-                const bannerMul = this.ultBannerActive ? 0.7 : 1;
-                const dmg = Math.max(1, Math.round(this.scaleEnemyDamage(e.damage) * bannerMul));
-                this.player.hp -= dmg;
-                this.spawnFloatText(this.player.pos, `-${dmg}`, {
-                  color: "hsl(358 90% 65%)",
-                  size: 15,
-                });
-                // Bushido (Samurai) — gain a stack on hit
-                if (this.stats.classId === "samurai") {
-                  this.stats.bushidoStacks = Math.min(5, this.stats.bushidoStacks + 1);
-                }
-                // Ult charge — taking damage gives a chunky boost
-                this.addUltCharge(this.lowHp() ? 20 : 12);
+            } else {
+              // Route through the shared path so block, class shields and thorns apply.
+              const hpBefore = this.player.hp;
+              this.applyEnemyHit(e, e.damage);
+              if (this.player.hp < hpBefore) {
+                this.hitstop = 0.06;
+                audio.play("playerHit");
               }
-              this.player.invuln = 0.6 + this.perks.invulnBonus;
-              this.player.hitFlash = 1;
-              this.cameraShake = 0.5;
-              this.hitstop = 0.06;
-              this.spawnBlood(this.player.pos, angToPlayer + Math.PI);
-              audio.play("playerHit");
-              this.emitStats();
             }
           }
           e.state = "alert";
@@ -7121,7 +7246,30 @@ export class GhostGame {
       }
     }
 
+    this.separateEnemies(dt);
     this.enemies = this.enemies.filter(e => !(e.state === "dead" && e.deathTimer <= -0.5));
+  }
+
+  separateEnemies(dt: number) {
+    const live = this.enemies.filter(e => e.state !== "dead");
+    for (let i = 0; i < live.length; i++) {
+      const a = live[i];
+      for (let j = i + 1; j < live.length; j++) {
+        const b = live[j];
+        const dx = b.pos.x - a.pos.x;
+        const dy = b.pos.y - a.pos.y;
+        const min = (a.size + b.size) * 0.9;
+        const d2 = dx * dx + dy * dy;
+        if (d2 >= min * min || d2 === 0) continue;
+        const d = Math.sqrt(d2);
+        const push = Math.min((min - d) * 0.5, 240 * dt);
+        const nx = dx / d, ny = dy / d;
+        const wa = a.isBoss ? 0.15 : 0.5;
+        const wb = b.isBoss ? 0.15 : 0.5;
+        a.pos.x -= nx * push * wa * 2; a.pos.y -= ny * push * wa * 2;
+        b.pos.x += nx * push * wb * 2; b.pos.y += ny * push * wb * 2;
+      }
+    }
   }
 
   updateParticles(dt: number) {
@@ -7293,8 +7441,8 @@ export class GhostGame {
     const ctx = this.ctx;
     const W = this.width, H = this.height;
 
-    const shakeX = (Math.random() - 0.5) * this.cameraShake * 14;
-    const shakeY = (Math.random() - 0.5) * this.cameraShake * 14;
+    const shakeX = (Math.random() - 0.5) * this.cameraShake * 14 * this.shakeScale;
+    const shakeY = (Math.random() - 0.5) * this.cameraShake * 14 * this.shakeScale;
 
     ctx.save();
     ctx.translate(shakeX, shakeY);
@@ -8604,6 +8752,21 @@ export class GhostGame {
         }
       }
     }
+    if (this.ultThunderTimer > 0) {
+      this.ultThunderTimer = Math.max(0, this.ultThunderTimer - dt);
+      this.ultThunderTick -= dt;
+      if (this.ultThunderTick <= 0) {
+        this.ultThunderTick = 0.3;
+        const near = this.enemies.filter(e =>
+          e.state !== "dead" && Math.hypot(e.pos.x - this.player.pos.x, e.pos.y - this.player.pos.y) < 520);
+        if (near.length) {
+          const t = near[Math.floor(Math.random() * near.length)];
+          this.chainZap(t, 9, 2, true);
+          t.stunTimer = Math.max(t.stunTimer, 0.5);
+          this.cameraShake = Math.max(this.cameraShake, 0.25);
+        }
+      }
+    }
     if (this.standoffTimer > 0) this.standoffTimer = Math.max(0, this.standoffTimer - dt);
     if (this.screenFlashTimer > 0) this.screenFlashTimer = Math.max(0, this.screenFlashTimer - dt);
     if (this.desaturate > 0 && this.standoffTimer <= 0) this.desaturate = Math.max(0, this.desaturate - dt * 2);
@@ -8629,7 +8792,8 @@ export class GhostGame {
         this.ultEarthshakerTimer <= 0 &&
         this.ultDeathWebTimer <= 0 &&
         this.ultDivineBeamTimer <= 0 &&
-        this.ultShadowConsumeTimer <= 0) {
+        this.ultShadowConsumeTimer <= 0 &&
+        this.ultThunderTimer <= 0) {
       this.stats.ultActive = false;
     }
 
@@ -8927,6 +9091,26 @@ export class GhostGame {
     // Ally ghosts (Dokkaebi passive proc + ult): travel, pierce, curse.
     for (const g of this.allyGhosts) {
       g.life -= dt;
+      if (g.homing) {
+        let best: Enemy | null = null;
+        let bestD = 520;
+        for (const e of this.enemies) {
+          if (e.state === "dead" || g.hitSet.has(e.id)) continue;
+          const d = Math.hypot(e.pos.x - g.pos.x, e.pos.y - g.pos.y);
+          if (d < bestD) { bestD = d; best = e; }
+        }
+        if (best) {
+          const want = Math.atan2(best.pos.y - g.pos.y, best.pos.x - g.pos.x);
+          const sp = Math.hypot(g.vel.x, g.vel.y) || 300;
+          const cur = Math.atan2(g.vel.y, g.vel.x);
+          let diff = want - cur;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          const turn = cur + Math.max(-7 * dt, Math.min(7 * dt, diff));
+          g.vel.x = Math.cos(turn) * sp;
+          g.vel.y = Math.sin(turn) * sp;
+        }
+      }
       g.pos.x += g.vel.x * dt;
       g.pos.y += g.vel.y * dt;
       for (const e of this.enemies) {
@@ -8935,6 +9119,7 @@ export class GhostGame {
           g.hitSet.add(e.id);
           this.dealDamage(e, g.damage, Math.atan2(e.pos.y - g.pos.y, e.pos.x - g.pos.x), 30);
           if (g.curse) e.curseRemaining = Math.max(e.curseRemaining, 6);
+          if (g.burn) { e.burnRemaining = Math.max(e.burnRemaining, 4); e.burnDps = Math.max(e.burnDps, 5); }
         }
       }
     }
@@ -9101,6 +9286,20 @@ export class GhostGame {
         if (this.ultRoninRemaining === 0) this.ultRoninMul = 1;
       }
     }
+  }
+
+  spawnFoxfire(x: number, y: number, damage: number, ang = Math.random() * Math.PI * 2) {
+    this.allyGhosts.push({
+      pos: { x, y },
+      vel: { x: Math.cos(ang) * 340, y: Math.sin(ang) * 340 },
+      life: 2.2, maxLife: 2.2,
+      damage,
+      hitSet: new Set(),
+      curse: false,
+      size: 13,
+      homing: true,
+      burn: true,
+    });
   }
 
   spawnAllyGhost(x: number, y: number, curse: boolean) {
@@ -9337,6 +9536,62 @@ export class GhostGame {
         // Boost speed by setting speedMul above cap won't work; instead grant
         // a temporary direct bonus by letting the cap clamp it — the visual
         // "double-attack" is provided by the existing shadow clone passive.
+        break;
+      }
+      case "kitsune": {
+        for (let i = 0; i < 9; i++) {
+          this.spawnFoxfire(this.player.pos.x, this.player.pos.y, 9, (i / 9) * Math.PI * 2);
+        }
+        for (const e of this.enemies) {
+          if (e.state === "dead") continue;
+          if (Math.hypot(e.pos.x - this.player.pos.x, e.pos.y - this.player.pos.y) > 380) continue;
+          e.burnRemaining = Math.max(e.burnRemaining, 5);
+          e.burnDps = Math.max(e.burnDps, 7);
+        }
+        this.player.invuln = Math.max(this.player.invuln, 0.8);
+        this.screenFlashColor = "hsla(24, 95%, 60%, 0.4)";
+        this.screenFlashTimer = 0.4;
+        break;
+      }
+      case "raijin": {
+        this.ultThunderTimer = 4;
+        this.ultThunderTick = 0;
+        this.player.invuln = Math.max(this.player.invuln, 0.6);
+        this.screenFlashColor = "hsla(52, 100%, 80%, 0.5)";
+        this.screenFlashTimer = 0.35;
+        this.cameraShake = Math.max(this.cameraShake, 0.6);
+        break;
+      }
+      case "yukionna": {
+        this.timeSlowRemaining = Math.max(this.timeSlowRemaining, 3);
+        for (const e of this.enemies) {
+          if (e.state === "dead") continue;
+          const dx = e.pos.x - this.player.pos.x;
+          const dy = e.pos.y - this.player.pos.y;
+          if (Math.hypot(dx, dy) > 650) continue;
+          e.slowRemaining = Math.max(e.slowRemaining, 6);
+          this.dealDamage(e, 10, Math.atan2(dy, dx), 60);
+        }
+        this.floorRings.spawn(this.player.pos.x, this.player.pos.y, 650, 0.8, 195, 0.9);
+        this.player.invuln = Math.max(this.player.invuln, 1);
+        this.screenFlashColor = "hsla(195, 85%, 90%, 0.55)";
+        this.screenFlashTimer = 0.5;
+        break;
+      }
+      case "sohei": {
+        this.player.hp = Math.min(this.player.maxHp, this.player.hp + Math.round(this.player.maxHp * 0.35));
+        this.player.invuln = Math.max(this.player.invuln, 2.5);
+        this.shockwaves.push({
+          pos: { x: this.player.pos.x, y: this.player.pos.y },
+          radius: 0,
+          maxRadius: 320,
+          life: 0.6,
+          damage: 14,
+          hitSet: new Set(),
+        });
+        this.cameraShake = Math.max(this.cameraShake, 0.7);
+        this.screenFlashColor = "hsla(28, 70%, 70%, 0.4)";
+        this.screenFlashTimer = 0.4;
         break;
       }
       default: {

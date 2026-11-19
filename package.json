@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:file": "node scripts/build-file.mjs",
     "preview": "vite preview",
     "test": "vitest"
   },

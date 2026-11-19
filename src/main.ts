@@ -1,373 +1,721 @@
-import { GhostGame, CLASSES, CLASS_WEAPON_OPTIONS } from "./GhostGame";
-import type { ClassId, GameStats } from "./GhostGame";
+import {
+  GhostGame, CLASSES, CLASS_WEAPON_OPTIONS, SECONDARIES, ABILITY_POOL, CONSUMABLES, PERK_POOL,
+  audio, loadRun, hasSavedRun, clearSavedRun, getClass,
+} from "./GhostGame";
+import type { ClassId, GameStats, SecondaryId } from "./GhostGame";
+import { UI_CSS } from "./ui.css";
 
-// ─── Canvas + Game Instance ───────────────────────────────────────────────────
+// ─── Persistent settings & records ────────────────────────────────────────────
+const SETTINGS_KEY = "ghostgame.settings.v1";
+const BEST_KEY = "ghostgame.best.v1";
+const LAST_KEY = "ghostgame.last.v1";
+
+interface Settings { sound: boolean; shake: boolean; tips: boolean; autoPause: boolean; }
+interface LastPick { classId: ClassId; weapons: SecondaryId[]; }
+
+function readJSON<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? { ...fallback, ...JSON.parse(raw) } : fallback;
+  } catch { return fallback; }
+}
+function writeJSON(key: string, value: unknown) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage blocked */ }
+}
+
+const settings: Settings = readJSON(SETTINGS_KEY, { sound: true, shake: true, tips: true, autoPause: true });
+const best: Record<string, number> = readJSON(BEST_KEY, {});
+let lastPick: LastPick | null = readJSON<LastPick | null>(LAST_KEY, null);
+
+// ─── DOM scaffolding ──────────────────────────────────────────────────────────
+const style = document.createElement("style");
+style.textContent = UI_CSS;
+document.head.appendChild(style);
+
 const canvas = document.getElementById("game-canvas") as HTMLCanvasElement;
+const $ = <T extends HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector(sel) as T;
+const h = (tag: string, cls = "", html = "") => {
+  const el = document.createElement(tag);
+  if (cls) el.className = cls;
+  if (html) el.innerHTML = html;
+  return el;
+};
+
+const menu = h("div"); menu.id = "menu";
+const hud = h("div"); hud.id = "hud";
+const overlay = h("div"); overlay.id = "overlay";
+overlay.setAttribute("role", "dialog");
+document.body.append(hud, overlay, menu);
+
+// ─── Game state ───────────────────────────────────────────────────────────────
 let game: GhostGame | null = null;
 let animId: number | null = null;
 let lastTime = 0;
 let dpr = window.devicePixelRatio || 1;
-let currentStats: GameStats | null = null;
+let stats: GameStats | null = null;
+let currentClass: ClassId = lastPick?.classId ?? "samurai";
+let currentWeapons: SecondaryId[] = [];
+let runStartedAt = 0;
+let overlayKey = "";
+let recordSet = false;
+let attackHeld = false;
+let blockHeld = false;
 
 function resize() {
   dpr = window.devicePixelRatio || 1;
-  const w = window.innerWidth;
-  const h = window.innerHeight;
-  if (w === 0 || h === 0) return; // ignore bad resize events
+  const w = window.innerWidth, hgt = window.innerHeight;
+  if (!w || !hgt) return;
   canvas.width = Math.round(w * dpr);
-  canvas.height = Math.round(h * dpr);
+  canvas.height = Math.round(hgt * dpr);
   canvas.style.width = `${w}px`;
-  canvas.style.height = `${h}px`;
-  game?.resize(canvas.width, canvas.height, dpr);
+  canvas.style.height = `${hgt}px`;
+  game?.resize(w, hgt, dpr);
 }
 window.addEventListener("resize", resize);
 
-// ─── Overlay DOM ─────────────────────────────────────────────────────────────
-const overlay = document.createElement("div");
-overlay.id = "overlay";
-Object.assign(overlay.style, {
-  position: "fixed", inset: "0", display: "none",
-  alignItems: "center", justifyContent: "center",
-  background: "rgba(0,0,0,0.82)", zIndex: "10",
-  fontFamily: "serif", color: "#e8d9b0",
-});
-document.body.appendChild(overlay);
-
-function showOverlay(html: string) {
-  overlay.innerHTML = html;
-  overlay.style.display = "flex";
-}
-function hideOverlay() {
-  overlay.style.display = "none";
-  overlay.innerHTML = "";
+function applySettings() {
+  audio.setMuted(!settings.sound);
+  if (game) game.shakeScale = settings.shake ? 1 : 0.15;
+  writeJSON(SETTINGS_KEY, settings);
 }
 
-function rarityColor(r: string) {
-  if (r === "legendary") return "#f4c842";
-  if (r === "rare") return "#a78bfa";
-  return "#aaa";
+// ─── Name lookups ─────────────────────────────────────────────────────────────
+const abilityInfo = (id: string) => ABILITY_POOL.find(a => a.id === id);
+function perkLabel(id: string): { kanji: string; name: string } {
+  if (id.startsWith("ability:")) {
+    const a = abilityInfo(id.slice(8));
+    return a ? { kanji: a.kanji, name: a.name } : { kanji: "技", name: id.slice(8) };
+  }
+  const base = id.split(/[#:x]/)[0];
+  const p = PERK_POOL.find(pp => pp.id === id || pp.id === base);
+  return p ? { kanji: p.kanji, name: p.name } : { kanji: "印", name: id.replace(/_/g, " ") };
 }
 
-function renderGameOverlay(stats: GameStats) {
-  if (!game) return;
+// ─── Class select ─────────────────────────────────────────────────────────────
+function defaultWeapons(id: ClassId): SecondaryId[] {
+  if (lastPick && lastPick.classId === id && lastPick.weapons.length === 2) return [...lastPick.weapons];
+  return CLASS_WEAPON_OPTIONS[id].slice(0, 2);
+}
 
-  if (stats.state === "levelup" && stats.pendingChoices.length > 0) {
-    const cards = stats.pendingChoices.map(c => `
-      <div onclick="window._pickPerk('${c.id}')" style="
-        cursor:pointer; border:1px solid ${rarityColor(c.rarity)};
-        border-radius:8px; padding:16px; width:200px; background:#111;
-        margin:0 8px; text-align:center;
-      " onmouseenter="this.style.background='#1e1e1e'" onmouseleave="this.style.background='#111'">
-        <div style="font-size:32px;color:${rarityColor(c.rarity)}">${c.kanji}</div>
-        <div style="font-size:14px;font-weight:bold;margin:6px 0">${c.name}</div>
-        <div style="font-size:10px;color:${rarityColor(c.rarity)};margin-bottom:6px;text-transform:uppercase">${c.rarity}</div>
-        <div style="font-size:11px;color:#bbb;line-height:1.4">${c.desc}</div>
-      </div>
-    `).join("");
-    showOverlay(`
-      <div style="text-align:center">
-        <div style="font-size:20px;letter-spacing:2px;margin-bottom:20px;color:#c8a96e">⚔ LEVEL UP ⚔</div>
-        <div style="display:flex;justify-content:center;flex-wrap:wrap">${cards}</div>
-      </div>
-    `);
-    (window as any)._pickPerk = (id: string) => { hideOverlay(); game?.selectPerk(id); };
-    return;
-  }
-
-  if (stats.state === "swap" && stats.pendingAbilityId) {
-    const pending = stats.pendingAbilityId;
-    const slots = stats.equippedAbilities.map((id, i) => `
-      <div onclick="window._swapAbility('${id}')" style="
-        cursor:pointer; border:1px solid #a78bfa; border-radius:8px;
-        padding:16px; width:180px; background:#111; margin:0 8px; text-align:center;
-      " onmouseenter="this.style.background='#1e1e1e'" onmouseleave="this.style.background='#111'">
-        <div style="font-size:11px;color:#888;margin-bottom:4px">Replace slot ${i + 1}</div>
-        <div style="font-size:14px;font-weight:bold;margin:4px 0">${id}</div>
-      </div>
-    `).join("");
-    showOverlay(`
-      <div style="text-align:center">
-        <div style="font-size:18px;margin-bottom:8px;color:#c8a96e">New ability: <b>${pending}</b></div>
-        <div style="font-size:13px;color:#888;margin-bottom:20px">Choose an ability to replace</div>
-        <div style="display:flex;justify-content:center">${slots}</div>
-        <button onclick="window._cancelSwap()" style="
-          margin-top:20px; padding:8px 24px; background:transparent;
-          border:1px solid #555; color:#aaa; border-radius:6px; cursor:pointer; font-size:13px;
-        ">Keep current abilities</button>
-      </div>
-    `);
-    (window as any)._swapAbility = (id: string) => { hideOverlay(); game?.swapAbility(id); };
-    (window as any)._cancelSwap = () => { hideOverlay(); game?.cancelSwap(); };
-    return;
-  }
-
-  if (stats.state === "shop") {
-    const items = stats.shopOffer.map(item => `
-      <div onclick="window._buyItem('${item.id}')" style="
-        cursor:pointer; border:1px solid ${rarityColor(item.rarity)};
-        border-radius:8px; padding:12px; width:150px; background:#111;
-        margin:6px; text-align:center;
-      " onmouseenter="this.style.background='#1e1e1e'" onmouseleave="this.style.background='#111'">
-        <div style="font-size:10px;color:${rarityColor(item.rarity)};text-transform:uppercase;margin-bottom:4px">${item.rarity}</div>
-        <div style="font-size:13px;font-weight:bold;margin:4px 0">${item.name}</div>
-        <div style="font-size:11px;color:#bbb;margin-bottom:8px;line-height:1.3">${item.desc}</div>
-        <div style="font-size:14px;color:#c8a96e">文 ${item.price}</div>
-      </div>
-    `).join("");
-    showOverlay(`
-      <div style="text-align:center;max-width:700px">
-        <div style="font-size:20px;letter-spacing:2px;margin-bottom:4px;color:#c8a96e">商 SHOP</div>
-        <div style="font-size:13px;color:#888;margin-bottom:16px">文 ${stats.mon} — Wave ${stats.wave}</div>
-        <div style="display:flex;flex-wrap:wrap;justify-content:center">${items}</div>
-        <div style="margin-top:16px;display:flex;gap:12px;justify-content:center">
-          <button onclick="window._rerollShop()" style="
-            padding:8px 20px; background:transparent; border:1px solid #c8a96e;
-            color:#c8a96e; border-radius:6px; cursor:pointer; font-size:13px;
-          ">Reroll (文 ${stats.shopRerollCost})</button>
-          <button onclick="window._leaveShop()" style="
-            padding:8px 20px; background:transparent; border:1px solid #555;
-            color:#aaa; border-radius:6px; cursor:pointer; font-size:13px;
-          ">Leave Shop</button>
-        </div>
-      </div>
-    `);
-    (window as any)._buyItem = (id: string) => {
-      game?.buyShopItem(id);
-      if (game) renderGameOverlay(game.stats);
-    };
-    (window as any)._rerollShop = () => {
-      game?.rerollShop();
-      if (game) renderGameOverlay(game.stats);
-    };
-    (window as any)._leaveShop = () => { hideOverlay(); game?.closeShop(); };
-    return;
-  }
-
-  if (stats.state === "victory") {
-    showOverlay(`
-      <div style="text-align:center">
-        <div style="font-size:64px">天</div>
-        <div style="font-size:24px;color:#c8a96e;margin:12px 0">VICTORY</div>
-        <div style="font-size:14px;color:#888;margin-bottom:24px">Wave ${stats.wave} cleared</div>
-        <button onclick="window._restart()" style="
-          padding:10px 28px; background:#c8a96e; border:none;
-          color:#111; border-radius:6px; cursor:pointer; font-size:14px;font-weight:bold;
-        ">Play Again</button>
-      </div>
-    `);
-    (window as any)._restart = () => { hideOverlay(); showClassSelect(); };
-    return;
-  }
-
-  if (stats.state === "defeat") {
-    showOverlay(`
-      <div style="text-align:center">
-        <div style="font-size:64px;color:#c0392b">敗</div>
-        <div style="font-size:24px;color:#c0392b;margin:12px 0">DEFEATED</div>
-        <div style="font-size:14px;color:#888;margin-bottom:24px">Survived to wave ${stats.wave}</div>
-        <button onclick="window._restart()" style="
-          padding:10px 28px; background:#c8a96e; border:none;
-          color:#111; border-radius:6px; cursor:pointer; font-size:14px;font-weight:bold;
-        ">Try Again</button>
-      </div>
-    `);
-    (window as any)._restart = () => { hideOverlay(); showClassSelect(); };
-    return;
-  }
-
+function showMenu() {
+  stopGame();
+  hud.classList.remove("show");
   hideOverlay();
+  if (!currentWeapons.length) currentWeapons = defaultWeapons(currentClass);
+  renderMenu();
+  menu.style.display = "block";
+  requestAnimationFrame(() => $<HTMLElement>(".class-card.sel", menu)?.focus({ preventScroll: true }));
 }
 
-// ─── Game Loop ────────────────────────────────────────────────────────────────
+function renderMenu() {
+  const saved = hasSavedRun() ? loadRun() : null;
+  const cards = CLASSES.map(c => {
+    const b = best[c.id];
+    const badge = b ? `<span class="best num">Best W${b}</span>` : "";
+    return `<button class="class-card${c.id === currentClass ? " sel" : ""}" data-class="${c.id}" style="--accent:${c.accent}" aria-pressed="${c.id === currentClass}">
+      ${badge}<div class="kanji">${c.kanji}</div><div class="name">${c.name}</div><div class="role">${c.role}</div>
+    </button>`;
+  }).join("");
+
+  const cls = getClass(currentClass);
+  const weapons = CLASS_WEAPON_OPTIONS[currentClass].map(id => {
+    const w = SECONDARIES[id];
+    const idx = currentWeapons.indexOf(id);
+    const on = idx >= 0;
+    return `<button class="weapon-chip${on ? " on" : ""}" data-weapon="${id}" aria-pressed="${on}">
+      <span class="kanji">${w.kanji}</span>
+      <span><div class="wn">${w.name}</div><div class="wd">${w.desc}</div></span>
+      ${on ? `<span class="slot">${idx === 0 ? "MAIN" : "ALT"}</span>` : ""}
+    </button>`;
+  }).join("");
+
+  const continueBtn = saved
+    ? `<button class="btn" data-act="continue">Continue · ${getClass(saved.classId).name} · Wave ${saved.wave}</button>`
+    : "";
+
+  menu.innerHTML = `
+  <div class="menu-wrap">
+    <div class="menu-top">
+      <div class="logo"><span class="kanji">幽</span><div><h1>GHOST GAME</h1><p>Survive the waves. Forge your legend.</p></div></div>
+      <div class="menu-actions">${continueBtn}<button class="btn ghost" data-act="random">Random class</button></div>
+    </div>
+    <div class="menu-body">
+      <div class="class-grid" role="listbox" aria-label="Classes">${cards}</div>
+      <aside class="detail" style="--accent:${cls.accent}">
+        <div class="detail-head"><span class="kanji">${cls.kanji}</span><div><h2>${cls.name}</h2><div class="role">${cls.role}</div></div></div>
+        <h3>Passives</h3>
+        <ul>${cls.bonuses.filter(b => !/secondary|Starts with/i.test(b)).map(b => `<li>${b}</li>`).join("") || "<li>Balanced fighter</li>"}</ul>
+        <h3>Ultimate · R</h3>
+        <div class="ult-box"><b><span class="kanji">${cls.ultKanji}</span> ${cls.ultName}</b><p>${cls.ultDesc}</p></div>
+        <h3>Weapons · pick 2</h3>
+        <div class="weapons">${weapons}</div>
+        <p class="hint">Press Tab in a fight to swap between your two weapons.</p>
+        <div class="start-row">
+          <button class="btn primary" data-act="start" ${currentWeapons.length === 2 ? "" : "disabled"}>Begin · Enter</button>
+        </div>
+        ${saved ? `<p class="hint">Starting a new run replaces your saved run.</p>` : ""}
+      </aside>
+    </div>
+    <div class="controls-strip">
+      <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move</span>
+      <span>Mouse Aim</span>
+      <span><kbd>Click</kbd>/<kbd>Space</kbd> Attack (hold)</span>
+      <span><kbd>Shift</kbd>/<kbd>Right-click</kbd> Dash</span>
+      <span><kbd>Q</kbd><kbd>E</kbd> Abilities</span>
+      <span><kbd>R</kbd> Ultimate</span>
+      <span><kbd>Tab</kbd> Swap weapon</span>
+      <span><kbd>F</kbd> Block (shields)</span>
+      <span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> Items</span>
+      <span><kbd>Esc</kbd> Pause</span>
+    </div>
+  </div>`;
+}
+
+function selectClass(id: ClassId) {
+  if (id === currentClass) return;
+  currentClass = id;
+  currentWeapons = defaultWeapons(id);
+  renderMenu();
+  $<HTMLElement>(`.class-card[data-class="${id}"]`, menu)?.focus({ preventScroll: true });
+}
+
+menu.addEventListener("click", e => {
+  const t = e.target as HTMLElement;
+  const card = t.closest<HTMLElement>("[data-class]");
+  if (card) { selectClass(card.dataset.class as ClassId); return; }
+  const chip = t.closest<HTMLElement>("[data-weapon]");
+  if (chip) {
+    const id = chip.dataset.weapon as SecondaryId;
+    const i = currentWeapons.indexOf(id);
+    if (i >= 0) currentWeapons.splice(i, 1);
+    else {
+      if (currentWeapons.length >= 2) currentWeapons.shift();
+      currentWeapons.push(id);
+    }
+    renderMenu();
+    return;
+  }
+  const act = t.closest<HTMLElement>("[data-act]")?.dataset.act;
+  if (act === "start") startGame(currentClass, currentWeapons);
+  else if (act === "continue") continueRun();
+  else if (act === "random") {
+    const pool = CLASSES.filter(c => c.id !== currentClass);
+    selectClass(pool[Math.floor(Math.random() * pool.length)].id);
+  }
+});
+
+function menuKeys(e: KeyboardEvent) {
+  if (e.key === "Enter" && !(e.target as HTMLElement).closest?.("[data-weapon],[data-act]")) {
+    if (currentWeapons.length === 2) startGame(currentClass, currentWeapons);
+    e.preventDefault();
+    return;
+  }
+  const arrows: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 0, ArrowUp: 0 };
+  if (!(e.key in arrows)) return;
+  const grid = $<HTMLElement>(".class-grid", menu);
+  const cols = Math.max(1, getComputedStyle(grid).gridTemplateColumns.split(" ").length);
+  const step = e.key === "ArrowDown" ? cols : e.key === "ArrowUp" ? -cols : arrows[e.key];
+  const idx = CLASSES.findIndex(c => c.id === currentClass);
+  const next = CLASSES[(idx + step + CLASSES.length) % CLASSES.length];
+  selectClass(next.id);
+  e.preventDefault();
+}
+
+// ─── Run lifecycle ────────────────────────────────────────────────────────────
+function stopGame() {
+  if (animId !== null) cancelAnimationFrame(animId);
+  animId = null;
+  if (game) audio.stopMusic();
+  game = null;
+  stats = null;
+  attackHeld = blockHeld = false;
+}
+
+function bootGame(): GhostGame {
+  stopGame();
+  menu.style.display = "none";
+  resize();
+  const g = new GhostGame(canvas);
+  game = g;
+  resize();
+  g.onStatsChange = s => { stats = s; };
+  applySettings();
+  return g;
+}
+
+function beginLoop() {
+  hud.classList.add("show");
+  buildHud();
+  runStartedAt = performance.now();
+  overlayKey = "";
+  recordSet = false;
+  try { audio.ensure(); if (settings.sound) audio.startMusic(); } catch { /* audio unavailable */ }
+  lastTime = performance.now();
+  animId = requestAnimationFrame(loop);
+}
+
+function startGame(classId: ClassId, weapons: SecondaryId[]) {
+  const pick = weapons.length === 2 ? weapons : CLASS_WEAPON_OPTIONS[classId].slice(0, 2);
+  lastPick = { classId, weapons: [...pick] };
+  writeJSON(LAST_KEY, lastPick);
+  clearSavedRun();
+  const g = bootGame();
+  g.start(classId, pick[0]);
+  g.equipWeapons([pick[0], pick[1]]);
+  stats = { ...g.stats };
+  beginLoop();
+}
+
+function continueRun() {
+  const saved = loadRun();
+  if (!saved) { renderMenu(); return; }
+  const g = bootGame();
+  g.resumeFromSave(saved);
+  stats = { ...g.stats };
+  beginLoop();
+}
+
 function loop(ts: number) {
   if (!game) return;
   const dt = Math.min((ts - lastTime) / 1000, 0.05);
   lastTime = ts;
   try {
+    if (attackHeld && game.stats.state === "playing") game.triggerAttack();
     game.update(dt);
+    game.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     game.render();
+    if (stats) {
+      updateHud(stats);
+      syncOverlay(stats);
+    }
   } catch (err) {
     console.error("Game error:", err);
   }
   animId = requestAnimationFrame(loop);
 }
 
-function startGame(classId: ClassId) {
-  if (animId !== null) { cancelAnimationFrame(animId); animId = null; }
-  cleanupInput();
-  hideClassSelect();
+// ─── HUD ──────────────────────────────────────────────────────────────────────
+const cache = new Map<string, string>();
+function setText(el: HTMLElement | null, key: string, val: string) {
+  if (!el || cache.get(key) === val) return;
+  cache.set(key, val);
+  el.textContent = val;
+}
+function setScale(el: HTMLElement | null, key: string, frac: number) {
+  const v = Math.max(0, Math.min(1, frac)).toFixed(3);
+  if (!el || cache.get(key) === v) return;
+  cache.set(key, v);
+  el.style.transform = `scaleX(${v})`;
+}
+function setHTML(el: HTMLElement | null, key: string, html: string) {
+  if (!el || cache.get(key) === html) return;
+  cache.set(key, html);
+  el.innerHTML = html;
+}
+function toggle(el: HTMLElement | null, cls: string, on: boolean) {
+  if (el && el.classList.contains(cls) !== on) el.classList.toggle(cls, on);
+}
 
-  resize();
-  game = new GhostGame(canvas);
-  resize();
+const PAUSE_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>`;
 
-  game.onStatsChange = (stats: GameStats) => {
-    currentStats = { ...stats };
-    const blocking = stats.state === "levelup" || stats.state === "swap" ||
-      stats.state === "shop" || stats.state === "victory" || stats.state === "defeat";
-    if (blocking) renderGameOverlay(stats);
-    else hideOverlay();
-  };
+function buildHud() {
+  cache.clear();
+  const cls = getClass(game!.stats.classId);
+  hud.style.setProperty("--accent", cls.accent);
+  hud.innerHTML = `
+    <div class="lowhp"></div>
+    <div class="hud-tl">
+      <div class="hud-class"><span class="kanji">${cls.kanji}</span><b>${cls.name}</b><span data-h="lvl"></span></div>
+      <div class="bar hp"><i class="ghost" data-h="hpg"></i><i data-h="hp"></i><span class="num" data-h="hpt"></span></div>
+      <div class="bar block" data-h="blockwrap"><i data-h="block"></i></div>
+      <div class="bar xp"><i data-h="xp"></i></div>
+    </div>
+    <div class="hud-top">
+      <div class="hud-wave" data-h="wave"></div>
+      <div class="hud-sub num" data-h="sub"></div>
+      <div class="bar timer"><i data-h="timer"></i></div>
+      <div class="boss-bar" data-h="bosswrap"><div class="lbl">◆ BOSS ◆</div><div class="bar"><i data-h="boss"></i></div></div>
+    </div>
+    <div class="hud-tr">
+      <div class="mon num"><span class="kanji">文</span><span data-h="mon"></span></div>
+      <button class="pause-btn" data-act="pause" aria-label="Pause">${PAUSE_ICON}</button>
+    </div>
+    <div class="toast" data-h="toast"></div>
+    ${settings.tips ? `<div class="tips" data-h="tips">
+      <span><kbd>WASD</kbd> move</span><span><kbd>Click</kbd> hold to attack</span><span><kbd>Shift</kbd> dash through foes</span>
+      <span><kbd>R</kbd> ultimate when gold</span><span><kbd>Tab</kbd> swap weapon</span><span><kbd>Esc</kbd> pause</span>
+    </div>` : ""}
+    <div class="hud-bottom">
+      <div class="group" data-h="weapons"></div>
+      <div class="group" data-h="abilities"></div>
+      <div class="slot ult" data-h="ult"><div class="fill" data-h="ultfill"></div><span class="kanji">${cls.ultKanji}</span><kbd>R</kbd></div>
+      <div class="group" data-h="items"></div>
+    </div>`;
+  hud.querySelector<HTMLElement>("[data-act=pause]")!.style.pointerEvents = "auto";
+}
 
-  const [primary, secondary] = CLASS_WEAPON_OPTIONS[classId];
-  game.start(classId, primary);
-  game.equipWeapons([primary, secondary]);
+const H = (k: string) => hud.querySelector<HTMLElement>(`[data-h="${k}"]`);
 
-  setupInput();
-  lastTime = performance.now();
-  animId = requestAnimationFrame(loop);
+function updateHud(s: GameStats) {
+  const hpFrac = s.maxHp > 0 ? s.hp / s.maxHp : 0;
+  setScale(H("hp"), "hp", hpFrac);
+  setScale(H("hpg"), "hpg", hpFrac);
+  setText(H("hpt"), "hpt", `${Math.max(0, Math.ceil(s.hp))} / ${Math.round(s.maxHp)}`);
+  toggle(hud.querySelector(".lowhp"), "show", hpFrac > 0 && hpFrac < 0.3 && s.state === "playing");
+  const bw = H("blockwrap");
+  if (bw) bw.style.display = s.blockHpMax > 0 ? "" : "none";
+  setScale(H("block"), "block", s.blockHpMax > 0 ? s.blockHp / s.blockHpMax : 0);
+  setScale(H("xp"), "xp", s.xpToNext > 0 ? s.xp / s.xpToNext : 0);
+  setText(H("lvl"), "lvl", `· Lv ${s.level}`);
+
+  const waveLabel = s.isBossWave ? `BOSS · WAVE ${s.wave}` : `WAVE ${s.wave}`;
+  setText(H("wave"), "wave", waveLabel);
+  toggle(H("wave"), "boss", s.isBossWave);
+  const secs = Math.ceil(s.waveTimer);
+  const timeTxt = s.isBossWave ? "Slay the boss" : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+  setText(H("sub"), "sub", `${s.biomeKanji} ${s.biomeName} · ${timeTxt} · ${s.enemiesLeft} foes`);
+  setScale(H("timer"), "timer", s.waveDuration > 0 ? s.waveTimer / s.waveDuration : 0);
+
+  let boss: { hp: number; maxHp: number } | null = null;
+  if (game) for (const e of game.enemies) if (e.isBoss && e.state !== "dead") { boss = e; break; }
+  toggle(H("bosswrap"), "show", !!boss);
+  if (boss) setScale(H("boss"), "boss", boss.hp / Math.max(1, boss.maxHp));
+
+  setText(H("mon"), "mon", String(s.mon));
+
+  const toastOn = s.messageTimer > 0 && !!s.message;
+  if (toastOn) setText(H("toast"), "toast", s.message);
+  toggle(H("toast"), "show", toastOn);
+
+  const tips = H("tips");
+  if (tips) toggle(tips, "hide", performance.now() - runStartedAt > 14000 || s.wave > 1);
+
+  // Weapons
+  const wHtml = s.secondaryIds.map((id, i) => {
+    if (!id) return `<div class="slot empty"><span class="kanji">—</span></div>`;
+    const w = SECONDARIES[id];
+    const active = i === s.secondaryActiveSlot;
+    const ammo = s.secondaryAmmoMax[i] > 0 ? `${s.secondaryAmmo[i]}/${s.secondaryAmmoMax[i]}` : "∞";
+    const rl = s.secondaryReloadMax[i] > 0 && s.secondaryReload[i] > 0
+      ? `<div class="reload" style="width:${(1 - s.secondaryReload[i] / s.secondaryReloadMax[i]) * 100}%"></div>` : "";
+    return `<div class="slot${active ? " active" : ""}" title="${w.name}"><span class="ammo num">${ammo}</span><span class="kanji">${w.kanji}</span>${rl}</div>`;
+  }).join("") + `<div class="slot" style="width:34px;opacity:.8"><kbd style="position:static">Tab</kbd></div>`;
+  setHTML(H("weapons"), "weapons", wHtml);
+
+  // Abilities
+  const keys = ["Q", "E"];
+  const aHtml = [0, 1].map(i => {
+    const id = s.equippedAbilities[i];
+    if (!id) return `<div class="slot empty" title="Unlock abilities by levelling up"><span class="kanji">?</span><kbd>${keys[i]}</kbd></div>`;
+    const info = abilityInfo(id);
+    const cd = s.abilityCd[id] ?? 0;
+    const max = s.abilityMax[id] || 1;
+    const ready = cd <= 0;
+    return `<div class="slot${ready ? " ready" : ""}" title="${info?.name ?? id}">
+      <div class="cd" style="--cd:${ready ? 0 : (cd / max).toFixed(3)}"></div>
+      <span class="kanji">${info?.kanji ?? "技"}</span>${ready ? "" : `<span class="cdn num">${Math.ceil(cd)}</span>`}<kbd>${keys[i]}</kbd></div>`;
+  }).join("");
+  setHTML(H("abilities"), "abilities", aHtml);
+
+  // Ultimate
+  const ultFrac = s.ultMax > 0 ? s.ultCharge / s.ultMax : 0;
+  const fill = H("ultfill");
+  const fh = `${Math.round(Math.min(1, ultFrac) * 100)}%`;
+  if (fill && cache.get("ultfill") !== fh) { cache.set("ultfill", fh); fill.style.height = fh; }
+  toggle(H("ult"), "ready", s.ultReady && !s.ultActive);
+
+  // Consumables
+  const iHtml = s.consumables.map((c, i) => {
+    if (!c) return `<div class="slot empty"><span class="kanji">·</span><kbd>${i + 1}</kbd></div>`;
+    const d = CONSUMABLES[c];
+    return `<div class="slot ready" title="${d.name}: ${d.desc}"><span class="kanji" style="color:${d.accent}">${d.kanji}</span><kbd>${i + 1}</kbd></div>`;
+  }).join("");
+  setHTML(H("items"), "items", iHtml);
+
+  // Records
+  if (s.wave > (best[s.classId] ?? 0) && (s.state === "defeat" || s.state === "victory" || s.state === "shop")) {
+    best[s.classId] = s.wave;
+    writeJSON(BEST_KEY, best);
+    if (s.state === "defeat" || s.state === "victory") recordSet = true;
+  }
+}
+
+hud.addEventListener("click", e => {
+  if ((e.target as HTMLElement).closest("[data-act=pause]")) pauseGame();
+});
+
+// ─── Overlays (level up / swap / shop / pause / end) ──────────────────────────
+function hideOverlay() {
+  overlay.classList.remove("show");
+  overlay.innerHTML = "";
+  overlayKey = "";
+}
+function showOverlay(html: string) {
+  overlay.innerHTML = html;
+  overlay.classList.add("show");
+}
+
+function syncOverlay(s: GameStats) {
+  let key = s.state;
+  if (s.state === "levelup") key += s.pendingChoices.map(c => c.id).join(",");
+  if (s.state === "swap") key += s.pendingAbilityId;
+  if (s.state === "shop") key += s.shopOffer.map(i => i.id).join(",") + "|" + s.shopPurchasedIds.join(",") + "|" + s.mon;
+  if (s.state === "paused") key += "|" + JSON.stringify(settings);
+  if (key === overlayKey) return;
+  overlayKey = key;
+  if (s.state === "playing") { overlay.classList.remove("show"); overlay.innerHTML = ""; return; }
+  if (s.state === "levelup") return renderLevelUp(s);
+  if (s.state === "swap") return renderSwap(s);
+  if (s.state === "shop") return renderShop(s);
+  if (s.state === "paused") return renderPause(s);
+  if (s.state === "defeat" || s.state === "victory") return renderEnd(s);
+}
+
+function rarityClass(r: string) { return `r-${r}`; }
+
+function renderLevelUp(s: GameStats) {
+  const cards = s.pendingChoices.map((c, i) => `
+    <button class="card ${rarityClass(c.rarity)}" data-perk="${c.id}">
+      <kbd class="key">${i + 1}</kbd>${c.kind === "ability" ? `<span class="tag">ABILITY</span>` : ""}
+      <div class="kanji">${c.kanji}</div><div class="cn">${c.name}</div><div class="rar">${c.rarity}</div><div class="cd">${c.desc}</div>
+    </button>`).join("");
+  showOverlay(`<div class="panel">
+    <div class="panel-title">LEVEL ${s.level}</div>
+    <div class="panel-sub">Choose a blessing · press 1–${s.pendingChoices.length}</div>
+    <div class="cards">${cards}</div></div>`);
+}
+
+function renderSwap(s: GameStats) {
+  const incoming = abilityInfo(s.pendingAbilityId ?? "");
+  const cards = s.equippedAbilities.map((id, i) => {
+    const a = abilityInfo(id);
+    return `<button class="card r-rare" data-swap="${id}">
+      <kbd class="key">${i + 1}</kbd><div class="kanji">${a?.kanji ?? "技"}</div><div class="cn">Replace ${a?.name ?? id}</div>
+      <div class="cd">${a?.desc ?? ""}</div></button>`;
+  }).join("");
+  showOverlay(`<div class="panel">
+    <div class="panel-title">NEW ABILITY</div>
+    <div class="panel-sub"><b class="kanji" style="color:var(--gold)">${incoming?.kanji ?? ""}</b> ${incoming?.name ?? ""}: ${incoming?.desc ?? ""}</div>
+    <div class="cards">${cards}</div>
+    <div class="panel-actions"><button class="btn" data-act="keep">Keep current · Esc</button></div></div>`);
+}
+
+function renderShop(s: GameStats) {
+  const items = s.shopOffer.map((it, i) => {
+    const bought = s.shopPurchasedIds.includes(it.id);
+    const broke = !bought && s.mon < it.price;
+    return `<button class="card ${rarityClass(it.rarity)}${bought ? " bought" : ""}" data-buy="${it.id}" ${bought || broke ? "disabled" : ""}>
+      <kbd class="key">${i + 1}</kbd><div class="kanji">${it.kanji}</div><div class="cn">${it.name}</div>
+      <div class="rar">${it.rarity}</div><div class="cd">${it.desc}</div>
+      <div class="price num">${bought ? "Purchased" : `文 ${it.price}`}</div></button>`;
+  }).join("");
+  showOverlay(`<div class="panel">
+    <div class="panel-title">商 MERCHANT</div>
+    <div class="panel-sub num">Wave ${s.wave} cleared · You have <b style="color:var(--gold)">文 ${s.mon}</b></div>
+    <div class="cards">${items}</div>
+    <div class="panel-actions">
+      <button class="btn" data-act="reroll" ${s.mon < s.shopRerollCost ? "disabled" : ""}>Reroll · 文 ${s.shopRerollCost} · <kbd>R</kbd></button>
+      <button class="btn primary" data-act="leave">Next wave · <kbd>Enter</kbd></button>
+    </div></div>`);
+}
+
+function renderPause(s: GameStats) {
+  const d = s.derivedStats;
+  const perks = s.perks.length
+    ? s.perks.map(p => { const l = perkLabel(p); return `<span class="perk-pill"><span class="kanji">${l.kanji}</span>${l.name}</span>`; }).join("")
+    : `<span style="color:var(--dim);font-size:13px">No blessings yet. Level up to earn them.</span>`;
+  const sw = (k: keyof Settings, label: string) =>
+    `<button class="toggle" data-set="${k}" role="switch" aria-checked="${settings[k]}"><span>${label}</span><span class="switch${settings[k] ? " on" : ""}"></span></button>`;
+  showOverlay(`<div class="panel" style="text-align:left">
+    <div class="panel-title" style="text-align:center">PAUSED</div>
+    <div class="panel-sub" style="text-align:center">${s.className} · Wave ${s.wave} · Level ${s.level}</div>
+    <div class="pause-grid">
+      <div class="pause-menu">
+        <button class="btn primary" data-act="resume">Resume · Esc</button>
+        <button class="btn" data-act="restart">Restart run</button>
+        <button class="btn" data-act="quit">Quit to menu</button>
+        <div class="pane" style="margin-top:6px">
+          <h4>Settings</h4>
+          ${sw("sound", "Sound & music")}${sw("shake", "Screen shake")}${sw("tips", "Control tips")}${sw("autoPause", "Pause when tabbed out")}
+        </div>
+      </div>
+      <div style="display:grid;gap:14px">
+        <div class="pane"><h4>Stats</h4><div class="stats num">
+          <div>Damage <b>${d.damage.toFixed(1)}</b></div><div>Dexterity <b>${d.dexterity}</b></div>
+          <div>Defense <b>${d.defense}</b></div><div>Move speed <b>${d.moveSpeedPct}%</b></div>
+          <div>Attack speed <b>${d.attackSpeedPct}%</b></div><div>Crit chance <b>${d.critChancePct}%</b></div>
+          <div>HP regen <b>${d.hpRegen.toFixed(1)}/s</b></div><div>Weapon dmg <b>×${d.secondaryDmgMul.toFixed(2)}</b></div>
+        </div></div>
+        <div class="pane"><h4>Blessings</h4><div class="perk-list">${perks}</div></div>
+        <div class="pane"><h4>Controls</h4><div class="ctrl-list">
+          <span><kbd>WASD</kbd></span><span>Move · mouse to aim</span>
+          <span><kbd>Click</kbd><kbd>Space</kbd></span><span>Attack (hold to keep swinging)</span>
+          <span><kbd>Shift</kbd><kbd>RMB</kbd></span><span>Dash: brief invincibility, damages foes you pass</span>
+          <span><kbd>Q</kbd><kbd>E</kbd></span><span>Abilities (earned from level-ups)</span>
+          <span><kbd>R</kbd></span><span>Ultimate, charges from hits and kills</span>
+          <span><kbd>Tab</kbd></span><span>Swap weapon</span>
+          <span><kbd>F</kbd></span><span>Hold to block (shield weapons)</span>
+          <span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></span><span>Use item</span>
+        </div></div>
+      </div>
+    </div></div>`);
+}
+
+function renderEnd(s: GameStats) {
+  const won = s.state === "victory";
+  const mins = Math.floor((performance.now() - runStartedAt) / 60000);
+  showOverlay(`<div class="panel">
+    <div class="end-kanji" style="color:${won ? "var(--gold)" : "var(--crimson)"}">${won ? "天" : "敗"}</div>
+    <div class="panel-title" style="margin-top:8px">${won ? "VICTORY" : "YOU HAVE FALLEN"}</div>
+    <div class="panel-sub">${s.className}</div>
+    ${recordSet ? `<div class="record">NEW BEST · WAVE ${s.wave}</div>` : `<div class="panel-sub num">Best: wave ${best[s.classId] ?? s.wave}</div>`}
+    <div class="end-stats num">
+      <div class="end-stat"><b>${s.wave}</b><span>Wave</span></div>
+      <div class="end-stat"><b>${s.level}</b><span>Level</span></div>
+      <div class="end-stat"><b>${s.honor}</b><span>Honor</span></div>
+      <div class="end-stat"><b>${s.perks.length}</b><span>Blessings</span></div>
+      <div class="end-stat"><b>${mins}m</b><span>Time</span></div>
+    </div>
+    <div class="panel-actions">
+      <button class="btn primary" data-act="retry">Try again · <kbd>Enter</kbd></button>
+      <button class="btn" data-act="quit">Change class · <kbd>Esc</kbd></button>
+    </div></div>`);
+}
+
+function pauseGame() { if (game?.stats.state === "playing") { releaseInputs(); game.pause(); } }
+function resumeGame() { game?.resume(); }
+
+overlay.addEventListener("click", e => {
+  if (!game) return;
+  const t = e.target as HTMLElement;
+  const perk = t.closest<HTMLElement>("[data-perk]");
+  if (perk) { game.selectPerk(perk.dataset.perk!); return; }
+  const sw = t.closest<HTMLElement>("[data-swap]");
+  if (sw) { game.swapAbility(sw.dataset.swap!); return; }
+  const buy = t.closest<HTMLButtonElement>("[data-buy]");
+  if (buy) { if (!buy.disabled) game.buyShopItem(buy.dataset.buy!); return; }
+  const set = t.closest<HTMLElement>("[data-set]");
+  if (set) {
+    const k = set.dataset.set as keyof Settings;
+    settings[k] = !settings[k];
+    applySettings();
+    if (k === "sound" && settings.sound) { try { audio.startMusic(); } catch { /* ignore */ } }
+    if (k === "tips") buildHud();
+    return;
+  }
+  const act = t.closest<HTMLElement>("[data-act]")?.dataset.act;
+  if (act) runAction(act);
+});
+
+function runAction(act: string) {
+  if (!game) return;
+  switch (act) {
+    case "keep": game.cancelSwap(); break;
+    case "reroll": game.rerollShop(); break;
+    case "leave": game.closeShop(); break;
+    case "resume": resumeGame(); break;
+    case "restart":
+    case "retry": {
+      const pick = lastPick ?? { classId: game.stats.classId, weapons: CLASS_WEAPON_OPTIONS[game.stats.classId].slice(0, 2) };
+      startGame(pick.classId, pick.weapons);
+      break;
+    }
+    case "quit": showMenu(); break;
+  }
 }
 
 // ─── Input ────────────────────────────────────────────────────────────────────
-function onKeyDown(e: KeyboardEvent) {
-  if (!game) return;
-  if (overlay.style.display !== "none") return;
+function releaseInputs() {
+  attackHeld = false;
+  blockHeld = false;
+  game?.setInput({ up: false, down: false, left: false, right: false, blockHeld: false, attack: false });
+}
 
+const MOVE: Record<string, "up" | "down" | "left" | "right"> = {
+  KeyW: "up", ArrowUp: "up", KeyS: "down", ArrowDown: "down",
+  KeyA: "left", ArrowLeft: "left", KeyD: "right", ArrowRight: "right",
+};
+
+function overlayKeys(e: KeyboardEvent, s: GameStats): boolean {
+  if (!game) return false;
+  const n = /^Digit[1-9]$/.test(e.code) ? Number(e.code.slice(5)) - 1 : -1;
+  switch (s.state) {
+    case "levelup":
+      if (n >= 0 && s.pendingChoices[n]) game.selectPerk(s.pendingChoices[n].id);
+      return true;
+    case "swap":
+      if (n >= 0 && s.equippedAbilities[n]) game.swapAbility(s.equippedAbilities[n]);
+      if (e.code === "Escape") game.cancelSwap();
+      return true;
+    case "shop":
+      if (n >= 0 && s.shopOffer[n] && !s.shopPurchasedIds.includes(s.shopOffer[n].id)) game.buyShopItem(s.shopOffer[n].id);
+      if (e.code === "KeyR") game.rerollShop();
+      if (e.code === "Enter") { e.preventDefault(); game.closeShop(); }
+      return true;
+    case "paused":
+      if (e.code === "Escape" || e.code === "KeyP") resumeGame();
+      return true;
+    case "defeat":
+    case "victory":
+      if (e.code === "Enter") { e.preventDefault(); runAction("retry"); }
+      if (e.code === "Escape") runAction("quit");
+      return true;
+  }
+  return false;
+}
+
+window.addEventListener("keydown", e => {
+  if (menu.style.display !== "none") { menuKeys(e); return; }
+  if (!game) return;
+  const s = game.stats;
+  if (s.state !== "playing") { if (!e.repeat) overlayKeys(e, s); return; }
+
+  const dir = MOVE[e.code];
+  if (dir) { game.setInput({ [dir]: true }); e.preventDefault(); return; }
+  if (e.repeat) return;
   switch (e.code) {
-    case "KeyW": case "ArrowUp":    game.setInput({ up: true }); break;
-    case "KeyS": case "ArrowDown":  game.setInput({ down: true }); break;
-    case "KeyA": case "ArrowLeft":  game.setInput({ left: true }); break;
-    case "KeyD": case "ArrowRight": game.setInput({ right: true }); break;
-    case "ShiftLeft": case "ShiftRight":
-      game.setInput({ blockHeld: true });
-      game.triggerDash();
-      break;
-    case "Space":
-      e.preventDefault();
-      game.triggerAttack();
-      break;
-    case "KeyQ":
-      if (game.stats.equippedAbilities[0]) game.triggerAbility(game.stats.equippedAbilities[0]);
-      break;
-    case "KeyE":
-      if (game.stats.equippedAbilities[1]) game.triggerAbility(game.stats.equippedAbilities[1]);
-      break;
-    case "KeyR":
-      game.triggerUlt();
-      break;
-    case "KeyF":
-      game.triggerTimeSlow();
-      break;
-    case "Tab":
-      e.preventDefault();
-      game.triggerSwap();
-      break;
+    case "ShiftLeft": case "ShiftRight": game.triggerDash(); break;
+    case "Space": e.preventDefault(); attackHeld = true; game.triggerAttack(); break;
+    case "KeyQ": if (s.equippedAbilities[0]) game.triggerAbility(s.equippedAbilities[0]); break;
+    case "KeyE": if (s.equippedAbilities[1]) game.triggerAbility(s.equippedAbilities[1]); break;
+    case "KeyR": game.triggerUlt(); break;
+    case "KeyF": blockHeld = true; game.setInput({ blockHeld: true }); break;
+    case "Tab": case "KeyX": e.preventDefault(); game.triggerSwap(); break;
     case "Digit1": game.useConsumable(0); break;
     case "Digit2": game.useConsumable(1); break;
     case "Digit3": game.useConsumable(2); break;
+    case "Escape": case "KeyP": pauseGame(); break;
   }
-}
-
-function onKeyUp(e: KeyboardEvent) {
-  if (!game) return;
-  switch (e.code) {
-    case "KeyW": case "ArrowUp":    game.setInput({ up: false }); break;
-    case "KeyS": case "ArrowDown":  game.setInput({ down: false }); break;
-    case "KeyA": case "ArrowLeft":  game.setInput({ left: false }); break;
-    case "KeyD": case "ArrowRight": game.setInput({ right: false }); break;
-    case "ShiftLeft": case "ShiftRight":
-      game.setInput({ blockHeld: false });
-      break;
-  }
-}
-
-function onMouseMove(e: MouseEvent) {
-  if (!game) return;
-  if (currentStats && currentStats.state !== "playing") return;
-  const rect = canvas.getBoundingClientRect();
-  const x = (e.clientX - rect.left) * dpr;
-  const y = (e.clientY - rect.top) * dpr;
-  game.setInput({ mouseAim: true, mouseX: x, mouseY: y });
-}
-
-function onMouseDown(e: MouseEvent) {
-  if (!game) return;
-  if (currentStats && currentStats.state !== "playing") return;
-  if (e.button === 0) game.triggerAttack();
-  if (e.button === 2) game.triggerDash();
-}
-
-function onContextMenu(e: Event) { e.preventDefault(); }
-
-function setupInput() {
-  window.addEventListener("keydown", onKeyDown);
-  window.addEventListener("keyup", onKeyUp);
-  canvas.addEventListener("mousemove", onMouseMove);
-  canvas.addEventListener("mousedown", onMouseDown);
-  canvas.addEventListener("contextmenu", onContextMenu);
-}
-
-function cleanupInput() {
-  window.removeEventListener("keydown", onKeyDown);
-  window.removeEventListener("keyup", onKeyUp);
-  canvas.removeEventListener("mousemove", onMouseMove);
-  canvas.removeEventListener("mousedown", onMouseDown);
-  canvas.removeEventListener("contextmenu", onContextMenu);
-}
-
-// ─── Class-Select Screen (HTML) ───────────────────────────────────────────────
-const classSelectEl = document.createElement("div");
-classSelectEl.id = "class-select";
-Object.assign(classSelectEl.style, {
-  position: "fixed", inset: "0", zIndex: "20",
-  background: "#0a0a0a", overflowY: "auto",
-  fontFamily: "serif", color: "#e8d9b0",
-  display: "none",
 });
-document.body.appendChild(classSelectEl);
 
-function hideClassSelect() {
-  classSelectEl.style.display = "none";
-}
+window.addEventListener("keyup", e => {
+  if (!game) return;
+  const dir = MOVE[e.code];
+  if (dir) game.setInput({ [dir]: false });
+  if (e.code === "Space") attackHeld = false;
+  if (e.code === "KeyF") { blockHeld = false; game.setInput({ blockHeld: false }); }
+});
 
-function showClassSelect() {
-  if (animId !== null) { cancelAnimationFrame(animId); animId = null; }
-  game = null;
-  currentStats = null;
-  hideOverlay();
-  cleanupInput();
+canvas.addEventListener("mousemove", e => {
+  if (!game) return;
+  game.setInput({ mouseAim: true, mouseX: e.clientX, mouseY: e.clientY });
+});
+canvas.addEventListener("mousedown", e => {
+  if (!game || game.stats.state !== "playing") return;
+  if (e.button === 0) { attackHeld = true; game.triggerAttack(); }
+  if (e.button === 2) game.triggerDash();
+});
+window.addEventListener("mouseup", e => { if (e.button === 0) attackHeld = false; });
+canvas.addEventListener("contextmenu", e => e.preventDefault());
 
-  const COLS = Math.min(4, Math.floor((window.innerWidth - 32) / 180)) || 4;
-
-  const cards = CLASSES.map(cls => {
-    const bonuses = cls.bonuses.slice(0, 3).map(b =>
-      `<div style="font-size:11px;color:#999;margin:2px 0">· ${b}</div>`
-    ).join("");
-    return `
-      <div onclick="window._selectClass('${cls.id}')" style="
-        cursor:pointer; border:1px solid #2a2a2a; border-radius:8px;
-        padding:14px 12px; width:170px; background:#0e0e0e; margin:6px;
-        text-align:center; transition:border-color .15s,background .15s;
-        flex-shrink:0;
-      "
-      onmouseenter="this.style.borderColor='${cls.accent}';this.style.background='#161414'"
-      onmouseleave="this.style.borderColor='#2a2a2a';this.style.background='#0e0e0e'">
-        <div style="font-size:28px;color:${cls.accent};margin-bottom:4px">${cls.kanji}</div>
-        <div style="font-size:13px;font-weight:bold;margin-bottom:2px">${cls.name}</div>
-        <div style="font-size:10px;color:#666;margin-bottom:8px">${cls.role}</div>
-        <hr style="border:none;border-top:1px solid #222;margin:6px 0">
-        ${bonuses}
-        <hr style="border:none;border-top:1px solid #222;margin:8px 0 4px">
-        <div style="font-size:10px;color:#c8a96e">${cls.ultName}</div>
-        <div style="font-size:10px;color:#666;margin-top:2px;line-height:1.3">${cls.ultDesc.slice(0, 60)}…</div>
-      </div>
-    `;
-  }).join("");
-
-  classSelectEl.innerHTML = `
-    <div style="max-width:900px;margin:0 auto;padding:32px 16px">
-      <div style="text-align:center;margin-bottom:24px">
-        <div style="font-size:28px;color:#c8a96e;letter-spacing:3px;margin-bottom:6px">選択 — Choose Your Class</div>
-        <div style="font-size:12px;color:#444">
-          WASD move &nbsp;·&nbsp; Mouse aim &nbsp;·&nbsp; LMB / Space attack &nbsp;·&nbsp; Shift dash &nbsp;·&nbsp; Q / E abilities &nbsp;·&nbsp; R ultimate &nbsp;·&nbsp; Tab swap weapon
-        </div>
-      </div>
-      <div style="display:flex;flex-wrap:wrap;justify-content:center">${cards}</div>
-    </div>
-  `;
-  classSelectEl.style.display = "block";
-  (window as any)._selectClass = (id: string) => startGame(id as ClassId);
-}
+window.addEventListener("blur", () => {
+  releaseInputs();
+  if (settings.autoPause) pauseGame();
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) { releaseInputs(); if (settings.autoPause) pauseGame(); }
+});
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
-showClassSelect();
+applySettings();
+showMenu();
