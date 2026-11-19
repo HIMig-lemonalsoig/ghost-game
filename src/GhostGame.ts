@@ -573,14 +573,14 @@ export const SECONDARIES: Record<SecondaryId, SecondaryDef> = {
     id: "twin_sai",
     kanji: "双",
     name: "Twin Sai",
-    desc: "Two hits per swing. 15% chance to stun.",
+    desc: "Lightning-fast alternating stabs, one sai per strike. 15% chance to stun.",
     aim: "self",
     maxAmmo: 9,
     startAmmo: 9,
     regenTime: 2.5,
-    fireCooldown: 0.28,
+    fireCooldown: 0.14,
     damageMul: 0.55,
-    projectiles: 2,
+    projectiles: 1,
     spread: 0,
     accent: "hsl(280, 50%, 70%)",
     dmgScale: 0.45, dexScale: 1.2,
@@ -4137,6 +4137,8 @@ export class GhostGame {
   shakeScale = 1;
   fx = new Fx();
   fireAnim = 0;
+  saiAnim: [number, number] = [0, 0];
+  saiNext = 0;
   inkGrain = new InkGrain();
   parallax = new ParallaxLayer();
   cameraZoom = new CameraZoom();
@@ -5598,6 +5600,8 @@ export class GhostGame {
     if (p.dashTimer <= 0 && p.dashHitIds.size > 0) p.dashHitIds.clear();
     p.hitFlash = Math.max(0, p.hitFlash - dt * 4);
     this.fireAnim = Math.max(0, this.fireAnim - dt * 5);
+    this.saiAnim[0] = Math.max(0, this.saiAnim[0] - dt * 6);
+    this.saiAnim[1] = Math.max(0, this.saiAnim[1] - dt * 6);
     if (p.attackAnim > 0) {
       p.attackAnim -= dt * 3.5;
       if (p.attackAnim < 0) p.attackAnim = 0;
@@ -7993,6 +7997,8 @@ export class GhostGame {
     ctx.save();
     if (rangedHeld) {
       this.drawRangedWeapon(rangedHeld);
+    } else if (weaponId === "twin_sai") {
+      this.drawTwinSai();
     } else {
       ctx.rotate(swingAng);
       this.drawPlayerWeapon(weaponId, p.attackAnim > 0, weaponRange);
@@ -8000,7 +8006,7 @@ export class GhostGame {
     ctx.restore();
 
     // Phase 1 — sample the swung weapon's tip into the ink-brush trail.
-    if (p.attackAnim > 0) {
+    if (p.attackAnim > 0 && weaponId !== "twin_sai") {
       const tipLen = weaponRange * 0.95;
       const total = p.facing + swingAng;
       const tipX = p.pos.x + Math.cos(total) * tipLen;
@@ -8096,35 +8102,67 @@ export class GhostGame {
     }
 
     if (id === "tessen") {
-      // ===== Iron War Fan — wide fan blades from the grip =====
-      const fanLen = tip * 0.85;
-      const spread = Math.PI * 0.45;
-      ctx.fillStyle = "hsla(45, 80%, 70%, 0.85)";
-      ctx.strokeStyle = "hsl(0, 60%, 25%)";
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(r0, 0);
-      ctx.lineTo(r0 + Math.cos(-spread) * fanLen, Math.sin(-spread) * fanLen);
-      ctx.lineTo(r0 + Math.cos(0) * fanLen * 1.05, 0);
-      ctx.lineTo(r0 + Math.cos(spread) * fanLen, Math.sin(spread) * fanLen);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      // Ribs
-      ctx.strokeStyle = "hsl(0, 60%, 25%)";
-      ctx.lineWidth = 1;
-      for (let i = -2; i <= 2; i++) {
-        const a = (i / 2) * spread;
+      // ===== Tessen — iron-ribbed folding war fan. Opens wide as it sweeps,
+      // snaps shut at the end; idle it's held folded like a baton.
+      const prog = swinging ? 1 - this.player.attackAnim : 0;
+      const open = swinging ? (prog < 0.22 ? prog / 0.22 : prog > 0.85 ? Math.max(0.25, 1 - (prog - 0.85) / 0.15) : 1) : 0;
+      const span = 0.16 + open * 2.3;
+      const L = swinging ? 46 : 34;
+      const inner = L * 0.36;
+      const px = 3;
+      ctx.save();
+      ctx.translate(px, 0);
+      if (swinging) ctx.rotate(-span / 2 * this.player.swingDir * 0.35);
+      const ribs = 11;
+      // Paper / silk leaf with alternating fold shading
+      for (let i = 0; i < ribs - 1; i++) {
+        const a0 = -span / 2 + (i / (ribs - 1)) * span;
+        const a1 = -span / 2 + ((i + 1) / (ribs - 1)) * span;
         ctx.beginPath();
-        ctx.moveTo(r0, 0);
-        ctx.lineTo(r0 + Math.cos(a) * fanLen, Math.sin(a) * fanLen);
-        ctx.stroke();
+        ctx.arc(0, 0, L, a0, a1);
+        ctx.arc(0, 0, inner, a1, a0, true);
+        ctx.closePath();
+        ctx.fillStyle = i % 2 === 0 ? "hsl(356, 72%, 42%)" : "hsl(356, 68%, 34%)";
+        ctx.fill();
       }
-      // Grip
-      ctx.strokeStyle = "hsl(0, 60%, 30%)";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(0, 0); ctx.lineTo(r0, 0); ctx.stroke();
+      if (open > 0.35) {
+        // Gold rising-sun crest + inner gold band
+        ctx.globalAlpha = Math.min(1, (open - 0.35) / 0.4);
+        ctx.fillStyle = "hsl(44, 90%, 58%)";
+        ctx.beginPath();
+        ctx.arc(Math.cos(0) * L * 0.68, 0, L * 0.13, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "hsl(44, 85%, 55%)";
+        ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.arc(0, 0, L * 0.9, -span / 2 + 0.05, span / 2 - 0.05); ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      // Lacquered ribs
+      ctx.strokeStyle = "hsl(0, 0%, 8%)";
+      ctx.lineWidth = 1;
+      for (let i = 1; i < ribs - 1; i++) {
+        const a = -span / 2 + (i / (ribs - 1)) * span;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * L, Math.sin(a) * L); ctx.stroke();
+      }
+      // Heavy iron guard ribs on the outside (what makes it a weapon)
+      ctx.strokeStyle = "hsl(210, 8%, 58%)";
+      ctx.lineWidth = 2.6;
+      ctx.lineCap = "round";
+      for (const a of [-span / 2, span / 2]) {
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * (L + 2), Math.sin(a) * (L + 2)); ctx.stroke();
+      }
+      // Gold edge rim
+      ctx.strokeStyle = "hsl(44, 80%, 52%)";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.arc(0, 0, L, -span / 2, span / 2); ctx.stroke();
+      // Pivot rivet + tassel
+      ctx.fillStyle = "hsl(44, 90%, 60%)";
+      ctx.beginPath(); ctx.arc(0, 0, 2.4, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "hsl(356, 70%, 45%)";
+      ctx.lineWidth = 1.5;
+      const sway = Math.sin(this.elapsed * 6) * 2;
+      ctx.beginPath(); ctx.moveTo(-1, 0); ctx.quadraticCurveTo(-6, 4 + sway, -9, 9 + sway); ctx.stroke();
+      ctx.restore();
       return;
     }
 
@@ -8168,33 +8206,6 @@ export class GhostGame {
       return;
     }
 
-    if (id === "twin_sai") {
-      // ===== Twin Sai — two short tridents, one above and one below the grip =====
-      const saiLen = Math.min(tip, 60);
-      ctx.strokeStyle = "hsl(280, 20%, 70%)";
-      ctx.lineWidth = 2.5;
-      ctx.lineCap = "round";
-      for (const yOff of [-5, 5]) {
-        // Main shaft
-        ctx.beginPath();
-        ctx.moveTo(r0, yOff); ctx.lineTo(r0 + saiLen, yOff); ctx.stroke();
-        // Side prongs near the guard
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(r0 + 4, yOff); ctx.lineTo(r0 + 14, yOff - 6); ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(r0 + 4, yOff); ctx.lineTo(r0 + 14, yOff + 6); ctx.stroke();
-        ctx.lineWidth = 2.5;
-      }
-      // Grips
-      ctx.strokeStyle = "hsl(280, 40%, 30%)";
-      ctx.lineWidth = 3;
-      for (const yOff of [-5, 5]) {
-        ctx.beginPath(); ctx.moveTo(0, yOff); ctx.lineTo(r0, yOff); ctx.stroke();
-      }
-      return;
-    }
-
     if (id === "odachi") {
       // ===== Odachi (Greatsword) — long, broad curved blade =====
       const bs = r0 + 4;
@@ -8225,6 +8236,61 @@ export class GhostGame {
       ctx.lineWidth = 5;
       ctx.beginPath(); ctx.moveTo(-4, 0); ctx.lineTo(r0, 0); ctx.stroke();
       return;
+    }
+  }
+
+  // Twin Sai: one held in each hand. Each attack press stabs with the next
+  // sai in turn (saiAnim[side] runs 1 → 0); the other stays guarded.
+  private drawTwinSai() {
+    const ctx = this.ctx;
+    for (const side of [0, 1] as const) {
+      const a = this.saiAnim[side];
+      const ph = 1 - a;
+      const ext = a > 0 ? (ph < 0.3 ? ph / 0.3 : 1 - (ph - 0.3) / 0.7) : 0;
+      const y = side === 0 ? -9 : 9;
+      const guard = side === 0 ? -0.35 : 0.35;
+      ctx.save();
+      ctx.translate(4 + ext * 26, y * (1 - ext * 0.55));
+      ctx.rotate(guard * (1 - ext));
+      this.drawSai(ext);
+      ctx.restore();
+    }
+  }
+
+  private drawSai(ext: number) {
+    const ctx = this.ctx;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    // Handle wrap + pommel
+    ctx.strokeStyle = "hsl(165, 35%, 22%)";
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(4, 0); ctx.stroke();
+    ctx.strokeStyle = "hsl(45, 60%, 70%)";
+    ctx.lineWidth = 0.8;
+    for (let x = -5; x < 4; x += 2.5) { ctx.beginPath(); ctx.moveTo(x, -2); ctx.lineTo(x + 1.2, 2); ctx.stroke(); }
+    ctx.fillStyle = "hsl(210, 10%, 55%)";
+    ctx.beginPath(); ctx.arc(-7, 0, 2.4, 0, Math.PI * 2); ctx.fill();
+    // Side prongs (yoku): flare out from the guard, then hook forward to points
+    ctx.strokeStyle = "hsl(210, 10%, 66%)";
+    ctx.lineWidth = 2;
+    for (const s of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(4, 0);
+      ctx.quadraticCurveTo(6, s * 8, 14, s * 7.5);
+      ctx.stroke();
+    }
+    // Central prong (monouchi): tapered octagonal shaft to a point
+    ctx.fillStyle = "hsl(210, 12%, 74%)";
+    ctx.beginPath();
+    ctx.moveTo(4, -1.8); ctx.lineTo(30, -1.1); ctx.lineTo(35, 0); ctx.lineTo(30, 1.1); ctx.lineTo(4, 1.8);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = "hsla(190, 70%, 95%, 0.9)";
+    ctx.lineWidth = 0.7;
+    ctx.beginPath(); ctx.moveTo(6, -0.5); ctx.lineTo(31, -0.3); ctx.stroke();
+    if (ext > 0.5) {
+      ctx.strokeStyle = `hsla(165, 90%, 80%, ${(ext - 0.5) * 1.4})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(-14, 0); ctx.lineTo(-4, 0); ctx.stroke();
     }
   }
 
@@ -10551,7 +10617,7 @@ export class GhostGame {
     if (id === "tessen") { range = 90; arc = Math.PI * 0.95; }       // wide cone, short
     else if (id === "jutte") { range = 78; arc = Math.PI * 0.55; }
     else if (id === "ono") { range = 110; arc = Math.PI * 0.55; }    // heavy frontal
-    else if (id === "twin_sai") { range = 88; arc = Math.PI * 0.55; }
+    else if (id === "twin_sai") { range = 88; arc = Math.PI * 0.4; }
     else if (id === "tate") { range = 75; arc = Math.PI * 0.5; }      // shield bash — short cone
     else /* odachi */ { range = 150; arc = Math.PI * 1.5; }          // 270° huge arc
 
@@ -10613,7 +10679,23 @@ export class GhostGame {
     }
 
     // Visual swing arc + audio cue
-    this.spawnSlash(p.pos, p.facing, range, arc);
+    if (id === "twin_sai") {
+      const side = this.saiNext;
+      this.saiNext = 1 - side;
+      this.saiAnim[side] = 1;
+      const off = side === 0 ? -8 : 8;
+      const nx = -Math.sin(p.facing), ny = Math.cos(p.facing);
+      const sx = p.pos.x + nx * off, sy = p.pos.y + ny * off;
+      const tipX = sx + Math.cos(p.facing) * range, tipY = sy + Math.sin(p.facing) * range;
+      this.fx.streakLine(sx + Math.cos(p.facing) * 20, sy + Math.sin(p.facing) * 20, tipX, tipY, 165, 92, 6, 0.13);
+      this.fx.burst(tipX, tipY, { count: 3, hue: 165, light: 85, speed: 220, dir: p.facing, spread: 0.9, life: 0.15 });
+    } else {
+      this.spawnSlash(p.pos, p.facing, range, arc);
+    }
+    if (id === "tessen") {
+      this.fx.burst(p.pos.x + Math.cos(p.facing) * 30, p.pos.y + Math.sin(p.facing) * 30,
+        { count: 9, hue: 340, sat: 50, light: 88, speed: 440, dir: p.facing, spread: arc, life: 0.32, w: 1.4 });
+    }
     if (anyHit) {
       this.cameraShake = Math.max(this.cameraShake, id === "odachi" ? 0.32 : 0.12);
       this.hitstop = Math.max(this.hitstop, id === "odachi" ? 0.06 : 0.025);
