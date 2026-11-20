@@ -29,6 +29,7 @@ export interface AchCtx {
   s: GameStats | null;
   diff: Difficulty | null;
   fresh: boolean;               // current run was started fresh (not Continued)
+  vow: number;                  // Vow score of the current run
 }
 interface Ach {
   id: string; tier: Tier; kanji: string; name: string; desc: string;
@@ -111,6 +112,8 @@ export const ACHIEVEMENTS: Ach[] = [
     check: x => classesPlayed(x) >= CLASSES.length, progress: x => [Math.min(CLASSES.length, classesPlayed(x)), CLASSES.length] },
   { id: "in_the_zone", tier: "epic", kanji: "心", name: "In the Zone", desc: "Clear 3 waves in a row without taking damage.", ...runMax("bestFlawlessStreak", 3) },
   { id: "arsenal", tier: "epic", kanji: "庫", name: "Arsenal", desc: "Evolve 8 different weapons.", check: x => evolvedKinds(x) >= 8, progress: x => [Math.min(8, evolvedKinds(x)), 8] },
+  { id: "sworn", tier: "epic", kanji: "誓", name: "Sworn", desc: "Reach wave 15 with a Vow score of 10 or more.",
+    check: x => (x.vow >= 10 && (x.s?.wave ?? 0) >= 15) || ((x.c.vowBest?.score ?? 0) >= 10 && (x.c.vowBest?.wave ?? 0) >= 15) },
   { id: "marathon", tier: "epic", kanji: "時", name: "Marathon", desc: "Play for 5 hours in total.",
     check: x => x.c.time >= 5 * 3600, progress: x => [Math.min(300, Math.floor(x.c.time / 60)), 300] },
 
@@ -123,6 +126,8 @@ export const ACHIEVEMENTS: Ach[] = [
   { id: "tyrants_end", tier: "legendary", kanji: "覇", name: "Tyrant's End", desc: "Slay the Final Boss on Hard or Death.", check: x => atLeast(x, "hard") && runBossFinal(x) },
   { id: "master_smith", tier: "legendary", kanji: "鍛", name: "Master Smith", desc: `Evolve every weapon (${EVO_COUNT}).`, check: x => evolvedKinds(x) >= EVO_COUNT, progress: x => [evolvedKinds(x), EVO_COUNT] },
   { id: "harmony", tier: "legendary", kanji: "和", name: "Perfect Harmony", desc: `Take every duo perk (${DUOS.length}).`, check: x => duoKinds(x) >= DUOS.length, progress: x => [duoKinds(x), DUOS.length] },
+  { id: "oathbound", tier: "legendary", kanji: "盟", name: "Oathbound", desc: "Reach wave 15 with a Vow score of 20 or more.",
+    check: x => (x.vow >= 20 && (x.s?.wave ?? 0) >= 15) || ((x.c.vowBest?.score ?? 0) >= 20 && (x.c.vowBest?.wave ?? 0) >= 15) },
   { id: "annihilation", tier: "legendary", kanji: "滅", name: "Annihilation", desc: "Kill 20 enemies within half a second.", ...runMax("bestMultiKill", 20) },
 
   // ── Mythic (insanely rare) ──
@@ -131,6 +136,8 @@ export const ACHIEVEMENTS: Ach[] = [
   { id: "ghost", tier: "mythic", kanji: "幽", name: "Ghost", desc: "Clear 10 waves in a row without taking damage.", ...runMax("bestFlawlessStreak", 10) },
   { id: "empty_hand", tier: "mythic", kanji: "禅", name: "Empty Hand", desc: "Reach wave 20 without buying anything from the merchant (in one fresh run).",
     check: x => x.fresh && !!x.r && !!x.s && x.r.purchases === 0 && x.s.wave >= 20 },
+  { id: "every_oath", tier: "mythic", kanji: "極", name: "Every Oath Sworn", desc: "Reach wave 25 with every vow at max rank (Vow score 30).",
+    check: x => x.vow >= 30 && (x.s?.wave ?? 0) >= 25 },
   { id: "beyond_death", tier: "mythic", kanji: "超", name: "Beyond Death", desc: "Reach wave 30 on Death difficulty.",
     check: x => bestOn(x, "death") >= 30 || (x.diff === "death" && (x.s?.wave ?? 0) >= 30) },
 ];

@@ -221,6 +221,39 @@ kbd {
 }
 .cell.held .cell-name { color: var(--gold); }
 .cell.stowed { opacity: .45; transform: scale(.92); }
+/* Vows */
+.vow-btn { display: flex; align-items: center; gap: 12px; width: 100%; margin-top: 10px; padding: 10px 14px; border-radius: 12px; text-align: left;
+  background: var(--surface-2); border: 1px solid var(--line); color: var(--bone); cursor: pointer; transition: border-color .15s, background .15s; }
+.vow-btn:hover { border-color: var(--line-strong); background: var(--surface-3); }
+.vow-btn.on { border-color: color-mix(in srgb, var(--crimson) 60%, transparent); background: linear-gradient(135deg, rgba(214,69,63,.16), rgba(0,0,0,.2)); }
+.vow-btn .kanji { font-size: 24px; color: var(--crimson); }
+.vow-btn b { display: block; font-size: 14px; }
+.vow-btn i { font-style: normal; font-size: 12px; color: var(--muted); }
+.vow-btn .vow-score { margin-left: auto; font-size: 22px; font-weight: 700; color: var(--gold); }
+.vow-locked .kanji { color: var(--dim); }
+.vow-panel { max-width: 760px; }
+.vow-total { display: flex; align-items: baseline; gap: 8px; justify-content: center; margin: 14px 0 6px; flex-wrap: wrap; }
+.vow-total b { font-size: 34px; color: var(--crimson); font-family: var(--font-display); }
+.vow-total .dim, .vow-row .dim { color: var(--dim); }
+.vow-best { margin-left: 12px; font-size: 12px; color: var(--muted); }
+.vow-list { display: grid; gap: 6px; margin-top: 10px; }
+.vow-row { display: grid; grid-template-columns: 36px 1fr auto; gap: 12px; align-items: center; padding: 10px 12px; border-radius: 10px;
+  background: var(--surface-2); border: 1px solid var(--line); }
+.vow-row.on { border-color: color-mix(in srgb, var(--crimson) 50%, transparent); }
+.vow-row > .kanji { font-size: 22px; color: var(--dim); text-align: center; }
+.vow-row.on > .kanji { color: var(--crimson); }
+.vow-t b { font-size: 14px; color: var(--bone); }
+.vow-t p { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.vow-pts { font-size: 11px; color: var(--dim); margin-left: 6px; }
+.vow-ctrl { display: flex; align-items: center; gap: 8px; }
+.vow-step { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--surface-3); color: var(--bone);
+  font-size: 18px; cursor: pointer; }
+.vow-step:hover:not([disabled]) { border-color: var(--bone); }
+.vow-step[disabled] { opacity: .35; cursor: not-allowed; }
+.vow-pips { display: flex; gap: 4px; min-width: 42px; justify-content: center; }
+.vow-pips i { width: 10px; height: 10px; border-radius: 3px; background: rgba(255,255,255,.12); }
+.vow-pips i.on { background: var(--crimson); box-shadow: 0 0 8px rgba(214,69,63,.6); }
+
 /* Class signature passive */
 .sig-box { display: flex; gap: 12px; align-items: flex-start; margin: 12px 0 4px; padding: 12px 14px; border-radius: 12px;
   background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 18%, transparent), rgba(0,0,0,.25));

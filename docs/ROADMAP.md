@@ -15,7 +15,7 @@ There are 7 phases, in the order they depend on each other. Each phase is roughl
 | 3 ✅ | Weapon evolutions + duo perks | Gives every run a goal to build toward (the biggest gap right now) | M |
 | 4 ✅ | New enemy roles: controller + summoner | Fills the two roles that are missing | M |
 | 5 ✅ | Class signature passives | Makes the 25 classes play differently instead of just having different numbers | M–L |
-| 6 | Vows (Hades-style "Heat") | A long-term goal for players who've beaten Death | M |
+| 6 ✅ | Vows (Hades-style "Heat") | A long-term goal for players who've beaten Death | M |
 | 7 | Data-driven balance pass | Tune using real pick rates and wave numbers instead of guesses | S |
 
 ---
@@ -171,7 +171,14 @@ The class screen shows the signature passive in its own highlighted box.
 
 ---
 
-## Phase 6: Vows (Hades-style Heat)
+## Phase 6: Vows (Hades-style Heat) ✅ done
+
+Shipped: `src/content/vows.ts` holds 10 vows, max score 30. The Vows button sits under Difficulty (locked until wave 15), and the score shows in the HUD, pause and end screens. Vows are saved with Continue, Career shows your "Best Vow run", and there are 3 achievements (Sworn, Oathbound, Every Oath Sworn) plus a dev-panel "Toggle Vows unlock".
+
+Changes beyond the plan:
+- Each Vow point gives +3% coins as a reward.
+- Every heal in the game now goes through `healPlayer()`, so Thin Blood (and Yamabushi's shield) apply to all healing.
+- No Rest also removes the shop's heal items and the Battle Meditation perk.
 
 - **Unlocks** after reaching wave 15 on any difficulty.
 - **Where:** a "Vows" panel next to difficulty on the class screen.

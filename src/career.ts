@@ -16,6 +16,7 @@ export interface Career {
   bossByKind: Record<string, number>; killsByKind: Record<string, number>;
   eliteKills: number; eliteByAffix: Record<string, number>; chests: number;
   evolvedBy: Record<string, number>; duosBy: Record<string, number>;
+  vowBest?: { score: number; wave: number };   // highest Vow score run (then wave)
   wavesCleared: number; highestWave: number; highestWaveClass: string; highestWaveDiff: string;
   highestLevel: number; monEarned: number;
   damageDealt: number; damageTaken: number; biggestHit: number;
@@ -135,6 +136,11 @@ export function commitRun(g: GhostGame | null, died = false) {
   }
   C.bestWave = Math.max(C.bestWave, s.wave);
   career.bestWaveByDiff[g.difficulty] = Math.max(career.bestWaveByDiff[g.difficulty] ?? 0, s.wave);
+  const vs = g.vowScore;
+  if (vs > 0) {
+    const b = career.vowBest;
+    if (!b || vs > b.score || (vs === b.score && s.wave > b.wave)) career.vowBest = { score: vs, wave: s.wave };
+  }
 
   if (died) {
     t.ended = true;
@@ -206,6 +212,7 @@ export function careerHTML(confirmReset: boolean): string {
         ${row("Bosses slain", n(c.bossKills))}
         ${row("Elites slain", n(c.eliteKills ?? 0))}
         ${row("Weapons evolved", `${Object.keys(c.evolvedBy ?? {}).length}`)}
+        ${row("Best Vow run", c.vowBest ? `誓${c.vowBest.score} · W${c.vowBest.wave}` : "—")}
         ${row("Damage dealt", n(c.damageDealt))}
         ${row("Damage taken", n(c.damageTaken))}
         ${row("Biggest hit", n(c.biggestHit))}

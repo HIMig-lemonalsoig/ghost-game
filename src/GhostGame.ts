@@ -10,6 +10,8 @@ import { EVOLUTIONS, EVO_MASTERY, EVO_DAMAGE_MUL } from "./content/evolutions";
 import { DUOS, DUO_BY_ID } from "./content/duos";
 import { NEW_ENEMY_TIPS, ONRYO, NUE, MIRROR, newEnemyChance } from "./content/enemies";
 import { SIG } from "./content/signatures";
+import { vowRank, vowScore, VOW_COIN_BONUS } from "./content/vows";
+import type { VowId, VowSet } from "./content/vows";
 // Sections: classes, weapons, shop, consumables, saves, biomes, audio, VFX, gameplay.
 
 // ============================================================================
@@ -1177,6 +1179,7 @@ export interface SavedRun {
   v: number;
   savedAt: number;
   atShop?: boolean;          // saved right after a wave cleared
+  vows?: VowSet;
   difficulty?: Difficulty;
   classId: ClassId;
   secondaryId: SecondaryId | null;
@@ -4504,6 +4507,9 @@ export class GhostGame {
   ultArrowTimer = 0;
   ultArrowTick = 0;
   difficulty: Difficulty = "normal";
+  vows: VowSet = {};          // VOW ranks sworn for this run (set by the menu before start)
+  vr(id: VowId) { return vowRank(this.vows, id); }
+  get vowScore() { return vowScore(this.vows); }
   bagFullWarnAt = -99;
   reaperCount = 0;
   foxTimer = 4;
@@ -4954,6 +4960,7 @@ export class GhostGame {
     add(P.eliteBounty >= C.eliteBounty, "shop_bounty");
     add(P.maxHpBonus >= C.maxHpBonus, "hp_common", "hp_rare", "hp_leg", "perk_soul_collector");
     add(P.damage >= MAX_KATANA_DAMAGE, "dmg_katana_common", "dmg_katana_rare", "dmg_katana_leg");
+    add(this.vr("no_rest") > 0, "heal_full", "heal_half");   // VOW No Rest
     return out;
   }
 
@@ -4992,7 +4999,7 @@ export class GhostGame {
     // harder than a 100 HP class — but absorbs ~3.5× more total.
     const hpRatio = Math.max(0.75, this.player.maxHp / 100);
     const hpScale = Math.min(1.6, 0.75 + (hpRatio - 0.75) * 0.55);
-    const defMul = Math.max(MIN_DAMAGE_TAKEN_MUL, this.perks.damageTakenMul);
+    const defMul = Math.max(MIN_DAMAGE_TAKEN_MUL, this.perks.damageTakenMul) * (1 + 0.15 * this.vr("sharp_steel"));   // VOW Sharp Steel
     // Defense: a % of every hit, on a diminishing curve (max 80%).
     const armor = 1 - defenseReduction(Math.max(0, this.perks.defense));
     return Math.max(1, Math.round(raw * hpScale * defMul * armor));
@@ -5048,14 +5055,15 @@ export class GhostGame {
   computeWaveDuration(wave: number): number {
     const isBoss = wave % 5 === 0;
     const base = Math.min(85, 18 + (wave - 1) * 4);
-    return isBoss ? Math.min(110, base + 25) : base;
+    const night = 1 + 0.2 * this.vr("long_night");   // VOW Long Night
+    return (isBoss ? Math.min(110, base + 25) : base) * night;
   }
 
   // Target number of live enemies on the field for this wave.
   // Used by maybeSpawnEnemies() to continuously replenish.
   computeTargetDensity(wave: number): number {
     const isBoss = wave % 5 === 0;
-    const dens = DIFFICULTIES[this.difficulty].density;
+    const dens = DIFFICULTIES[this.difficulty].density * (1 + 0.15 * this.vr("swarm"));   // VOW Swarm
     if (isBoss) return Math.round(Math.min(14, 6 + Math.floor(wave / 5) * 2) * dens);
     return Math.round(Math.min(28, 5 + Math.floor(wave * 1.6) + Math.floor(wave / 2)) * dens);
   }
@@ -5106,12 +5114,17 @@ export class GhostGame {
     this.spawnSingleEnemyInner(wave, kind);
     for (let i = n; i < this.enemies.length; i++) {
       const e = this.enemies[i];
+      // VOW Iron Hide
+      const hide = this.vr("iron_hide");
+      if (hide) e.hp = e.maxHp = e.maxHp * (1 + 0.2 * hide);
       const tip = NEW_ENEMY_TIPS[e.archetype];
       if (tip && !this.seenAffixes.has(`enemy:${e.archetype}`)) { this.seenAffixes.add(`enemy:${e.archetype}`); this.flash(tip); }
       if (e.isBoss) {
         // Hard and Death bosses carry one affix.
-        if (this.difficulty === "hard" || this.difficulty === "death") this.makeElite(e, rollAffixes(1, true), true);
-      } else if (e.archetype !== "wisp" && Math.random() < ELITE.chanceAt(wave)) {
+        // Hard/Death bosses carry one affix; VOW Boss Fury adds up to two on any difficulty.
+        const n = Math.max(this.difficulty === "hard" || this.difficulty === "death" ? 1 : 0, this.vr("boss_fury"));
+        if (n) this.makeElite(e, rollAffixes(n, true), true);
+      } else if (e.archetype !== "wisp" && Math.random() < ELITE.chanceAt(wave) * Math.pow(1.5, this.vr("elite_blood"))) {
         const count = wave >= ELITE.doubleFromWave && Math.random() < ELITE.doubleChance ? 2 : 1;
         this.makeElite(e, rollAffixes(count));
       }
@@ -5184,6 +5197,7 @@ export class GhostGame {
 
   /** Heal the player; Yamabushi turns the overflow into a shield. */
   healPlayer(amount: number) {
+    amount *= 1 - 0.25 * this.vr("thin_blood");   // VOW Thin Blood
     if (amount <= 0) return;
     const room = this.player.maxHp - this.player.hp;
     this.player.hp = Math.min(this.player.maxHp, this.player.hp + amount);
@@ -5577,7 +5591,7 @@ export class GhostGame {
       parts.push(CONSUMABLES[id].name);
     }
     const heal = Math.round(this.player.maxHp * 0.15);
-    this.player.hp = Math.min(this.player.maxHp, this.player.hp + heal);
+    this.healPlayer(heal);
     parts.push(`+${heal} HP`);
     this.fx.shockwave(x, y, 80, { hue: 45, light: 70, life: 0.45, width: 6 });
     this.fx.burst(x, y, { count: 14, hue: 45, light: 70, speed: 220, life: 0.6, grav: -60 });
@@ -5874,8 +5888,8 @@ export class GhostGame {
     if (isBoss) setTimeout(() => audio.play("bossRoar"), 350);
 
     // Heal between waves perk
-    if (wave > 1 && this.perks.healBetweenWaves > 0) {
-      this.player.hp = Math.min(this.player.maxHp, this.player.hp + this.perks.healBetweenWaves);
+    if (wave > 1 && this.perks.healBetweenWaves > 0 && !this.vr("no_rest")) {   // VOW No Rest
+      this.healPlayer(this.perks.healBetweenWaves);
     }
     if (this.perks.secondWindAvailable) this.perks.hasSecondWind = true;
   }
@@ -6559,6 +6573,7 @@ export class GhostGame {
     };
     const passivesAvailable = PERK_POOL.filter(p => {
       if (perkMaxed[p.id] && maxed.has(perkMaxed[p.id])) return false;
+      if (p.id === "wave_clear" && this.vr("no_rest")) return false;
       if ((p.id === "barrage_master" || p.id === "barrage_blade") && !equipped.includes("barrage")) return false;
       if ((p.id === "flash_master" || p.id === "phantom_strike") && !equipped.includes("flash")) return false;
       return true;
@@ -7055,7 +7070,7 @@ export class GhostGame {
       if (this.perks.stealthHeal > 0) {
         // Stealth-kill heal is also a per-kill heal — clamp to the same cap.
         const heal = Math.min(MAX_HEAL_PER_KILL, this.perks.stealthHeal);
-        this.player.hp = Math.min(this.player.maxHp, this.player.hp + heal);
+        this.healPlayer(heal);
       }
       return;
     }
@@ -7248,10 +7263,10 @@ export class GhostGame {
     if (type === "honor") this.stats.honor++;
     else this.stats.ghost++;
     // Mon coin drop — stealth kills (ghost) earn a 50% bonus.
-    const monGain = Math.max(0, Math.round(e.monReward * 0.75 * this.perks.monMul * DIFFICULTIES[this.difficulty].coins * (type === "ghost" ? 1.5 : 1)));
+    const monGain = Math.max(0, Math.round(e.monReward * 0.75 * this.perks.monMul * DIFFICULTIES[this.difficulty].coins * (type === "ghost" ? 1.5 : 1) * (1 + VOW_COIN_BONUS * this.vowScore)));
     if (this.perks.eliteBounty > 0 && e.archetype !== "normal" && e.archetype !== "wisp") {
       this.stats.mon += this.perks.eliteBounty;
-      this.player.hp = Math.min(this.player.maxHp, this.player.hp + 2);
+      this.healPlayer(2);
       this.spawnFloatText(e.pos, `+${this.perks.eliteBounty} 賞`, { color: "hsl(45 95% 65%)", size: 13, jp: true, vy: -70 });
     }
     if (this.perks.reaperEvery > 0 && ++this.reaperCount >= this.perks.reaperEvery) {
@@ -7283,7 +7298,7 @@ export class GhostGame {
       audio.play("monPing");
       // ===== Phase C — Miko: 5% chance on Mon pickup → small healing pulse =====
       if (this.stats.classId === "miko" && Math.random() < 0.05) {
-        this.player.hp = Math.min(this.player.maxHp, this.player.hp + 6);
+        this.healPlayer(6);
         this.spawnFloatText(this.player.pos, "+6", {
           color: "hsl(180 80% 75%)", size: 14, vy: -55,
         });
@@ -7486,7 +7501,7 @@ export class GhostGame {
       if (this.hasDuo("duo_venom") && e.poisonRemaining > 0) dmg *= 2;   // DUO Venom Strike
       if (this.stats.classId === "kabuki" && this.kabukiHealCd <= 0 && this.player.hp < this.player.maxHp) {
         this.kabukiHealCd = 0.5;
-        this.player.hp = Math.min(this.player.maxHp, this.player.hp + 1);
+        this.healPlayer(1);
       }
     }
     e.hp -= dmg;
@@ -8874,7 +8889,7 @@ export class GhostGame {
 
       const enemyAttackRange = e.isBoss ? BASE.ENEMY_ATTACK_RANGE + 16 : BASE.ENEMY_ATTACK_RANGE;
       // Half-second windup before every melee swing (bosses match).
-      const telegraph = 0.5 * DIFFICULTIES[this.difficulty].tele;
+      const telegraph = 0.5 * DIFFICULTIES[this.difficulty].tele * (1 - 0.15 * this.vr("quick_death"));   // VOW Quick Death
 
       let speedMul = this.timeSlowRemaining > 0 ? 0.25 : 1;
       const tough = e.isBoss || e.archetype === "final";
@@ -11712,7 +11727,7 @@ export class GhostGame {
       if (this.ultPrayerTick <= 0) {
         this.ultPrayerTick = 0.5;
         const p = this.player;
-        p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.05);
+        this.healPlayer(p.maxHp * 0.05);
         this.fx.enso(p.pos.x, p.pos.y, 120, 42, { life: 0.5, width: 5, follow: p.pos });
         for (const e of this.enemies) {
           if (e.state === "dead") continue;
@@ -12145,7 +12160,7 @@ export class GhostGame {
             e.disarmedRemaining = Math.max(e.disarmedRemaining, 3);
             if (!this.ultDivineBeamHit.has(e.id)) {
               this.ultDivineBeamHit.add(e.id);
-              this.player.hp = Math.min(this.player.maxHp, this.player.hp + 4);
+              this.healPlayer(4);
             }
           }
         }
@@ -12816,7 +12831,7 @@ export class GhostGame {
         break;
       case "yamabushi":
         this.ultMountainTimer = 3;
-        this.player.hp = Math.min(this.player.maxHp, this.player.hp + 30);
+        this.healPlayer(30);
         this.player.invuln = Math.max(this.player.invuln, 3);
         break;
       case "onna":
@@ -14156,7 +14171,7 @@ export class GhostGame {
     switch (id) {
       case "rice_ball": {
         const before = Math.ceil(p.hp);
-        p.hp = Math.min(p.maxHp, p.hp + 35);
+        this.healPlayer(35);
         const healed = Math.round(p.hp - before);
         text = healed > 0 ? `+${healed} HP (${before} → ${Math.ceil(p.hp)})` : "Already at full HP";
         this.spawnFloatText(p.pos, `+${healed}`, { color: "hsl(140 80% 65%)", size: 16, vy: -65 });
@@ -14238,7 +14253,7 @@ export class GhostGame {
         this.perks.maxHpBonus += 10;
         p.maxHp = 100 + this.perks.maxHpBonus;
         const before = Math.ceil(p.hp);
-        p.hp = Math.min(p.maxHp, p.hp + 20);
+        this.healPlayer(20);
         text = `+10 max HP (now ${Math.round(p.maxHp)}) and +${Math.round(p.hp - before)} HP`;
         break;
       }
@@ -14309,6 +14324,7 @@ export class GhostGame {
     try {
       saveRun({
         atShop,
+        vows: { ...this.vows },
         classId: this.lastClassId,
         difficulty: this.difficulty,
         secondaryId: this.lastSecondaryId,
@@ -14349,6 +14365,7 @@ export class GhostGame {
     // Bring the engine up with the right class + starting secondary so all
     // class-conditional spawns (Kagebushi clone, Miko barrier) initialize.
     this.difficulty = s.difficulty ?? "normal";
+    this.vows = { ...(s.vows ?? {}) };
     this.start(s.classId, s.secondaryId);
     // Overlay numeric perks (captures shop-bought upgrades that aren't in
     // acquiredPerks). Spread carefully — keep keys we don't recognize so
@@ -14781,7 +14798,7 @@ export class GhostGame {
     // runs after a wave ends and we never run two intermissions back-to-back.
     if (this.stats.state !== "playing") return;
     const equipped = this.stats.secondaryIds.filter((s): s is SecondaryId => !!s);
-    const infl = shopInflation(this.stats.wave);
+    const infl = shopInflation(this.stats.wave) * (1 + 0.2 * this.vr("stingy"));   // VOW Stingy Merchant
     this.stats.shopOffer = this.dedupeOffer(rollShopOffer(this.shopSlots(), equipped, this.maxedShopEffects())).map(it => ({ ...it, price: Math.round(it.price * infl) }));
     this.emitEvent({ t: "offer", kind: "shop", ids: this.stats.shopOffer.map(it => it.effect) });
     this.stats.shopRerollCost = Math.round(SHOP_REROLL_COST * infl);
@@ -14805,7 +14822,7 @@ export class GhostGame {
     if (this.stats.mon < this.stats.shopRerollCost) return;
     this.stats.mon -= this.stats.shopRerollCost;
     const equipped = this.stats.secondaryIds.filter((s): s is SecondaryId => !!s);
-    const infl = shopInflation(this.stats.wave);
+    const infl = shopInflation(this.stats.wave) * (1 + 0.2 * this.vr("stingy"));   // VOW Stingy Merchant
     this.stats.shopOffer = this.dedupeOffer(rollShopOffer(this.shopSlots(), equipped, this.maxedShopEffects())).map(it => ({ ...it, price: Math.round(it.price * infl) }));
     this.emitEvent({ t: "offer", kind: "shop", ids: this.stats.shopOffer.map(it => it.effect) });
     // Slight escalation so reroll spam isn't free.
@@ -14904,7 +14921,7 @@ export class GhostGame {
         p.hp = p.maxHp;
         break;
       case "heal_half":
-        p.hp = Math.min(p.maxHp, p.hp + Math.floor(p.maxHp * 0.4));
+        this.healPlayer(Math.floor(p.maxHp * 0.4));
         break;
       // ===== Stats rework — rarity-tiered upgrades =====
       case "hp_common":
@@ -14915,12 +14932,12 @@ export class GhostGame {
       case "hp_rare":
         this.perks.maxHpBonus += 15;
         p.maxHp = 100 + this.perks.maxHpBonus;
-        p.hp = Math.min(p.maxHp, p.hp + 15);
+        this.healPlayer(15);
         break;
       case "hp_leg":
         this.perks.maxHpBonus += 40;
         p.maxHp = 100 + this.perks.maxHpBonus;
-        p.hp = Math.min(p.maxHp, p.hp + 40);
+        this.healPlayer(40);
         break;
       case "dmg_katana_common":
         this.addKatanaDamagePct(0.12);
@@ -15064,7 +15081,7 @@ export class GhostGame {
         this.perks.maxHpBonus = Math.min(MAX_HP_CAP - 100, this.perks.maxHpBonus + 30);
         if (this.player) {
           this.player.maxHp = Math.min(MAX_HP_CAP, 100 + this.perks.maxHpBonus);
-          this.player.hp = Math.min(this.player.maxHp, this.player.hp + 30);
+          this.healPlayer(30);
         }
         this.flash("Soul Collector");
         break;

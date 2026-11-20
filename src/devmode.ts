@@ -140,6 +140,7 @@ export function initDevMode(getGame: () => GhostGame | null) {
     <section>
       <h4>Balance data</h4>
       <div class="row"><button data-dev="report">Balance report</button><button data-dev="copyjson">Copy JSON</button></div>
+      <div class="row"><button data-dev="vowsunlock">Toggle Vows unlock</button></div>
     </section>
     <section>
       <h4>Toggles</h4>
@@ -254,6 +255,12 @@ export function initDevMode(getGame: () => GhostGame | null) {
     // Balance report doesn't need a run and doesn't count as cheating.
     if (act === "report") { resetArmed = false; renderReport(); report.classList.add("open"); return; }
     if (act === "copyjson") { void copyJson(); return; }
+    if (act === "vowsunlock") {
+      let on = false;
+      try { on = localStorage.getItem("ghostgame.vowsDev") !== "1"; localStorage.setItem("ghostgame.vowsDev", on ? "1" : "0"); } catch { /* blocked */ }
+      notify(on ? "Vows unlocked (dev) — reopen the menu" : "Vows dev unlock off");
+      return;
+    }
     const g = getGame();
     if (!g) { notify("Start a run first"); return; }
     g.devMode = true; // dev run — no records

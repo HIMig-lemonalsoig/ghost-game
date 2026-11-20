@@ -10,6 +10,8 @@ import { playIntro } from "./intro";
 import { EVOLUTIONS, EVO_MASTERY } from "./content/evolutions";
 import { DUO_BY_ID } from "./content/duos";
 import { SIGNATURES } from "./content/signatures";
+import { VOWS, VOW_BY_ID, vowScore, vowRank, MAX_VOW_SCORE, VOW_UNLOCK_WAVE, VOW_COIN_BONUS } from "./content/vows";
+import type { VowSet, VowId } from "./content/vows";
 import { trackGame, trackStartWeapons } from "./telemetry";
 import { trackRun, commitRun, careerHTML, resetCareer, CAREER_CSS, getCareer, liveCareer, isFreshRun } from "./career";
 import { ACHIEVEMENTS, checkAchievements, achievementsHTML, achToastHTML, unlockedCount, ACH_CSS } from "./achievements";
@@ -71,6 +73,16 @@ const keys: Record<Action, string> = readJSON(KEYS_KEY, { ...DEFAULT_KEYS });
 let capturing: Action | null = null;
 let controlsOpen = false;
 let careerOpen = false;
+// ─── Vows ─────────────────────────────────────────────────────────────────────
+const VOWS_KEY = "ghostgame.vows.v1";
+const vowSet: VowSet = readJSON<VowSet>(VOWS_KEY, {});
+let vowsOpen = false;
+const vowsUnlocked = () => {
+  let dev = false;
+  try { dev = localStorage.getItem("ghostgame.vowsDev") === "1"; } catch { /* storage blocked */ }
+  return dev || getCareer().highestWave >= VOW_UNLOCK_WAVE;
+};
+const activeVows = (): VowSet => (vowsUnlocked() ? { ...vowSet } : {});
 let achOpen = false;
 let careerArmed = false;
 
@@ -123,12 +135,12 @@ function showControlsModal() {
 }
 function achCtx(): AchCtx {
   const g = game && !game.devMode ? game : null;
-  return { c: liveCareer(g), r: g?.run ?? null, s: g?.stats ?? null, diff: g?.difficulty ?? null, fresh: g ? isFreshRun(g) : false };
+  return { c: liveCareer(g), r: g?.run ?? null, s: g?.stats ?? null, diff: g?.difficulty ?? null, fresh: g ? isFreshRun(g) : false, vow: g?.vowScore ?? 0 };
 }
 function showAchModal() {
   achOpen = true;
   overlay.classList.add("show", "top");
-  overlay.innerHTML = achievementsHTML({ c: getCareer(), r: null, s: null, diff: null, fresh: false });
+  overlay.innerHTML = achievementsHTML({ c: getCareer(), r: null, s: null, diff: null, fresh: false, vow: 0 });
 }
 function closeAchModal() {
   achOpen = false;
@@ -154,6 +166,42 @@ function runAchievementCheck(force = false) {
     try { audio.play(a.tier === "common" || a.tier === "uncommon" ? "monPing" : "levelUp"); } catch { /* audio off */ }
     setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 220); }, a.tier === "mythic" ? 7000 : 4500);
   }
+}
+
+function vowsHTML(): string {
+  const score = vowScore(vowSet);
+  const rows = VOWS.map(v => {
+    const r = vowRank(vowSet, v.id);
+    const pips = Array.from({ length: v.ranks }, (_, i) => `<i class="${i < r ? "on" : ""}"></i>`).join("");
+    return `<div class="vow-row${r ? " on" : ""}">
+      <span class="kanji">${v.kanji}</span>
+      <div class="vow-t"><b>${v.name}</b> <span class="vow-pts">${v.points} pt${v.points > 1 ? "s" : ""} / rank</span>
+        <p>${r ? v.desc(r) : `<span class="dim">${v.desc(1)}</span>`}</p></div>
+      <div class="vow-ctrl">
+        <button class="vow-step" data-vow="${v.id}" data-d="-1" ${r ? "" : "disabled"} aria-label="Lower ${v.name}">−</button>
+        <span class="vow-pips" aria-label="Rank ${r} of ${v.ranks}">${pips}</span>
+        <button class="vow-step" data-vow="${v.id}" data-d="1" ${r < v.ranks ? "" : "disabled"} aria-label="Raise ${v.name}">+</button>
+      </div></div>`;
+  }).join("");
+  return `<div class="panel vow-panel" style="text-align:left">
+    <div class="panel-title" style="text-align:center">誓 VOWS</div>
+    <div class="panel-sub" style="text-align:center">Swear optional challenges. Every point adds +${Math.round(VOW_COIN_BONUS * 100)}% coins and goes on your record.</div>
+    <div class="vow-total"><span>Vow score</span><b class="num">${score}</b><span class="dim">/ ${MAX_VOW_SCORE}</span>
+      ${getCareer().vowBest ? `<span class="vow-best">Best: score ${getCareer().vowBest!.score} · wave ${getCareer().vowBest!.wave}</span>` : ""}</div>
+    <div class="vow-list">${rows}</div>
+    <div class="panel-actions"><button class="btn primary" data-act="closevows">Done · Esc</button><button class="btn ghost" data-act="clearvows" ${score ? "" : "disabled"}>Clear all</button></div>
+  </div>`;
+}
+function showVowsModal() {
+  vowsOpen = true;
+  overlay.classList.add("show", "top");
+  overlay.innerHTML = vowsHTML();
+}
+function closeVowsModal() {
+  vowsOpen = false;
+  overlay.classList.remove("show", "top");
+  overlay.innerHTML = "";
+  renderMenu();
 }
 
 function showCareerModal() {
@@ -335,8 +383,11 @@ function renderMenu() {
           return `<button class="diff${d === settings.difficulty ? " on" : ""}" style="--c:${D.color}" data-diff="${d}" role="radio" aria-checked="${d === settings.difficulty}"><span class="kanji">${D.kanji}</span>${D.name}</button>`;
         }).join("")}</div>
         <p class="hint">${DIFFICULTIES[settings.difficulty].desc}</p>
+        ${vowsUnlocked()
+          ? `<button class="vow-btn${vowScore(vowSet) ? " on" : ""}" data-act="vows"><span class="kanji">誓</span><span><b>Vows</b><i>${vowScore(vowSet) ? `Score ${vowScore(vowSet)} · +${Math.round(vowScore(vowSet) * VOW_COIN_BONUS * 100)}% coins` : "Swear optional challenges for a higher score"}</i></span><span class="num vow-score">${vowScore(vowSet)}</span></button>`
+          : `<p class="hint vow-locked"><span class="kanji">誓</span> Vows unlock when you reach wave ${VOW_UNLOCK_WAVE} (your best: ${getCareer().highestWave || 0}).</p>`}
         <div class="start-row">
-          <button class="btn primary" data-act="start" ${currentWeapons.length === 2 ? "" : "disabled"}>Begin · ${DIFFICULTIES[settings.difficulty].name} · Enter</button>
+          <button class="btn primary" data-act="start" ${currentWeapons.length === 2 ? "" : "disabled"}>Begin · ${DIFFICULTIES[settings.difficulty].name}${vowsUnlocked() && vowScore(vowSet) ? ` · 誓 ${vowScore(vowSet)}` : ""} · Enter</button>
         </div>
         ${saved ? `<p class="hint">Starting a new run replaces your saved run.</p>` : ""}
       </aside>
@@ -403,6 +454,7 @@ menu.addEventListener("click", e => {
   else if (act === "controls") showControlsModal();
   else if (act === "career") showCareerModal();
   else if (act === "ach") showAchModal();
+  else if (act === "vows") showVowsModal();
   else if (act === "random") {
     const pool = CLASSES.filter(c => c.id !== currentClass);
     selectClass(pool[Math.floor(Math.random() * pool.length)].id);
@@ -466,6 +518,7 @@ function startGame(classId: ClassId, weapons: SecondaryId[]) {
   clearSavedRun();
   const g = bootGame();
   g.difficulty = settings.difficulty;
+  g.vows = activeVows();
   g.start(classId, pick[0]);
   g.equipWeapons([pick[0], pick[1]]);
   trackRun(g, true);
@@ -664,10 +717,11 @@ function updateHud(s: GameStats) {
   if (game) {
     const D = DIFFICULTIES[game.difficulty];
     const tag = H("difftag");
-    if (tag && cache.get("difftag") !== game.difficulty) {
-      cache.set("difftag", game.difficulty);
+    const vs = game.vowScore;
+    if (tag && cache.get("difftag") !== `${game.difficulty}${vs}`) {
+      cache.set("difftag", `${game.difficulty}${vs}`);
       tag.style.setProperty("--c", D.color);
-      tag.innerHTML = `<span class="kanji">${D.kanji}</span> ${D.name.toUpperCase()}`;
+      tag.innerHTML = `<span class="kanji">${D.kanji}</span> ${D.name.toUpperCase()}${vs ? ` · <span class="kanji">誓</span> ${vs}` : ""}`;
     }
   }
 
@@ -900,7 +954,7 @@ function renderPause(s: GameStats) {
     `<button class="toggle" data-set="${k}" role="switch" aria-checked="${settings[k]}"><span>${label}</span><span class="switch${settings[k] ? " on" : ""}"></span></button>`;
   showOverlay(`<div class="panel" style="text-align:left">
     <div class="panel-title" style="text-align:center">PAUSED</div>
-    <div class="panel-sub" style="text-align:center">${s.className} · ${DIFFICULTIES[game?.difficulty ?? "normal"].name} · Wave ${s.wave} · Level ${s.level}</div>
+    <div class="panel-sub" style="text-align:center">${s.className} · ${DIFFICULTIES[game?.difficulty ?? "normal"].name}${game?.vowScore ? ` · 誓 ${game.vowScore}` : ""} · Wave ${s.wave} · Level ${s.level}</div>
     <div class="pause-grid">
       <div class="pause-menu">
         <button class="btn primary" data-act="resume">Resume · Esc</button>
@@ -931,7 +985,7 @@ function renderEnd(s: GameStats) {
   showOverlay(`<div class="panel">
     <div class="end-kanji" style="color:${won ? "var(--gold)" : "var(--crimson)"}">${won ? "天" : "敗"}</div>
     <div class="panel-title" style="margin-top:8px">${won ? "VICTORY" : "YOU HAVE FALLEN"}</div>
-    <div class="panel-sub">${s.className} · ${DIFFICULTIES[game?.difficulty ?? "normal"].name}</div>
+    <div class="panel-sub">${s.className} · ${DIFFICULTIES[game?.difficulty ?? "normal"].name}${game?.vowScore ? ` · Vow score ${game.vowScore}` : ""}</div>
     ${recordSet ? `<div class="record">NEW BEST · WAVE ${s.wave}</div>` : `<div class="panel-sub num">Best on ${DIFFICULTIES[game?.difficulty ?? "normal"].name}: wave ${best[bestKey(s.classId, game?.difficulty ?? "normal")] ?? s.wave}</div>`}
     <div class="end-stats num">
       <div class="end-stat"><b>${s.wave}</b><span>Wave</span></div>
@@ -959,6 +1013,17 @@ overlay.addEventListener("click", e => {
   if (cact === "closecontrols") { closeControlsModal(); return; }
   if (cact === "closecareer") { closeCareerModal(); return; }
   if (cact === "closeach") { closeAchModal(); return; }
+  if (cact === "closevows") { closeVowsModal(); return; }
+  if (cact === "clearvows") { for (const k of Object.keys(vowSet)) delete vowSet[k as VowId]; writeJSON(VOWS_KEY, vowSet); showVowsModal(); return; }
+  const vb = t.closest<HTMLElement>("[data-vow]");
+  if (vb && vowsOpen) {
+    const id = vb.dataset.vow as VowId;
+    const next = Math.max(0, Math.min(VOW_BY_ID[id].ranks, vowRank(vowSet, id) + Number(vb.dataset.d)));
+    if (next) vowSet[id] = next; else delete vowSet[id];
+    writeJSON(VOWS_KEY, vowSet);
+    showVowsModal();
+    return;
+  }
   if (cact === "resetcareer") {
     if (careerArmed) { resetCareer(); careerArmed = false; } else careerArmed = true;
     showCareerModal();
@@ -1057,6 +1122,7 @@ window.addEventListener("keydown", e => {
   if (controlsOpen) { if (e.code === "Escape") closeControlsModal(); return; }
   if (careerOpen) { if (e.code === "Escape") closeCareerModal(); return; }
   if (achOpen) { if (e.code === "Escape") closeAchModal(); return; }
+  if (vowsOpen) { if (e.code === "Escape") closeVowsModal(); return; }
   if (menu.style.display !== "none") { menuKeys(e); return; }
   if (!game) return;
   const s = game.stats;
