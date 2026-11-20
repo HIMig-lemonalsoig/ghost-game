@@ -554,7 +554,7 @@ export const SECONDARIES: Record<SecondaryId, SecondaryDef> = {
     startAmmo: 8,
     regenTime: 2.0,
     fireCooldown: 0.25,
-    damageMul: 0.8,
+    damageMul: 0.85,
     projectiles: 1,
     spread: 0,
     accent: "hsl(45, 80%, 70%)",
@@ -639,7 +639,7 @@ export const SECONDARIES: Record<SecondaryId, SecondaryDef> = {
     startAmmo: 9,
     regenTime: 2.5,
     fireCooldown: 0.14,
-    damageMul: 0.55,
+    damageMul: 0.85,
     projectiles: 1,
     spread: 0,
     accent: "hsl(280, 50%, 70%)",
@@ -3846,9 +3846,6 @@ export const STAT_CAPS = {
 // push the swept arc past 180°. BASE.ATTACK_ARC is 0.7π, so the cap is
 // (1π / 0.7π) ≈ 1.4286.
 const MAX_ATTACK_ARC_MUL = Math.PI / (Math.PI * 0.7);
-// Probability per enemy-attack that a Deflect window is bypassed
-// entirely (the enemy's strike "goes through" the guard).
-const DEFLECT_BYPASS_CHANCE = 0.19;
 // Hard cap on the player's swing range. attackRangeMul can never exceed
 // 1.20 (i.e. +20% reach over base).
 const MAX_ATTACK_RANGE_MUL = 1.20;
@@ -6707,6 +6704,10 @@ export class GhostGame {
       this.ultCutscene.t += dtRaw;
       if (this.ultCutscene.t >= this.ultCutscene.dur) {
         this.ultCutscene = null;
+        // Aim where the player is pointing NOW, not where they were when they pressed it.
+        if (this.input.mouseAim) {
+          this.player.facing = Math.atan2(this.input.mouseY + this.cameraY - this.player.pos.y, this.input.mouseX + this.cameraX - this.player.pos.x);
+        }
         this.executeUltimate();
       }
       this.emitStats();
@@ -7430,7 +7431,9 @@ export class GhostGame {
     // The hit angle `ang` is the direction the blow is travelling, so a
     // frontal block requires the shield (e.shieldFacing) to be roughly
     // pointing back at the attacker, i.e. opposite to `ang`.
-    if (e.archetype === "shielded" && e.shieldHp > 0) {
+    // Only WEAPON hits (swings + projectiles) are blocked — abilities,
+    // ultimates and ground effects go through the shield.
+    if (e.archetype === "shielded" && e.shieldHp > 0 && weaponSource) {
       const shieldOpposite = e.shieldFacing + Math.PI;
       let diff = ang - shieldOpposite;
       while (diff > Math.PI) diff -= Math.PI * 2;
@@ -7586,7 +7589,7 @@ export class GhostGame {
     }
     if (this.ultThunderTimer > 0 && !this.raijinZapping && this.thunderCd <= 0) {
       this.thunderCd = 0.12;
-      this.chainZap(e, 7, 3);
+      this.chainZap(e, this.ultDmg(7), 3);
       this.fx.bolt(e.pos.x, e.pos.y - 260, e.pos.x, e.pos.y, 205, 0.25);
     }
     if (this.stats.classId === "raijin" && !this.raijinZapping) {
@@ -7641,6 +7644,23 @@ export class GhostGame {
   applyEnemyHit(e: Enemy | null, baseDamage: number, source?: string) {
     if (this.player.invuln > 0) return;
     if (this.ultMountainTimer > 0 || this.ultBloodRageTimer > 0 || this.ultShadowStepTimer > 0) return;
+    // Deflect stance blocks EVERY enemy attack — dashes, explosions, slams,
+    // hazards and fire included — and reflects damage when there's an attacker.
+    if (this.player.deflectTimer > 0) {
+      if (e && e.state !== "dead") {
+        e.hp -= e.damage + this.perks.parryDamage;
+        e.hitFlash = 1;
+        e.stunTimer = Math.max(e.stunTimer, e.isBoss ? 0.4 : 0.8);
+        if (e.hp <= 0) this.killEnemy(e, "honor");
+      }
+      this.player.invuln = Math.max(this.player.invuln, 0.2);
+      this.spawnSpark(this.player.pos);
+      this.hitstop = Math.max(this.hitstop, 0.06);
+      this.whiteFlashTimer = 0.08; this.whiteFlashMax = 0.08; this.whiteFlashAlpha = 0.3;
+      audio.play("parry");
+      this.flash("Deflected!");
+      return;
+    }
     // ===== Phase 2 — Block check =====
     // Block soaks damage up to what's left in the pool; any overflow goes
     // through to HP. (It used to absorb the WHOLE hit if even 0.01 block
@@ -7806,6 +7826,7 @@ export class GhostGame {
           // PHASE4 Onryō talisman — dash through it; otherwise it roots you briefly.
           if (ep.kind === "talisman") {
             if (this.player.dashTimer > 0 || this.player.invuln > 0) continue;
+            if (this.player.deflectTimer > 0) { ep.life = 0; this.applyEnemyHit(null, ep.damage, "onryō talisman"); continue; }
             ep.life = 0;
             this.playerRoot = ONRYO.rootTime;
             this.applyEnemyHit(null, ep.damage, "onryō talisman");
@@ -7833,7 +7854,7 @@ export class GhostGame {
             continue;
           }
         // Deflect window — block + reflect (visual spark only; arrows just die).
-        if (this.player.deflectTimer > 0 && Math.random() >= DEFLECT_BYPASS_CHANCE) {
+        if (this.player.deflectTimer > 0) {
           this.spawnSpark(ep.pos);
           this.flash("Deflected!");
           audio.play("parry");
@@ -9230,7 +9251,7 @@ export class GhostGame {
         }
         if (e.attackTelegraph <= 0) {
           if (dist < enemyAttackRange + BASE.PLAYER_RADIUS + 6) {
-            if (this.player.deflectTimer > 0 && Math.random() >= DEFLECT_BYPASS_CHANCE) {
+            if (this.player.deflectTimer > 0) {
               // Deflect — block + reflect full damage to attacker.
               // Counter Strike perk adds bonus reflect damage on top.
               const counterBonus = this.perks.parryDamage;
@@ -11694,7 +11715,7 @@ export class GhostGame {
           const dx = e.pos.x - this.player.pos.x;
           const dy = e.pos.y - this.player.pos.y;
           if (Math.hypot(dx, dy) <= 120 + e.size) {
-            this.dealDamage(e, 2, Math.atan2(dy, dx), 30);
+            this.dealDamage(e, this.ultDmg(2), Math.atan2(dy, dx), 30);
           }
         }
       }
@@ -11733,7 +11754,7 @@ export class GhostGame {
           if (e.state === "dead") continue;
           const dx = e.pos.x - p.pos.x, dy = e.pos.y - p.pos.y, d = Math.hypot(dx, dy);
           if (d > 140 + e.size) continue;
-          this.dealDamage(e, 3, Math.atan2(dy, dx), e.isBoss ? 40 : 260);
+          this.dealDamage(e, this.ultDmg(3), Math.atan2(dy, dx), e.isBoss ? 40 : 260);
         }
       }
     }
@@ -11750,7 +11771,7 @@ export class GhostGame {
         this.fx.burst(tx, ty, { count: 2, hue: 200, light: 85, speed: 120, life: 0.15 });
         for (const e of this.enemies) {
           if (e.state === "dead" || Math.hypot(e.pos.x - tx, e.pos.y - ty) > 34 + e.size) continue;
-          this.dealDamage(e, 7, Math.PI / 2, 20);
+          this.dealDamage(e, this.ultDmg(7), Math.PI / 2, 20);
           e.slowRemaining = Math.max(e.slowRemaining, 2);
         }
       }
@@ -11772,7 +11793,7 @@ export class GhostGame {
           this.fx.slash(e.pos.x, e.pos.y, Math.PI * 0.25, e.size + 30, Math.PI * 0.6, 1, { hue: 358, sat: 85, light: 70, width: 10, life: 0.4 });
           this.fx.slash(e.pos.x, e.pos.y, Math.PI * 0.75, e.size + 30, Math.PI * 0.6, -1, { hue: 358, sat: 85, light: 70, width: 10, life: 0.4 });
           this.fx.glow(e.pos.x, e.pos.y, 80, 358, 90, 50, 0.3);
-          this.dealDamage(e, this.roninDebt.dmg, -Math.PI / 2, 60);
+          this.dealDamage(e, this.ultDmg(this.roninDebt.dmg), -Math.PI / 2, 60);
         }
         this.hitstop = Math.max(this.hitstop, 0.1);
         this.cameraShake = Math.max(this.cameraShake, 0.5);
@@ -11817,7 +11838,7 @@ export class GhostGame {
         const push = -playerSide * (e.size + 16) - side;
         e.pos.x += nx * push; e.pos.y += ny * push;
         if (w.tick <= 0) {
-          this.dealDamage(e, 6, Math.atan2(-playerSide * ny, -playerSide * nx), e.isBoss ? 20 : 140);
+          this.dealDamage(e, this.ultDmg(6), Math.atan2(-playerSide * ny, -playerSide * nx), e.isBoss ? 20 : 140);
           e.burnRemaining = Math.max(e.burnRemaining, 2);
           e.burnDps = Math.max(e.burnDps, 4);
         }
@@ -11844,7 +11865,7 @@ export class GhostGame {
         const along = rx * ux + ry * uy;
         const perp = Math.abs(-rx * uy + ry * ux);
         if (perp > tw.width / 2 || along < tw.dist - 40 || along > tw.dist + 20) continue;
-        if (!tw.carried.has(e.id)) { tw.carried.add(e.id); this.dealDamage(e, 6, tw.ang, 0); }
+        if (!tw.carried.has(e.id)) { tw.carried.add(e.id); this.dealDamage(e, this.ultDmg(6), tw.ang, 0); }
         if (!e.isBoss) { e.pos.x += ux * step; e.pos.y += uy * step; }
         e.stunTimer = Math.max(e.stunTimer, 0.15);
       }
@@ -11853,7 +11874,7 @@ export class GhostGame {
         for (const id of tw.carried) {
           const e = this.enemies.find(o => o.id === id && o.state !== "dead");
           if (!e) continue;
-          this.dealDamage(e, 10, tw.ang, 80);
+          this.dealDamage(e, this.ultDmg(10), tw.ang, 80);
           e.slowRemaining = Math.max(e.slowRemaining, 4);
         }
         this.fx.smoke(fx, fy, 10, 120, 70, 190, 55);
@@ -12026,12 +12047,12 @@ export class GhostGame {
           const d = Math.hypot(e.pos.x - cx, e.pos.y - cy);
           if (d <= R) {
             const before = e.hp;
-            this.dealDamage(e, 4, Math.atan2(e.pos.y - cy, e.pos.x - cx), 0);
+            this.dealDamage(e, this.ultDmg(4), Math.atan2(e.pos.y - cy, e.pos.x - cx), 0);
             if (before > 0 && e.hp <= 0) {
               for (const o of this.enemies) {
                 if (o === e || o.state === "dead") continue;
                 if (Math.hypot(o.pos.x - e.pos.x, o.pos.y - e.pos.y) <= 110) {
-                  this.dealDamage(o, 8, Math.atan2(o.pos.y - e.pos.y, o.pos.x - e.pos.x), 60);
+                  this.dealDamage(o, this.ultDmg(8), Math.atan2(o.pos.y - e.pos.y, o.pos.x - e.pos.x), 60);
                 }
               }
             }
@@ -12066,7 +12087,7 @@ export class GhostGame {
           for (const e of this.enemies) {
             if (e.state === "dead") continue;
             if (Math.hypot(e.pos.x - img.pos.x, e.pos.y - img.pos.y) <= 60 + e.size) {
-              this.dealDamage(e, this.perks.damage, Math.atan2(e.pos.y - img.pos.y, e.pos.x - img.pos.x), 40);
+              this.dealDamage(e, this.ultDmg(6), Math.atan2(e.pos.y - img.pos.y, e.pos.x - img.pos.x), 40);   // was base weapon dmg (~1–2)
             }
           }
         }
@@ -12088,12 +12109,12 @@ export class GhostGame {
       for (const e of this.enemies) {
         if (e.state === "dead") continue;
         if (Math.hypot(e.pos.x - this.player.pos.x, e.pos.y - this.player.pos.y) <= 70 + e.size) {
-          this.dealDamage(e, 14, this.ultEarthshakerDir, 480 * this.perks.knockbackMul);
+          this.dealDamage(e, this.ultDmg(14), this.ultEarthshakerDir, 480 * this.perks.knockbackMul);
           if (e.hp > 0 && !e.isBoss) {
             e.launched = true;
             e.launchTimer = 0.9;
             e.launchHeight = 0;
-            e.launchDamage = 6;
+            e.launchDamage = this.ultDmg(6);
           }
         }
       }
@@ -12103,7 +12124,7 @@ export class GhostGame {
         this.ultEarthshakerTimer = 0;
         this.shockwaves.push({
           pos: { x: this.player.pos.x, y: this.player.pos.y },
-          radius: 0, maxRadius: 520, life: 0.8, damage: 16, hitSet: new Set(),
+          radius: 0, maxRadius: 520, life: 0.8, damage: this.ultDmg(16), hitSet: new Set(),
         });
         this.cameraShake = Math.max(this.cameraShake, 1.0);
         this.screenFlashColor = "hsla(20, 60%, 55%, 0.4)";
@@ -12121,12 +12142,12 @@ export class GhostGame {
           if (e.state === "dead") continue;
           if (e.isBoss || e.archetype === "final") {
             e.slowRemaining = Math.max(e.slowRemaining, 0.6);
-            this.dealDamage(e, 2, 0, 0);
+            this.dealDamage(e, this.ultDmg(2), 0, 0);
           } else {
             e.webbedRemaining = Math.max(e.webbedRemaining, 0.6);
             e.stunTimer = Math.max(e.stunTimer, 0.5);
             const before = e.hp;
-            this.dealDamage(e, 3, 0, 0);
+            this.dealDamage(e, this.ultDmg(3), 0, 0);
             if (before > 0 && e.hp <= 0) {
               for (const o of this.enemies) {
                 if (o === e || o.state === "dead") continue;
@@ -12156,7 +12177,7 @@ export class GhostGame {
           if (e.state === "dead") continue;
           const d = Math.hypot(e.pos.x - this.beamPos.x, e.pos.y - this.beamPos.y);
           if (d <= this.ultDivineBeamRadius + e.size) {
-            this.dealDamage(e, 5, 0, 0);
+            this.dealDamage(e, this.ultDmg(5), 0, 0);
             e.disarmedRemaining = Math.max(e.disarmedRemaining, 3);
             if (!this.ultDivineBeamHit.has(e.id)) {
               this.ultDivineBeamHit.add(e.id);
@@ -12271,16 +12292,7 @@ export class GhostGame {
           if (owner) {
             this.applyEnemyHit(owner, sw.damage);
           } else if (this.player.invuln <= 0) {
-            this.player.hp -= sw.damage;
-            this.lastHitBy = "boss shockwave";
-            this.spawnFloatText(this.player.pos, `-${fmtNum(sw.damage)}`, {
-              color: "hsl(358 90% 65%)",
-              size: 15,
-            });
-            this.player.invuln = 0.6 + this.perks.invulnBonus;
-            this.player.hitFlash = 1;
-            this.cameraShake = Math.max(this.cameraShake, 0.5);
-            audio.play("hit");
+            this.applyEnemyHit(null, sw.damage, "boss shockwave");
           }
         }
       }
@@ -12806,6 +12818,16 @@ export class GhostGame {
     this.emitStats();
   }
 
+  /** Ultimate damage grows with the wave (+35%/wave, a bit under enemy HP's
+   *  +45%) or with how much the player's own damage has grown — whichever is
+   *  higher — so ultimates stay strong late in a run. */
+  ultDmg(base: number): number {
+    const wave = Math.max(1, this.stats.wave);
+    const waveScale = 1 + (wave - 1) * 0.35;
+    const powerScale = this.perks.damage / Math.max(0.01, this.baseKatanaDamage);
+    return base * Math.max(waveScale, powerScale);
+  }
+
   skipUltCutscene() {
     if (this.ultCutscene && this.ultCutscene.t > 0.25) this.ultCutscene.t = this.ultCutscene.dur;
   }
@@ -12859,7 +12881,7 @@ export class GhostGame {
           if (proj < 0 || proj > dashDist) continue;
           const perp = Math.abs(-dx * Math.sin(ang) + dy * Math.cos(ang));
           if (perp > 70 + e.size) continue;
-          this.dealDamage(e, 24, ang, 80);
+          this.dealDamage(e, this.ultDmg(24), ang, 80);
           e.bleedRemaining = Math.max(e.bleedRemaining, 4);
         }
         // Visual flash trail along the dash
@@ -12877,8 +12899,8 @@ export class GhostGame {
           const t = i / 6;
           this.fx.slash(startX + (endX - startX) * t, startY + (endY - startY) * t, ang + Math.PI / 2, 44, Math.PI * 0.6, i % 2 ? 1 : -1, { hue: 36, sat: 70, light: 88, width: 7, life: 0.4 });
         }
-        this.player.pos.x = endX;
-        this.player.pos.y = endY;
+        this.player.pos.x = Math.max(20, Math.min(this.worldW - 20, endX));   // stay inside the arena
+        this.player.pos.y = Math.max(20, Math.min(this.worldH - 20, endY));
         this.player.invuln = Math.max(this.player.invuln, 1.5);
         this.screenFlashColor = "hsla(36, 90%, 92%, 0.7)";
         this.screenFlashTimer = 0.35;
@@ -12910,9 +12932,10 @@ export class GhostGame {
             pos: { x: this.player.pos.x, y: this.player.pos.y },
             vel: { x: Math.cos(a) * 360, y: Math.sin(a) * 360 },
             life: 1.6, maxLife: 1.6,
-            damage: 10,
+            damage: this.ultDmg(10),
             hitSet: new Set(),
             curse: true,
+            homing: true,     // used to fly off in random directions and miss
             size: 18,
           });
         }
@@ -12953,7 +12976,7 @@ export class GhostGame {
           while (diff > Math.PI) diff -= Math.PI * 2;
           while (diff < -Math.PI) diff += Math.PI * 2;
           if (Math.abs(diff) > 0.55) continue;
-          this.dealDamage(e, 20, Math.atan2(dy, dx), e.isBoss ? 60 : 420);
+          this.dealDamage(e, this.ultDmg(20), Math.atan2(dy, dx), e.isBoss ? 60 : 420);
           e.stunTimer = Math.max(e.stunTimer, e.isBoss ? 0.5 : 1.4);
         }
         for (let i = -2; i <= 2; i++) {
@@ -13034,7 +13057,7 @@ export class GhostGame {
       case "kitsune": {
         // Nine Tails: nine homing foxfires hunt foes down one by one.
         for (let i = 0; i < 9; i++) {
-          this.spawnFoxfire(this.player.pos.x, this.player.pos.y, 9, (i / 9) * Math.PI * 2);
+          this.spawnFoxfire(this.player.pos.x, this.player.pos.y, this.ultDmg(9), (i / 9) * Math.PI * 2);
         }
         this.player.invuln = Math.max(this.player.invuln, 0.8);
         break;
@@ -13133,7 +13156,6 @@ export class GhostGame {
     let s = e.maxHp + e.hp * 0.5 + e.damage * 2;
     if (e.isBoss) s += 500;
     if (e.archetype === "final") s += 800;
-    if (e.archetype === "shielded") s += 30;
     if (e.archetype === "heavy") s += 20;
     if (e.archetype === "assassin") s += 15;
     return s;
@@ -13216,7 +13238,7 @@ export class GhostGame {
     // Damage the locked target. We do NOT add it to iaiChainHitIds here:
     // the chain stays on the same enemy until it dies (handled at the top
     // of iaiChainStep), so a boss can absorb all 5 slashes.
-    this.dealDamage(best, IAI_CHAIN_DAMAGE, p.facing, 50);
+    this.dealDamage(best, this.ultDmg(IAI_CHAIN_DAMAGE), p.facing, 50);
 
     // Audio: a layered slash + a faint stealth whoosh (blink).
     audio.play("slash");
