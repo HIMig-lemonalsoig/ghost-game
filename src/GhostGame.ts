@@ -216,7 +216,7 @@ export const CLASSES: ClassDef[] = [
     bonuses: ["Starts with Twin Sai", "+20% movement speed", "Every 4th attack automatically poisons the target"],
     ultName: "Phantom Dance",
     ultKanji: "舞",
-    ultDesc: "Split into 3 afterimages that dash for 4s. Collapse back with 2s of invulnerability.",
+    ultDesc: "Split into 3 afterimages side by side. They criss-cross the spot you aim at in a storm of slashes (steer it), then meet for a final X-cut and fold back into you.",
     accent: "hsl(320, 60%, 70%)",
   },
   {
@@ -3352,6 +3352,32 @@ export interface GameStats {
 
 interface Vec2 { x: number; y: number; }
 
+/** One Kunoichi afterimage during Phantom Dance. */
+interface PhantomImage {
+  home: Vec2;          // slot beside the player (left / centre / right)
+  pos: Vec2;
+  facing: number;
+  from: Vec2; to: Vec2; // current dash
+  dashT: number;        // 0..1 through the current dash (≥1 = waiting for the next)
+  delay: number;        // stagger before its next dash
+  trail: { x: number; y: number; a: number }[];
+  swing: number;        // drives the weapon swing animation
+  dir: number;
+}
+
+// Phantom Dance timeline (seconds).
+const PD = {
+  split: 0.3,          // the body splits into three, side by side
+  flurryEnd: 3.0,      // afterimages criss-cross the target zone, slashing
+  finisher: 3.25,      // they converge for a final X-cut
+  dur: 3.6,
+  reach: 175,          // zone centre distance in front of the player
+  zoneR: 115,          // zone radius
+  dashTime: 0.15,
+  spacing: 62,         // gap between the three afterimages
+  tick: 0.12,          // damage tick
+};
+
 interface Player {
   pos: Vec2;
   vel: Vec2;
@@ -4456,7 +4482,9 @@ export class GhostGame {
   ultThunderTimer = 0;
   ultThunderTick = 0;
   ultPhantomTimer = 0;          // Kunoichi Phantom Dance
-  ultPhantomImages: { pos: Vec2; vel: Vec2; facing: number; tickAccum: number }[] = [];
+  ultPhantomImages: PhantomImage[] = [];
+  /** Phantom Dance: centre of the slash flurry and timers. */
+  phantom = { t: 0, cx: 0, cy: 0, hitAcc: 0, slashAcc: 0, finished: false };
   ultEarthshakerTimer = 0;      // Sumo charge
   ultEarthshakerDir = 0;
   ultDeathWebTimer = 0;         // Tsuchigumo
@@ -5187,6 +5215,186 @@ export class GhostGame {
       if (d < 34) { c.life = 0; this.openSpiritChest(c.x, c.y); }
     }
     this.spiritChests = this.spiritChests.filter(c => c.life > 0);
+  }
+
+  // ===================== Kunoichi: Phantom Dance =====================
+  private updatePhantomDance(dt: number) {
+    const ph = this.phantom, p = this.player;
+    ph.t += dt;
+    const t = ph.t;
+    // The zone drifts toward where you're aiming (like Miko's beam), so you can steer it.
+    if (t < PD.flurryEnd) {
+      const aim = this.aimPoint();
+      const ang = Math.atan2(aim.y - p.pos.y, aim.x - p.pos.x);
+      const d = Math.min(PD.reach + 60, Math.max(110, Math.hypot(aim.x - p.pos.x, aim.y - p.pos.y)));
+      const tx = p.pos.x + Math.cos(ang) * d, ty = p.pos.y + Math.sin(ang) * d;
+      const k = Math.min(1, dt * 3);
+      ph.cx += (tx - ph.cx) * k; ph.cy += (ty - ph.cy) * k;
+    }
+    const ease = (x: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
+    for (const [i, img] of this.ultPhantomImages.entries()) {
+      img.swing = Math.max(0, img.swing - dt * 5);
+      const prev = { x: img.pos.x, y: img.pos.y };
+      if (t < PD.split) {
+        // 1) Split: slide out from the body into a line, side by side.
+        const k = ease(t / PD.split);
+        img.pos.x = p.pos.x + (img.home.x - p.pos.x) * k;
+        img.pos.y = p.pos.y + (img.home.y - p.pos.y) * k;
+        img.facing = Math.atan2(ph.cy - img.pos.y, ph.cx - img.pos.x);
+      } else if (t < PD.flurryEnd) {
+        // 2) Flurry: each afterimage dashes through the zone along a new line, staggered.
+        if (img.dashT >= 1) {
+          img.delay -= dt;
+          if (img.delay <= 0) {
+            const a = Math.random() * Math.PI * 2;
+            const r = PD.zoneR * (0.9 + Math.random() * 0.25);
+            img.from = { x: img.pos.x, y: img.pos.y };
+            img.to = { x: ph.cx + Math.cos(a) * r, y: ph.cy + Math.sin(a) * r };
+            // Make sure the line goes through the middle: start on the opposite side.
+            if (Math.hypot(img.from.x - ph.cx, img.from.y - ph.cy) < PD.zoneR * 0.5) img.from = { x: ph.cx - Math.cos(a) * r, y: ph.cy - Math.sin(a) * r };
+            img.dashT = 0;
+            img.facing = Math.atan2(img.to.y - img.from.y, img.to.x - img.from.x);
+            img.swing = 1; img.dir = -img.dir;
+            this.fx.streakLine(img.from.x, img.from.y, img.to.x, img.to.y, 320 + i * 12, 88, 5, 0.22);
+          }
+        } else {
+          img.dashT = Math.min(1, img.dashT + dt / PD.dashTime);
+          const k = ease(img.dashT);
+          img.pos.x = img.from.x + (img.to.x - img.from.x) * k;
+          img.pos.y = img.from.y + (img.to.y - img.from.y) * k;
+          if (img.dashT >= 1) img.delay = 0.02 + Math.random() * 0.05;
+        }
+      } else if (t < PD.finisher) {
+        // 3) Converge: the three rush the centre from three sides.
+        const k = ease((t - PD.flurryEnd) / (PD.finisher - PD.flurryEnd));
+        if (!img.from || k < 0.05) img.from = { x: img.pos.x, y: img.pos.y };
+        const a = (i / 3) * Math.PI * 2;
+        img.pos.x = img.from.x + (ph.cx + Math.cos(a) * 18 - img.from.x) * k;
+        img.pos.y = img.from.y + (ph.cy + Math.sin(a) * 18 - img.from.y) * k;
+        img.facing = Math.atan2(ph.cy - img.pos.y, ph.cx - img.pos.x);
+        img.swing = 1;
+      } else {
+        // 4) Fold back into the body.
+        const k = ease((t - PD.finisher) / (PD.dur - PD.finisher));
+        img.pos.x = ph.cx + (p.pos.x - ph.cx) * k;
+        img.pos.y = ph.cy + (p.pos.y - ph.cy) * k;
+        img.facing = Math.atan2(p.pos.y - img.pos.y, p.pos.x - img.pos.x);
+      }
+      // Speedster trail: remember recent positions, fade them out.
+      if (Math.hypot(img.pos.x - prev.x, img.pos.y - prev.y) > 4) img.trail.push({ x: img.pos.x, y: img.pos.y, a: 1 });
+      for (const tr of img.trail) tr.a -= dt * 4;
+      img.trail = img.trail.filter(tr => tr.a > 0).slice(-14);
+    }
+    if (t >= PD.split && t < PD.flurryEnd) {
+      // A storm of slashes inside the zone.
+      ph.slashAcc += dt;
+      while (ph.slashAcc >= 0.035) {
+        ph.slashAcc -= 0.035;
+        const a = Math.random() * Math.PI * 2, r = Math.random() * PD.zoneR * 0.75;
+        this.fx.slash(ph.cx + Math.cos(a) * r, ph.cy + Math.sin(a) * r, Math.random() * Math.PI * 2, 46 + Math.random() * 40,
+          Math.PI * (0.5 + Math.random() * 0.4), Math.random() < 0.5 ? 1 : -1,
+          { hue: 315 + Math.random() * 30, sat: 80, light: 85, width: 5 + Math.random() * 4, life: 0.18 });
+      }
+      // Damage + a gentle pull that keeps foes inside the storm.
+      ph.hitAcc += dt;
+      if (ph.hitAcc >= PD.tick) {
+        ph.hitAcc -= PD.tick;
+        let any = false;
+        for (const e of this.enemies) {
+          if (e.state === "dead") continue;
+          const d = Math.hypot(e.pos.x - ph.cx, e.pos.y - ph.cy);
+          if (d > PD.zoneR + e.size) continue;
+          this.dealDamage(e, this.ultDmg(4), Math.random() * Math.PI * 2, 0);
+          any = true;
+        }
+        if (any) audio.play("slash");
+      }
+      for (const e of this.enemies) {
+        if (e.state === "dead" || e.isBoss) continue;
+        const dx = ph.cx - e.pos.x, dy = ph.cy - e.pos.y, d = Math.hypot(dx, dy);
+        if (d < PD.zoneR + 60 && d > 14) { e.pos.x += (dx / d) * 140 * dt; e.pos.y += (dy / d) * 140 * dt; }
+      }
+    }
+    if (!ph.finished && t >= PD.finisher) {
+      // Final X-cut where the three meet.
+      ph.finished = true;
+      const R = PD.zoneR + 25;
+      for (const e of this.enemies) {
+        if (e.state === "dead") continue;
+        if (Math.hypot(e.pos.x - ph.cx, e.pos.y - ph.cy) > R + e.size) continue;
+        this.dealDamage(e, this.ultDmg(16), Math.atan2(e.pos.y - ph.cy, e.pos.x - ph.cx), e.isBoss ? 40 : 220);
+      }
+      for (const a of [Math.PI / 4, -Math.PI / 4]) {
+        this.fx.streakLine(ph.cx - Math.cos(a) * R, ph.cy - Math.sin(a) * R, ph.cx + Math.cos(a) * R, ph.cy + Math.sin(a) * R, 320, 95, 14, 0.5);
+      }
+      this.fx.shockwave(ph.cx, ph.cy, R, { hue: 320, light: 80, life: 0.45, width: 10, lines: 14 });
+      this.fx.seal(ph.cx, ph.cy - 10, "舞", 320, 44, 0.8);
+      this.fx.burst(ph.cx, ph.cy, { count: 26, hue: 320, light: 80, speed: 420, life: 0.5 });
+      this.hitstop = Math.max(this.hitstop, 0.1);
+      this.cameraShake = Math.max(this.cameraShake, 0.6);
+      this.whiteFlashTimer = 0.1; this.whiteFlashMax = 0.1; this.whiteFlashAlpha = 0.35;
+      audio.play("executeThud");
+    }
+  }
+
+  /** Draw a translucent copy of the player figure at (x, y). */
+  private drawPlayerGhost(x: number, y: number, facing: number, alpha: number, swing: number, dir: number) {
+    const p = this.player;
+    const save = { x: p.pos.x, y: p.pos.y, f: p.facing, a: p.attackAnim, d: p.swingDir, w: p.swingWeaponId };
+    p.pos.x = x; p.pos.y = y; p.facing = facing; p.attackAnim = swing; p.swingDir = dir >= 0 ? 1 : -1; p.swingWeaponId = this.abilityWeapon();
+    this.ghostAlpha = alpha;
+    try { this.drawPlayer(); } finally {
+      this.ghostAlpha = 0;
+      p.pos.x = save.x; p.pos.y = save.y; p.facing = save.f; p.attackAnim = save.a; p.swingDir = save.d; p.swingWeaponId = save.w;
+    }
+  }
+
+  private drawPhantomDance() {
+    if (this.ultPhantomTimer <= 0 || !this.ultPhantomImages.length) return;
+    const ctx = this.ctx, ph = this.phantom, t = ph.t;
+    ctx.save();
+    // The zone: a pink rotating ring while the flurry runs.
+    if (t >= PD.split * 0.5 && t < PD.finisher) {
+      const fade = Math.min(1, (t - PD.split * 0.5) / 0.2) * (t > PD.flurryEnd ? 1 - (t - PD.flurryEnd) / (PD.finisher - PD.flurryEnd) : 1);
+      const g = ctx.createRadialGradient(ph.cx, ph.cy, 0, ph.cx, ph.cy, PD.zoneR);
+      g.addColorStop(0, `hsla(320, 80%, 70%, ${0.16 * fade})`);
+      g.addColorStop(1, "hsla(320, 80%, 60%, 0)");
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(ph.cx, ph.cy, PD.zoneR, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = `hsla(320, 85%, 75%, ${0.45 * fade})`;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([10, 12]); ctx.lineDashOffset = -this.elapsed * 60;
+      ctx.beginPath(); ctx.arc(ph.cx, ph.cy, PD.zoneR, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    // Speedster trails: fading pink after-silhouettes along each afterimage's path.
+    for (const [i, img] of this.ultPhantomImages.entries()) {
+      for (const tr of img.trail) {
+        ctx.fillStyle = `hsla(${320 + i * 12}, 85%, 72%, ${tr.a * 0.22})`;
+        ctx.beginPath(); ctx.arc(tr.x, tr.y, BASE.PLAYER_RADIUS * (0.6 + tr.a * 0.4), 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    ctx.restore();
+    // The afterimages themselves: real copies of your character, glowing pink.
+    const fadeOut = t > PD.finisher ? 1 - (t - PD.finisher) / (PD.dur - PD.finisher) : 1;
+    for (const [i, img] of this.ultPhantomImages.entries()) {
+      ctx.save();
+      const glow = ctx.createRadialGradient(img.pos.x, img.pos.y, 0, img.pos.x, img.pos.y, BASE.PLAYER_RADIUS * 2.4);
+      glow.addColorStop(0, `hsla(${320 + i * 12}, 90%, 70%, ${0.35 * fadeOut})`);
+      glow.addColorStop(1, "hsla(320, 90%, 60%, 0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(img.pos.x, img.pos.y, BASE.PLAYER_RADIUS * 2.4, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      this.drawPlayerGhost(img.pos.x, img.pos.y, img.facing, 0.72 * fadeOut, img.swing, img.dir);
+      // Glowing pink rim so the copies read as spirit afterimages.
+      ctx.save();
+      ctx.strokeStyle = `hsla(${320 + i * 12}, 95%, 75%, ${0.85 * fadeOut})`;
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = `hsla(${320 + i * 12}, 95%, 65%, ${fadeOut})`;
+      ctx.shadowBlur = 12;
+      ctx.beginPath(); ctx.arc(img.pos.x, img.pos.y, BASE.PLAYER_RADIUS + 3, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
   }
 
   // ===================== SIGNATURE helpers (Phase 5) =====================
@@ -6127,6 +6335,7 @@ export class GhostGame {
   evoZones: { x: number; y: number; r: number; life: number; max: number; dmg: number; tick: number; kind: "fire" | "poison" }[] = [];
   evoOrbits: { ang: number; life: number; dmg: number; hitCd: Map<number, number> }[] = [];
   evoShield = 0;
+  private ghostAlpha = 0;     // >0 while drawing a Phantom Dance afterimage
   blockRegenDelay = 0;
   // PHASE4 state
   inkPools: { x: number; y: number; t: number; life: number }[] = [];
@@ -9594,6 +9803,7 @@ export class GhostGame {
     if (this.devShowHitboxes) this.drawDevHitboxes();
 
     this.drawPlayer();
+    this.drawPhantomDance();
     this.drawClassEntities();
     this.drawSecondaries();
 
@@ -9905,7 +10115,9 @@ export class GhostGame {
     const ctx = this.ctx;
     ctx.save();
     // Shinobi Shadow Step — go ghostly + shimmer trail.
-    if (this.ultShadowStepTimer > 0) ctx.globalAlpha = 0.25;
+    if (this.ghostAlpha > 0) ctx.globalAlpha = this.ghostAlpha;                       // Phantom Dance afterimage
+    else if (this.ultPhantomTimer > 0 && this.ultPhantomImages.length) ctx.globalAlpha = 0.12;   // body has split away
+    else if (this.ultShadowStepTimer > 0) ctx.globalAlpha = 0.25;
     else if (this.vanishTimer > 0) ctx.globalAlpha = 0.35;   // SIGNATURE Shinobi Vanish
     ctx.translate(p.pos.x, p.pos.y);
 
@@ -11439,14 +11651,7 @@ export class GhostGame {
       ctx.beginPath(); ctx.arc(0, 0, 260, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
     }
-    // Phantom afterimages (Kunoichi)
-    for (const img of this.ultPhantomImages) {
-      ctx.save();
-      ctx.globalAlpha = 0.55;
-      ctx.fillStyle = "hsl(320, 70%, 65%)";
-      ctx.beginPath(); ctx.arc(img.pos.x, img.pos.y, BASE.PLAYER_RADIUS, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-    }
+    // Phantom afterimages (Kunoichi) — drawn after the player, see render()
     // Death Web (Tsuchigumo) — full-arena overlay
     if (this.ultDeathWebTimer > 0) {
       ctx.save();
@@ -12076,25 +12281,10 @@ export class GhostGame {
     // Kunoichi: Phantom Dance
     if (this.ultPhantomTimer > 0) {
       this.ultPhantomTimer = Math.max(0, this.ultPhantomTimer - dt);
-      for (const img of this.ultPhantomImages) {
-        img.pos.x += img.vel.x * dt;
-        img.pos.y += img.vel.y * dt;
-        if (img.pos.x < 30 || img.pos.x > this.worldW - 30) img.vel.x *= -1;
-        if (img.pos.y < 30 || img.pos.y > this.worldH - 30) img.vel.y *= -1;
-        img.tickAccum += dt;
-        if (img.tickAccum >= 0.18) {
-          img.tickAccum = 0;
-          for (const e of this.enemies) {
-            if (e.state === "dead") continue;
-            if (Math.hypot(e.pos.x - img.pos.x, e.pos.y - img.pos.y) <= 60 + e.size) {
-              this.dealDamage(e, this.ultDmg(6), Math.atan2(e.pos.y - img.pos.y, e.pos.x - img.pos.x), 40);   // was base weapon dmg (~1–2)
-            }
-          }
-        }
-      }
+      this.updatePhantomDance(dt);
       if (this.ultPhantomTimer <= 0) {
         this.ultPhantomImages = [];
-        this.player.invuln = Math.max(this.player.invuln, 2);
+        this.player.invuln = Math.max(this.player.invuln, 1.5);
         this.flash("Reformed");
       }
     }
@@ -13010,20 +13200,22 @@ export class GhostGame {
         break;
       }
       case "kunoichi": {
-        this.ultPhantomTimer = 4;
-        this.ultPhantomImages = [];
-        for (let i = 0; i < 3; i++) {
-          const a = (i / 3) * Math.PI * 2 + Math.random() * 0.4;
-          this.ultPhantomImages.push({
-            pos: { x: this.player.pos.x, y: this.player.pos.y },
-            vel: { x: Math.cos(a) * 360, y: Math.sin(a) * 360 },
-            facing: a,
-            tickAccum: 0,
-          });
-        }
-        this.player.invuln = Math.max(this.player.invuln, 0.6);
-        this.screenFlashColor = "hsla(320, 60%, 70%, 0.4)";
-        this.screenFlashTimer = 0.4;
+        // Phantom Dance: the body splits into three afterimages side by side,
+        // they criss-cross the zone in front of you in a storm of slashes, then
+        // converge for a final X-cut and fold back into you.
+        const p = this.player, f = p.facing;
+        this.ultPhantomTimer = PD.dur;
+        this.phantom = { t: 0, cx: p.pos.x + Math.cos(f) * PD.reach, cy: p.pos.y + Math.sin(f) * PD.reach, hitAcc: 0, slashAcc: 0, finished: false };
+        this.ultPhantomImages = [-1, 0, 1].map((k, i) => {
+          const home = { x: p.pos.x - Math.sin(f) * k * PD.spacing, y: p.pos.y + Math.cos(f) * k * PD.spacing };
+          return { home, pos: { x: p.pos.x, y: p.pos.y }, facing: f, from: { ...p.pos }, to: home, dashT: 0, delay: i * 0.05,
+            trail: [], swing: 0, dir: k === 0 ? 1 : k };
+        });
+        p.invuln = Math.max(p.invuln, PD.dur + 0.2);
+        this.screenFlashColor = "hsla(320, 70%, 75%, 0.35)";
+        this.screenFlashTimer = 0.25;
+        audio.play("smokeWoosh");
+        for (const img of this.ultPhantomImages) this.fx.streakLine(p.pos.x, p.pos.y, img.home.x, img.home.y, 320, 85, 6, 0.3);
         break;
       }
       case "tsuchigumo": {
