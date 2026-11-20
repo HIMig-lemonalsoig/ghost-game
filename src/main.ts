@@ -10,6 +10,7 @@ import { playIntro } from "./intro";
 import { EVOLUTIONS, EVO_MASTERY } from "./content/evolutions";
 import { DUO_BY_ID } from "./content/duos";
 import { SIGNATURES } from "./content/signatures";
+import { ULT_PERK_BY_ID } from "./content/ultperks";
 import { VOWS, VOW_BY_ID, vowScore, vowRank, MAX_VOW_SCORE, VOW_UNLOCK_WAVE, VOW_COIN_BONUS } from "./content/vows";
 import type { VowSet, VowId } from "./content/vows";
 import { trackGame, trackStartWeapons } from "./telemetry";
@@ -886,7 +887,7 @@ function rarityClass(r: string) { return `r-${r}`; }
 function renderLevelUp(s: GameStats) {
   const cards = s.pendingChoices.map((c, i) => `
     <button class="card glow tilt ${rarityClass(c.rarity)}${c.duo ? " duo" : ""}" data-perk="${c.id}">
-      <kbd class="key">${i + 1}</kbd>${c.kind === "ability" ? `<span class="tag">ABILITY</span>` : ""}${c.duo ? `<span class="tag duo-tag">DUO</span>` : ""}
+      <kbd class="key">${i + 1}</kbd>${c.kind === "ability" ? `<span class="tag">ABILITY</span>` : ""}${c.duo ? `<span class="tag duo-tag">DUO</span>` : ""}${ULT_PERK_BY_ID[c.id] ? `<span class="tag ult-tag">${ULT_PERK_BY_ID[c.id].cls ? `ULTIMATE · ${getClass(ULT_PERK_BY_ID[c.id].cls!).name.toUpperCase()}` : "ULTIMATE"}</span>` : ""}
       <div class="kanji">${c.kanji}</div><div class="cn">${c.name}</div><div class="rar">${c.rarity}</div><div class="cd">${c.desc}</div>
     </button>`).join("");
   showOverlay(`<div class="panel">

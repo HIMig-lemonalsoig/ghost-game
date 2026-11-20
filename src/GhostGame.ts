@@ -10,6 +10,7 @@ import { EVOLUTIONS, EVO_MASTERY, EVO_DAMAGE_MUL } from "./content/evolutions";
 import { DUOS, DUO_BY_ID } from "./content/duos";
 import { NEW_ENEMY_TIPS, ONRYO, NUE, MIRROR, newEnemyChance } from "./content/enemies";
 import { SIG } from "./content/signatures";
+import { ULT_PERKS, ULT_PERK_BY_ID } from "./content/ultperks";
 import { vowRank, vowScore, VOW_COIN_BONUS } from "./content/vows";
 import type { VowId, VowSet } from "./content/vows";
 // Sections: classes, weapons, shop, consumables, saves, biomes, audio, VFX, gameplay.
@@ -3946,6 +3947,7 @@ export const PERK_POOL: Omit<PerkChoice, never>[] = [
 interface Perks {
   dashCdMul: number;        // multiplies dash cooldown
   dashDmgMul: number;       // multiplies dash contact damage
+  ultPowerMul: number;      // ULTPERK Honed/Fierce Spirit
   weaponMastery: Record<string, number>;  // damage upgrades bought per weapon (evolutions)
   shopBought: string[];     // shop effects bought this run (evolution catalysts)
   evolved: string[];        // evolved weapon ids
@@ -4059,6 +4061,7 @@ interface Perks {
 const defaultPerks = (): Perks => ({
   dashCdMul: 1,
   dashDmgMul: 1,
+  ultPowerMul: 1,
   weaponMastery: {},
   shopBought: [],
   evolved: [],
@@ -4128,6 +4131,9 @@ const defaultPerks = (): Perks => ({
 });
 
 // Active ability base cooldowns
+// ULTPERK: ultimate perks join the level-up pool (class ones are filtered by class).
+PERK_POOL.push(...ULT_PERKS.map(({ id, kanji, name, desc, rarity }) => ({ id, kanji, name, desc, rarity })));
+
 const ABILITY = {
   BARRAGE_CD: 10,
   FLASH_CD: 14,
@@ -5322,7 +5328,7 @@ export class GhostGame {
       for (const e of this.enemies) {
         if (e.state === "dead") continue;
         if (Math.hypot(e.pos.x - ph.cx, e.pos.y - ph.cy) > R + e.size) continue;
-        this.dealDamage(e, this.ultDmg(16), Math.atan2(e.pos.y - ph.cy, e.pos.x - ph.cx), e.isBoss ? 40 : 220);
+        this.dealDamage(e, this.ultDmg(16) * (this.hasUltPerk("ultc_kunoichi") ? 1.5 : 1), Math.atan2(e.pos.y - ph.cy, e.pos.x - ph.cx), e.isBoss ? 40 : 220);
       }
       for (const a of [Math.PI / 4, -Math.PI / 4]) {
         this.fx.streakLine(ph.cx - Math.cos(a) * R, ph.cy - Math.sin(a) * R, ph.cx + Math.cos(a) * R, ph.cy + Math.sin(a) * R, 320, 95, 14, 0.5);
@@ -6053,6 +6059,9 @@ export class GhostGame {
     const isFinalBossWave = wave >= 25 && (wave - 25) % 10 === 0;
     this.stats.isBossWave = isBoss;
     this.stats.wave = wave;
+    if (this.hasUltPerk("ult_start_c") && this.stats.ultCharge < this.stats.ultMax * 0.25 && !this.stats.ultActive) {   // ULTPERK Battle Ready
+      this.stats.ultCharge = this.stats.ultMax * 0.25;
+    }
     this.waveDmgMark = this.run.damageTaken;
     this.applyBiome(wave);
     this.stats.waveDuration = this.computeWaveDuration(wave);
@@ -6649,6 +6658,8 @@ export class GhostGame {
   }
 
   applyPerk(id: string) {
+    if (id === "ult_power_c") { this.perks.ultPowerMul += 0.15; return; }
+    if (id === "ult_power_r") { this.perks.ultPowerMul += 0.30; return; }
     if (DUO_BY_ID[id]) {
       if (!this.perks.duos.includes(id)) { this.perks.duos.push(id); this.run.duos.push(id); }
       this.flash(`DUO · ${DUO_BY_ID[id].kanji} ${DUO_BY_ID[id].name}`);
@@ -6758,6 +6769,11 @@ export class GhostGame {
   rollPerkChoices(): PerkChoice[] {
     let out = this.rollPerkChoicesInner();
     if (this.isClass("ronin")) out = out.slice(0, SIG.roninCards);   // SIGNATURE Masterless
+    // ULTPERK: your class's ultimate upgrade gets a 1-in-5 slot until you take it.
+    const mine = ULT_PERKS.find(u => u.cls === this.stats.classId);
+    if (mine && !this.acquiredPerks.includes(mine.id) && !out.some(c => c.id === mine.id) && out.length && Math.random() < 0.2) {
+      out[Math.floor(Math.random() * out.length)] = { id: mine.id, name: mine.name, kanji: mine.kanji, desc: mine.desc, rarity: mine.rarity, kind: "passive" };
+    }
     // DUO: 1 in 4 level-ups swaps the last card for an available duo perk.
     const duos = this.availableDuos();
     if (duos.length && out.length && Math.random() < 0.25) {
@@ -6780,6 +6796,9 @@ export class GhostGame {
     const passivesAvailable = PERK_POOL.filter(p => {
       if (perkMaxed[p.id] && maxed.has(perkMaxed[p.id])) return false;
       if (p.id === "wave_clear" && this.vr("no_rest")) return false;
+      const up = ULT_PERK_BY_ID[p.id];
+      if (up && up.cls && up.cls !== this.stats.classId) return false;     // class ult perks: own class only
+      if (up && up.unique && this.acquiredPerks.includes(p.id)) return false;
       if ((p.id === "barrage_master" || p.id === "barrage_blade") && !equipped.includes("barrage")) return false;
       if ((p.id === "flash_master" || p.id === "phantom_strike") && !equipped.includes("flash")) return false;
       return true;
@@ -7378,6 +7397,11 @@ export class GhostGame {
     this.multiKillTimes.push(this.elapsed);
     while (this.multiKillTimes.length && this.elapsed - this.multiKillTimes[0] > 0.5) this.multiKillTimes.shift();
     this.run.bestMultiKill = Math.max(this.run.bestMultiKill, this.multiKillTimes.length);
+    if (this.stats.ultActive && this.hasUltPerk("ult_harvest_c")) {   // ULTPERK Soul Harvest
+      this.stats.ultCharge = Math.min(this.stats.ultMax, this.stats.ultCharge + this.stats.ultMax * 0.04);
+    }
+    if (this.ultShadowStepTimer > 0 && this.hasUltPerk("ultc_shinobi")) { this.ultShadowStepTimer += 0.5; this.healPlayer(3); }
+    if (this.ultBloodRageTimer > 0 && this.hasUltPerk("ultc_berserker")) this.ultBloodRageTimer += 0.5;
     if (this.stats.ultActive || this.ultCutscene) {
       this.ultKillCount++;
       this.run.bestUltKills = Math.max(this.run.bestUltKills, this.ultKillCount);
@@ -7798,7 +7822,7 @@ export class GhostGame {
     }
     if (this.ultThunderTimer > 0 && !this.raijinZapping && this.thunderCd <= 0) {
       this.thunderCd = 0.12;
-      this.chainZap(e, this.ultDmg(7), 3);
+      this.chainZap(e, this.ultDmg(7), this.hasUltPerk("ultc_raijin") ? 5 : 3);
       this.fx.bolt(e.pos.x, e.pos.y - 260, e.pos.x, e.pos.y, 205, 0.25);
     }
     if (this.stats.classId === "raijin" && !this.raijinZapping) {
@@ -11913,13 +11937,13 @@ export class GhostGame {
       this.ultThousandTickAccum += dt;
       if (this.ultThousandTickAccum >= 0.1) {
         this.ultThousandTickAccum = 0;
-        this.fx.slash(this.player.pos.x, this.player.pos.y, Math.random() * Math.PI * 2, 120, Math.PI * 1.2, Math.random() < 0.5 ? 1 : -1,
+        this.fx.slash(this.player.pos.x, this.player.pos.y, Math.random() * Math.PI * 2, this.hasUltPerk("ultc_onna") ? 180 : 120, Math.PI * 1.2, Math.random() < 0.5 ? 1 : -1,
           { hue: 330, sat: 75, light: 85, width: 10, life: 0.16, follow: this.player.pos });
         for (const e of this.enemies) {
           if (e.state === "dead") continue;
           const dx = e.pos.x - this.player.pos.x;
           const dy = e.pos.y - this.player.pos.y;
-          if (Math.hypot(dx, dy) <= 120 + e.size) {
+          if (Math.hypot(dx, dy) <= (this.hasUltPerk("ultc_onna") ? 180 : 120) + e.size) {
             this.dealDamage(e, this.ultDmg(2), Math.atan2(dy, dx), 30);
           }
         }
@@ -11953,12 +11977,12 @@ export class GhostGame {
       if (this.ultPrayerTick <= 0) {
         this.ultPrayerTick = 0.5;
         const p = this.player;
-        this.healPlayer(p.maxHp * 0.05);
+        this.healPlayer(p.maxHp * (this.hasUltPerk("ultc_sohei") ? 0.08 : 0.05));
         this.fx.enso(p.pos.x, p.pos.y, 120, 42, { life: 0.5, width: 5, follow: p.pos });
         for (const e of this.enemies) {
           if (e.state === "dead") continue;
           const dx = e.pos.x - p.pos.x, dy = e.pos.y - p.pos.y, d = Math.hypot(dx, dy);
-          if (d > 140 + e.size) continue;
+          if (d > (this.hasUltPerk("ultc_sohei") ? 200 : 140) + e.size) continue;
           this.dealDamage(e, this.ultDmg(3), Math.atan2(dy, dx), e.isBoss ? 40 : 260);
         }
       }
@@ -11969,7 +11993,7 @@ export class GhostGame {
       while (this.ultArrowTick <= 0) {
         this.ultArrowTick += 0.07;
         const aim = this.aimPoint();
-        const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * 110;
+        const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * (this.hasUltPerk("ultc_arashi") ? 160 : 110);
         const tx = aim.x + Math.cos(a) * d;
         const ty = aim.y + Math.sin(a) * d;
         this.fx.streakLine(tx + 50, ty - 230, tx, ty, 200, 92, 3, 0.18);
@@ -12008,7 +12032,7 @@ export class GhostGame {
     }
     if (this.ultBlizzardTimer > 0) {
       this.ultBlizzardTimer = Math.max(0, this.ultBlizzardTimer - dt);
-      const R = 230;
+      const R = this.hasUltPerk("ultc_yukionna") ? 320 : 230;
       for (const e of this.enemies) {
         if (e.state === "dead") continue;
         if (Math.hypot(e.pos.x - this.player.pos.x, e.pos.y - this.player.pos.y) > R + e.size) { e.chill = 0; continue; }
@@ -12017,6 +12041,7 @@ export class GhostGame {
         if (e.chill >= 1.2) {
           e.chill = -1.5;
           e.stunTimer = Math.max(e.stunTimer, e.isBoss ? 0.8 : 2.5);
+          if (this.hasUltPerk("ultc_yukionna")) this.dealDamage(e, this.ultDmg(8), 0, 0);
           this.fx.frost(e.pos.x, e.pos.y, 6);
         }
       }
@@ -12079,7 +12104,7 @@ export class GhostGame {
         for (const id of tw.carried) {
           const e = this.enemies.find(o => o.id === id && o.state !== "dead");
           if (!e) continue;
-          this.dealDamage(e, this.ultDmg(10), tw.ang, 80);
+          this.dealDamage(e, this.ultDmg(10) * (this.hasUltPerk("ultc_kappa") ? 2 : 1), tw.ang, 80);
           e.slowRemaining = Math.max(e.slowRemaining, 4);
         }
         this.fx.smoke(fx, fy, 10, 120, 70, 190, 55);
@@ -12122,6 +12147,8 @@ export class GhostGame {
         this.ultWindTimer <= 0 &&
         this.ultFinaleTimer <= 0) {
       this.stats.ultActive = false;
+      if (this.hasUltPerk("ult_after_l")) this.ultAftershock();   // ULTPERK Aftershock
+      if (this.stats.ultCharge >= this.stats.ultMax) this.stats.ultReady = true;
     }
 
     // ===== Phase C — passives & ult per-frame logic =====
@@ -12233,7 +12260,7 @@ export class GhostGame {
       this.ultSpiritTempestTick += dt;
       const cx = this.player.pos.x;
       const cy = this.player.pos.y;
-      const R = 280;
+      const R = this.hasUltPerk("ultc_onmyoji") ? 380 : 280;
       for (const e of this.enemies) {
         if (e.state === "dead" || e.isBoss) continue;
         const dx = cx - e.pos.x;
@@ -12275,6 +12302,7 @@ export class GhostGame {
           e.slowRemaining = Math.max(e.slowRemaining, 0.4);
         }
       }
+      if (this.hasUltPerk("ultc_hatamoto") && Math.hypot(this.player.pos.x - this.ultBannerPos.x, this.player.pos.y - this.ultBannerPos.y) <= 260) this.healPlayer(2 * dt);
       if (this.ultBannerTimer <= 0) this.ultBannerActive = false;
     }
 
@@ -12338,6 +12366,7 @@ export class GhostGame {
             e.stunTimer = Math.max(e.stunTimer, 0.5);
             const before = e.hp;
             this.dealDamage(e, this.ultDmg(3), 0, 0);
+            if (this.hasUltPerk("ultc_tsuchigumo")) { e.poisonRemaining = Math.min(8, e.poisonRemaining + 1); if (this.perks.poisonDps <= 0) this.perks.poisonDps = 4; }
             if (before > 0 && e.hp <= 0) {
               for (const o of this.enemies) {
                 if (o === e || o.state === "dead") continue;
@@ -12354,7 +12383,7 @@ export class GhostGame {
     // Miko: Divine Judgement (expanding beam)
     if (this.ultDivineBeamTimer > 0) {
       this.ultDivineBeamTimer = Math.max(0, this.ultDivineBeamTimer - dt);
-      this.ultDivineBeamRadius = 70;
+      this.ultDivineBeamRadius = this.hasUltPerk("ultc_miko") ? 110 : 70;
       // The pillar glides toward wherever you're aiming.
       const aim = this.aimPoint();
       const k = Math.min(1, dt * 4);
@@ -12386,6 +12415,15 @@ export class GhostGame {
     if (this.ultShadowConsumeTimer > 0) {
       const prev = this.ultShadowConsumeTimer;
       this.ultShadowConsumeTimer = Math.max(0, this.ultShadowConsumeTimer - dt);
+      if (prev > 0 && this.ultShadowConsumeTimer <= 0 && this.hasUltPerk("ultc_kagebushi")) {   // ULTPERK Abyss
+        const p = this.player.pos;
+        for (const e of this.enemies) {
+          if (e.state === "dead" || Math.hypot(e.pos.x - p.x, e.pos.y - p.y) > 260 + e.size) continue;
+          this.dealDamage(e, this.ultDmg(20), Math.atan2(e.pos.y - p.y, e.pos.x - p.x), e.isBoss ? 40 : 240);
+        }
+        this.fx.shockwave(p.x, p.y, 260, { hue: 255, light: 40, life: 0.5, width: 14, lines: 14 });
+        this.cameraShake = Math.max(this.cameraShake, 0.6);
+      }
       if (prev > 0 && this.ultShadowConsumeTimer <= 0) {
         this.screenFlashColor = "hsla(250, 50%, 30%, 0.5)";
         this.screenFlashTimer = 0.4;
@@ -12997,6 +13035,7 @@ export class GhostGame {
     this.stats.ultActive = true;
     this.run.ults++;
     this.ultKillCount = 0;
+    if (this.hasUltPerk("ult_refund_r")) this.stats.ultCharge = this.stats.ultMax * 0.25;   // ULTPERK Echoing Soul
     audio.play("timeSlowSwell");
     if (this.ultCutscenes) {
       this.ultCutscene = { t: 0, dur: 1.35 };
@@ -13015,7 +13054,34 @@ export class GhostGame {
     const wave = Math.max(1, this.stats.wave);
     const waveScale = 1 + (wave - 1) * 0.35;
     const powerScale = this.perks.damage / Math.max(0.01, this.baseKatanaDamage);
-    return base * Math.max(waveScale, powerScale);
+    return base * Math.max(waveScale, powerScale) * this.perks.ultPowerMul;
+  }
+
+  /** ULTPERK: does the player own this ultimate perk? */
+  hasUltPerk(id: string) { return this.acquiredPerks.includes(id); }
+
+  /** ULTPERK Lingering Power: stretch every timed ultimate that just started. */
+  private extendTimedUlts(mul: number) {
+    const keys = ["ultBloodRageTimer", "ultShadowStepTimer", "ultMountainTimer", "ultThousandCutsTimer", "ultArrowTimer",
+      "ultSpiritTempestTimer", "ultBannerTimer", "ultDeathWebTimer", "ultDivineBeamTimer", "ultShadowConsumeTimer",
+      "ultThunderTimer", "ultBlizzardTimer", "ultPrayerTimer", "ultWindTimer", "ultFinaleTimer"] as const;
+    const self = this as unknown as Record<string, number>;
+    for (const k of keys) if (self[k] > 0) self[k] *= mul;
+    if (this.spearWall) this.spearWall.t *= mul;
+    for (const c of this.clones) c.life *= mul;
+  }
+
+  /** ULTPERK Aftershock: blast around the player when an ultimate ends. */
+  private ultAftershock() {
+    const p = this.player.pos, R = 230;
+    for (const e of this.enemies) {
+      if (e.state === "dead" || Math.hypot(e.pos.x - p.x, e.pos.y - p.y) > R + e.size) continue;
+      this.dealDamage(e, this.ultDmg(15), Math.atan2(e.pos.y - p.y, e.pos.x - p.x), e.isBoss ? 40 : 260);
+    }
+    this.fx.shockwave(p.x, p.y, R, { hue: 45, light: 75, life: 0.5, width: 12, lines: 16 });
+    this.fx.seal(p.x, p.y - 30, "震", 45, 34, 0.7);
+    this.cameraShake = Math.max(this.cameraShake, 0.5);
+    audio.play("bombBoom");
   }
 
   skipUltCutscene() {
@@ -13029,6 +13095,10 @@ export class GhostGame {
     audio.play("levelUp");
     this.flash(`${this.stats.ultName}!`);
     this.ultimateFx();
+    if (this.hasUltPerk("ult_ward_r")) {   // ULTPERK Unbroken Will
+      this.player.invuln = Math.max(this.player.invuln, 2);
+      this.healPlayer(this.player.maxHp * 0.15);
+    }
 
     switch (this.stats.classId) {
       case "berserker": {
@@ -13042,8 +13112,8 @@ export class GhostGame {
         this.player.invuln = Math.max(this.player.invuln, 4);
         break;
       case "yamabushi":
-        this.ultMountainTimer = 3;
-        this.healPlayer(30);
+        this.ultMountainTimer = this.hasUltPerk("ultc_yamabushi") ? 5 : 3;
+        this.healPlayer(this.hasUltPerk("ultc_yamabushi") ? 60 : 30);
         this.player.invuln = Math.max(this.player.invuln, 3);
         break;
       case "onna":
@@ -13057,7 +13127,7 @@ export class GhostGame {
         // Iaijutsu Strike — freeze time, dash forward, bleed everything in path.
         this.timeSlowRemaining = Math.max(this.timeSlowRemaining, 1.5);
         const ang = this.player.facing;
-        const dashDist = 360;
+        const dashDist = this.hasUltPerk("ultc_kensei") ? 540 : 360;
         const startX = this.player.pos.x;
         const startY = this.player.pos.y;
         const endX = startX + Math.cos(ang) * dashDist;
@@ -13070,7 +13140,7 @@ export class GhostGame {
           const proj = dx * Math.cos(ang) + dy * Math.sin(ang);
           if (proj < 0 || proj > dashDist) continue;
           const perp = Math.abs(-dx * Math.sin(ang) + dy * Math.cos(ang));
-          if (perp > 70 + e.size) continue;
+          if (perp > (this.hasUltPerk("ultc_kensei") ? 100 : 70) + e.size) continue;
           this.dealDamage(e, this.ultDmg(24), ang, 80);
           e.bleedRemaining = Math.max(e.bleedRemaining, 4);
         }
@@ -13099,12 +13169,12 @@ export class GhostGame {
       case "ronin": {
         // Crimson Debt: pay 20% HP to brand the 3 strongest foes; 1.5s later the debt
         // is collected in one strike each, scaled by how hurt you are.
-        const cost = Math.floor(this.player.maxHp * 0.2);
+        const cost = Math.floor(this.player.maxHp * (this.hasUltPerk("ultc_ronin") ? 0.1 : 0.2));
         this.player.hp = Math.max(1, this.player.hp - cost);
         this.player.hitFlash = 1;
         const ratio = this.player.hp / Math.max(1, this.player.maxHp);
         const marked = this.enemies.filter(e => e.state !== "dead")
-          .sort((a, b) => b.hp - a.hp).slice(0, 3);
+          .sort((a, b) => b.hp - a.hp).slice(0, this.hasUltPerk("ultc_ronin") ? 5 : 3);
         for (const e of marked) {
           e.markRemaining = Math.max(e.markRemaining, 2);
           this.fx.seal(e.pos.x, e.pos.y - e.size - 18, "債", 358, 26, 1.6, e.pos);
@@ -13116,7 +13186,7 @@ export class GhostGame {
       }
       case "dokkaebi": {
         // Cursed Horde — 5 ghost projectiles fan out, curse on hit.
-        for (let i = 0; i < 5; i++) {
+        for (let i = 0, n = this.hasUltPerk("ultc_dokkaebi") ? 8 : 5; i < n; i++) {
           const a = Math.random() * Math.PI * 2;
           this.allyGhosts.push({
             pos: { x: this.player.pos.x, y: this.player.pos.y },
@@ -13135,6 +13205,7 @@ export class GhostGame {
       }
       case "kagemusha": {
         // Twin Shadows — spawn an 8s clone that mirrors and fights.
+        if (this.hasUltPerk("ultc_kagemusha")) this.clones.push({ pos: { x: this.player.pos.x - 40, y: this.player.pos.y }, facing: this.player.facing, hp: 60, maxHp: 60, attackTimer: 0.35, life: 8, hitFlash: 0 });
         this.clones.push({
           pos: { x: this.player.pos.x + 40, y: this.player.pos.y },
           facing: this.player.facing,
@@ -13150,7 +13221,7 @@ export class GhostGame {
       case "arashi": {
         // Storm of Heaven: arrows rain on wherever you aim, for 2.5s. Steer it.
         this.player.invuln = Math.max(this.player.invuln, 1);
-        this.ultArrowTimer = 2.5;
+        this.ultArrowTimer = this.hasUltPerk("ultc_arashi") ? 3.5 : 2.5;
         this.ultArrowTick = 0;
         break;
       }
@@ -13161,11 +13232,11 @@ export class GhostGame {
         for (const e of this.enemies) {
           if (e.state === "dead") continue;
           const dx = e.pos.x - p.pos.x, dy = e.pos.y - p.pos.y, d = Math.hypot(dx, dy);
-          if (d > 440) continue;
+          if (d > (this.hasUltPerk("ultc_tetsubo") ? 620 : 440)) continue;
           let diff = Math.atan2(dy, dx) - ang;
           while (diff > Math.PI) diff -= Math.PI * 2;
           while (diff < -Math.PI) diff += Math.PI * 2;
-          if (Math.abs(diff) > 0.55) continue;
+          if (Math.abs(diff) > (this.hasUltPerk("ultc_tetsubo") ? 0.75 : 0.55)) continue;
           this.dealDamage(e, this.ultDmg(20), Math.atan2(dy, dx), e.isBoss ? 60 : 420);
           e.stunTimer = Math.max(e.stunTimer, e.isBoss ? 0.5 : 1.4);
         }
@@ -13206,7 +13277,7 @@ export class GhostGame {
         const p = this.player, f = p.facing;
         this.ultPhantomTimer = PD.dur;
         this.phantom = { t: 0, cx: p.pos.x + Math.cos(f) * PD.reach, cy: p.pos.y + Math.sin(f) * PD.reach, hitAcc: 0, slashAcc: 0, finished: false };
-        this.ultPhantomImages = [-1, 0, 1].map((k, i) => {
+        this.ultPhantomImages = (this.hasUltPerk("ultc_kunoichi") ? [-1.5, -0.5, 0.5, 1.5] : [-1, 0, 1]).map((k, i) => {
           const home = { x: p.pos.x - Math.sin(f) * k * PD.spacing, y: p.pos.y + Math.cos(f) * k * PD.spacing };
           return { home, pos: { x: p.pos.x, y: p.pos.y }, facing: f, from: { ...p.pos }, to: home, dashT: 0, delay: i * 0.05,
             trail: [], swing: 0, dir: k === 0 ? 1 : k };
@@ -13248,8 +13319,8 @@ export class GhostGame {
       }
       case "kitsune": {
         // Nine Tails: nine homing foxfires hunt foes down one by one.
-        for (let i = 0; i < 9; i++) {
-          this.spawnFoxfire(this.player.pos.x, this.player.pos.y, this.ultDmg(9), (i / 9) * Math.PI * 2);
+        for (let i = 0, n = this.hasUltPerk("ultc_kitsune") ? 14 : 9; i < n; i++) {
+          this.spawnFoxfire(this.player.pos.x, this.player.pos.y, this.ultDmg(9), (i / n) * Math.PI * 2);
         }
         this.player.invuln = Math.max(this.player.invuln, 0.8);
         break;
@@ -13274,7 +13345,7 @@ export class GhostGame {
         const p = this.player;
         this.spearWall = {
           x: p.pos.x + Math.cos(p.facing) * 70, y: p.pos.y + Math.sin(p.facing) * 70,
-          ang: p.facing + Math.PI / 2, len: 280, t: 7, tick: 0,
+          ang: p.facing + Math.PI / 2, len: this.hasUltPerk("ultc_ashigaru") ? 420 : 280, t: 7, tick: 0,
         };
         this.cameraShake = Math.max(this.cameraShake, 0.5);
         break;
@@ -13283,20 +13354,20 @@ export class GhostGame {
         // Tidal Surge: a rolling wave crashes forward across the arena, carrying every
         // foe it catches and dumping them, slowed, at the far end.
         const p = this.player;
-        this.tideWave = { x: p.pos.x, y: p.pos.y, ang: p.facing, dist: 0, max: 760, width: 260, carried: new Set() };
+        this.tideWave = { x: p.pos.x, y: p.pos.y, ang: p.facing, dist: 0, max: 760, width: this.hasUltPerk("ultc_kappa") ? 380 : 260, carried: new Set() };
         this.player.invuln = Math.max(this.player.invuln, 0.6);
         break;
       }
       case "tengu": {
         // Divine Wind: take flight for 5s — much faster, dash recharges almost
         // instantly, and every dash leaves a cutting gale behind you.
-        this.ultWindTimer = 5;
+        this.ultWindTimer = this.hasUltPerk("ultc_tengu") ? 7 : 5;
         this.player.dashCooldown = 0;
         this.player.invuln = Math.max(this.player.invuln, 0.5);
         break;
       }
       case "kabuki": {
-        this.ultFinaleTimer = 5;
+        this.ultFinaleTimer = this.hasUltPerk("ultc_kabuki") ? 7 : 5;
         this.player.invuln = Math.max(this.player.invuln, 0.6);
         break;
       }
@@ -13322,6 +13393,7 @@ export class GhostGame {
         this.screenFlashTimer = 0.5;
       }
     }
+    if (this.hasUltPerk("ult_linger_r")) this.extendTimedUlts(1.3);   // ULTPERK Lingering Power
   }
 
   // ============ Iai Chain (Samurai ultimate) ============
@@ -13331,7 +13403,7 @@ export class GhostGame {
   // its own frame (driven by updateIaiChain()) so the player can SEE each
   // teleport + slash + ink splash + slash SFX.
   castIaiChain() {
-    this.iaiChainRemaining = MAX_IAI_CHAIN_HITS;
+    this.iaiChainRemaining = MAX_IAI_CHAIN_HITS + (this.hasUltPerk("ultc_samurai") ? 3 : 0);
     this.iaiChainTimer = 0; // strike immediately on the first frame
     this.iaiChainHitIds.clear();
     this.iaiChainTargetId = null;

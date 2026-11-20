@@ -276,6 +276,7 @@ kbd {
 .evo-row.done b { color: var(--ult); }
 /* Duo perk card */
 .card.duo { border-image: linear-gradient(135deg, var(--legendary), var(--rare)) 1; background: linear-gradient(160deg, rgba(244,200,66,.10), rgba(177,151,252,.12)), var(--surface-2); }
+.card .tag.ult-tag { background: var(--ult); color: var(--ink); }
 .card .duo-tag { background: linear-gradient(90deg, var(--legendary), var(--rare)); }
 @media (prefers-reduced-motion: reduce) { .slot.evo-ready { animation: none; box-shadow: 0 0 0 2px hsl(45 95% 65%); } }
 .buffs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
