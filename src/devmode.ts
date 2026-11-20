@@ -15,7 +15,7 @@ const UNLOCK_KEY = "ghostgame.dev.v1";
 const CODE = "ghostdev";
 
 const ENEMY_KINDS: EnemyArchetype[] = [
-  "normal", "heavy", "shielded", "archer", "assassin", "wisp", "priest", "bomber", "lantern",
+  "normal", "heavy", "shielded", "archer", "assassin", "wisp", "priest", "bomber", "lantern", "onryo", "nue", "mirror",
 ];
 
 const CSS = `

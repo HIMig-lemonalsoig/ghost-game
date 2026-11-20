@@ -154,6 +154,7 @@ function dur(sec: number) {
 const ENEMY_NAMES: Record<string, string> = {
   normal: "Ashigaru", heavy: "Brute", shielded: "Shield-bearer", archer: "Archer", assassin: "Assassin",
   wisp: "Wisp", priest: "Healer monk", bomber: "Bomber", lantern: "Lantern ghost", boss: "Boss", final: "Final boss",
+  onryo: "Onryō", nue: "Nue", mirror: "Mirror monk",
 };
 
 function bars(rows: [string, number, string?][], empty: string): string {

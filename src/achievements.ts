@@ -74,6 +74,9 @@ export const ACHIEVEMENTS: Ach[] = [
   { id: "stocked", tier: "uncommon", kanji: "薬", name: "Well Stocked", desc: "Use 25 items in total.", ...total("items", 25) },
 
   { id: "evolved", tier: "uncommon", kanji: "進", name: "Evolution", desc: "Evolve a weapon (Mastery 3 + its catalyst + a Spirit Chest).", check: x => evolvedKinds(x) >= 1 },
+  { id: "exorcist", tier: "uncommon", kanji: "祓", name: "Exorcist", desc: "Banish 25 Onryō in total.",
+    check: x => (x.c.killsByKind?.onryo ?? 0) >= 25,
+    progress: x => [Math.min(25, (x.c.killsByKind?.onryo ?? 0)), 25] },
   { id: "double_trouble", tier: "uncommon", kanji: "双", name: "Double Trouble", desc: "Kill an elite with two affixes (from wave 18).", ...runMax("doubleEliteKills", 1) },
 
   // ── Rare ──
@@ -92,6 +95,7 @@ export const ACHIEVEMENTS: Ach[] = [
     check: x => AFFIX_IDS.every(a => (x.c.eliteByAffix?.[a] ?? 0) > 0),
     progress: x => [AFFIX_IDS.filter(a => (x.c.eliteByAffix?.[a] ?? 0) > 0).length, AFFIX_IDS.length] },
   { id: "duo_first", tier: "rare", kanji: "双", name: "Better Together", desc: "Take a duo perk (own the two perks it needs, then it can show up at level-up).", check: x => duoKinds(x) >= 1 },
+  { id: "nip_bud", tier: "rare", kanji: "芽", name: "Nip It in the Bud", desc: "Kill a Nue before it summons any wisps.", ...runMax("nueFirstStrike", 1) },
   { id: "treasure", tier: "rare", kanji: "宝", name: "Treasure Hunter", desc: "Open 25 Spirit Chests in total.", ...total("chests", 25) },
   { id: "clutch", tier: "rare", kanji: "危", name: "By a Thread", desc: "Clear a wave with 3 HP or less.", ...runMax("clutchWaves", 1) },
 

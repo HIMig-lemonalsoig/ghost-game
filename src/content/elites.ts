@@ -50,6 +50,7 @@ export const ELITE = {
 export const ENEMY_LABEL: Record<string, string> = {
   normal: "Ashigaru", heavy: "Brute", shielded: "Shield-bearer", archer: "Archer", assassin: "Assassin",
   wisp: "Wisp", priest: "Healer Monk", bomber: "Bomber", lantern: "Lantern Ghost", boss: "Warlord", final: "Shogun",
+  onryo: "Onryō", nue: "Nue", mirror: "Mirror Monk",
 };
 
 /** Pick n distinct affixes (bosses skip the ones that don't suit them). */

@@ -8,6 +8,7 @@ import { AFFIXES, ELITE, ENEMY_LABEL, rollAffixes } from "./content/elites";
 import type { AffixId } from "./content/elites";
 import { EVOLUTIONS, EVO_MASTERY, EVO_DAMAGE_MUL } from "./content/evolutions";
 import { DUOS, DUO_BY_ID } from "./content/duos";
+import { NEW_ENEMY_TIPS, ONRYO, NUE, MIRROR, newEnemyChance } from "./content/enemies";
 // Sections: classes, weapons, shop, consumables, saves, biomes, audio, VFX, gameplay.
 
 // ============================================================================
@@ -3394,7 +3395,11 @@ export type EnemyArchetype =
   | "wisp"
   | "priest"
   | "bomber"
-  | "lantern";
+  | "lantern"
+  // Phase 4: controller / summoner / anti-ranged
+  | "onryo"
+  | "nue"
+  | "mirror";
 
 export type BossKind = "oni" | "kitsune" | "gasha" | "raijin";
 
@@ -3436,13 +3441,14 @@ export interface RunCounters {
   chests: number;
   evolutions: string[];
   duos: string[];
+  nueFirstStrike: number;     // Nue killed before it ever summoned
 }
 export const newRunCounters = (): RunCounters => ({
   kills: 0, stealthKills: 0, bossKills: 0, bossByKind: {}, killsByKind: {}, wavesCleared: 0,
   damageDealt: 0, damageTaken: 0, biggestHit: 0, monEarned: 0, ults: 0, items: 0, dashes: 0, time: 0,
   purchases: 0, flawlessWaves: 0, flawlessStreak: 0, bestFlawlessStreak: 0, flawlessBossWaves: 0,
   bestMultiKill: 0, bestUltKills: 0, maxMon: 0, clutchWaves: 0,
-  eliteKills: 0, eliteByAffix: {}, doubleEliteKills: 0, chests: 0, evolutions: [], duos: [],
+  eliteKills: 0, eliteByAffix: {}, doubleEliteKills: 0, chests: 0, evolutions: [], duos: [], nueFirstStrike: 0,
 });
 
 export const BOSS_INFO: Record<BossKind, { name: string; kanji: string }> = {
@@ -3547,6 +3553,11 @@ interface Enemy {
   affixes?: AffixId[];
   wardHits?: number;
   trailT?: number;
+  // ── PHASE4 enemy state ──
+  castCount?: number;       // Onryō casts so far
+  summonCharge?: number;    // Nue: >0 while charging a summon
+  summoned?: boolean;       // Nue: has summoned at least once
+  summonerId?: number;      // wisps summoned by a Nue
   special?: number;   // per-archetype timer (heal pulse, bomb throw)
   fuse?: number;      // lantern self-destruct countdown
 }
@@ -3659,7 +3670,7 @@ interface EnemyProjectile {
   damage: number;
   size: number;
   // Visual style: arrow (slim shaft) or orb (boss volley)
-  kind: "arrow" | "orb";
+  kind: "arrow" | "orb" | "talisman";
   trail: { x: number; y: number }[];
 }
 
@@ -4614,6 +4625,7 @@ export class GhostGame {
     this.spiritChests = [];
     this.seenAffixes = new Set();
     this.evoWaves = []; this.evoZones = []; this.evoOrbits = [];
+    this.inkPools = []; this.playerRoot = 0;
     this.evoShield = 0; this.katanaSwings = 0; this.saiHits = 0;
     this.cinematicTimer = 0;
     this.fx.clear();
@@ -5089,6 +5101,8 @@ export class GhostGame {
     this.spawnSingleEnemyInner(wave, kind);
     for (let i = n; i < this.enemies.length; i++) {
       const e = this.enemies[i];
+      const tip = NEW_ENEMY_TIPS[e.archetype];
+      if (tip && !this.seenAffixes.has(`enemy:${e.archetype}`)) { this.seenAffixes.add(`enemy:${e.archetype}`); this.flash(tip); }
       if (e.isBoss) {
         // Hard and Death bosses carry one affix.
         if (this.difficulty === "hard" || this.difficulty === "death") this.makeElite(e, rollAffixes(1, true), true);
@@ -5158,6 +5172,89 @@ export class GhostGame {
       if (d < 34) { c.life = 0; this.openSpiritChest(c.x, c.y); }
     }
     this.spiritChests = this.spiritChests.filter(c => c.life > 0);
+  }
+
+  // ===================== PHASE4 helpers =====================
+  /** Keep roughly `ideal` px from the player, strafing a little. */
+  private kiteFrom(e: Enemy, dist: number, angToPlayer: number, ideal: number, speedMul: number, dt: number) {
+    let mx = 0, my = 0;
+    if (dist < ideal - 50) { mx = -Math.cos(angToPlayer); my = -Math.sin(angToPlayer); }
+    else if (dist > ideal + 80) { mx = Math.cos(angToPlayer) * 0.85; my = Math.sin(angToPlayer) * 0.85; }
+    const strafe = Math.sin(this.elapsed * 0.8 + e.id) * 0.45;
+    mx += -Math.sin(angToPlayer) * strafe; my += Math.cos(angToPlayer) * strafe;
+    e.pos.x += mx * e.speed * speedMul * dt;
+    e.pos.y += my * e.speed * speedMul * dt;
+  }
+
+  private nueSummon(e: Enemy) {
+    const wave = Math.max(1, this.stats.wave);
+    const D = DIFFICULTIES[this.difficulty];
+    const hpScale = (1 + (wave - 1) * 0.45) * D.hp;
+    const dmgScale = (1 + (wave - 1) * 0.10) * D.dmg;
+    for (let i = 0; i < NUE.perSummon; i++) {
+      const a = (i / NUE.perSummon) * Math.PI * 2 + Math.random();
+      const w = this.makeEnemy({
+        x: e.pos.x + Math.cos(a) * 30, y: e.pos.y + Math.sin(a) * 30, isBoss: false, archetype: "wisp",
+        hp: Math.max(0.5, 0.6 * hpScale), damage: Math.round(6 * dmgScale), speed: 200, size: 9,
+        xpReward: 1, monReward: 0,     // summons give almost nothing — kill the Nue instead
+      });
+      w.summonerId = e.id;
+      this.enemies.push(w);
+    }
+    e.summoned = true;
+    this.fx.shockwave(e.pos.x, e.pos.y, 90, { hue: 270, light: 65, life: 0.45, width: 6 });
+    audio.play("smokeWoosh");
+  }
+
+  /** Player move multiplier from active ink pools (Onryō). */
+  private inkSlowMul(): number {
+    for (const k of this.inkPools) {
+      if (k.t >= ONRYO.inkTelegraph && Math.hypot(this.player.pos.x - k.x, this.player.pos.y - k.y) < ONRYO.inkRadius) return ONRYO.inkSlow;
+    }
+    return 1;
+  }
+
+  private updateInk(dt: number) {
+    for (const k of this.inkPools) { k.t += dt; }
+    this.inkPools = this.inkPools.filter(k => k.t < k.life);
+    if (this.playerRoot > 0) this.playerRoot = Math.max(0, this.playerRoot - dt);
+  }
+
+  private drawInk() {
+    const ctx = this.ctx, t = this.elapsed;
+    ctx.save();
+    for (const k of this.inkPools) {
+      if (k.t < ONRYO.inkTelegraph) {
+        const f = k.t / ONRYO.inkTelegraph;
+        ctx.strokeStyle = `hsla(280, 70%, 65%, ${0.35 + f * 0.5})`;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 6]); ctx.lineDashOffset = -t * 30;
+        ctx.beginPath(); ctx.arc(k.x, k.y, ONRYO.inkRadius, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = `hsla(280, 60%, 20%, ${f * 0.35})`;
+        ctx.beginPath(); ctx.arc(k.x, k.y, ONRYO.inkRadius * f, 0, Math.PI * 2); ctx.fill();
+      } else {
+        const fade = Math.min(1, (k.life - k.t) / 0.5);
+        const g = ctx.createRadialGradient(k.x, k.y, 0, k.x, k.y, ONRYO.inkRadius);
+        g.addColorStop(0, `hsla(280, 50%, 6%, ${0.75 * fade})`);
+        g.addColorStop(0.75, `hsla(275, 55%, 12%, ${0.55 * fade})`);
+        g.addColorStop(1, "hsla(275, 60%, 20%, 0)");
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(k.x, k.y, ONRYO.inkRadius * (1 + Math.sin(t * 3 + k.x) * 0.03), 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    if (this.playerRoot > 0) {
+      // Paper talisman pinned above the rooted player.
+      const px = this.player.pos.x, py = this.player.pos.y - BASE.PLAYER_RADIUS - 22;
+      ctx.fillStyle = "hsl(45, 60%, 88%)";
+      ctx.fillRect(px - 6, py - 10, 12, 20);
+      ctx.fillStyle = "hsl(0, 75%, 45%)";
+      ctx.fillRect(px - 1.5, py - 7, 3, 14);
+      ctx.strokeStyle = "hsla(280, 80%, 70%, 0.7)";
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(this.player.pos.x, this.player.pos.y, BASE.PLAYER_RADIUS + 6, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.restore();
   }
 
   /** Player move multiplier from Frost elite auras. */
@@ -5527,6 +5624,31 @@ export class GhostGame {
           monReward: 1 + Math.floor(Math.random() * 2),
         }));
       }
+    } else if (kind === "onryo") {
+      // PHASE4 controller: keeps away, drops slowing ink pools, throws binding talismans.
+      const on = this.makeEnemy({
+        x: s.x, y: s.y, isBoss: false, archetype: "onryo",
+        hp: Math.round(2.6 * hpScale * 10) / 10, damage: Math.round(9 * dmgScale), speed: 145 * speedScale, size: 14,
+        xpReward: 20, monReward: 7 + tier * 2 + Math.floor(Math.random() * 4),
+      });
+      on.special = 1.5; on.castCount = 0;
+      this.enemies.push(on);
+    } else if (kind === "nue") {
+      // PHASE4 summoner: hides behind allies and calls wisps. Low HP — priority target.
+      const nu = this.makeEnemy({
+        x: s.x, y: s.y, isBoss: false, archetype: "nue",
+        hp: Math.round(2.2 * hpScale * 10) / 10, damage: Math.round(8 * dmgScale), speed: 150 * speedScale, size: 16,
+        xpReward: 24, monReward: 9 + tier * 2 + Math.floor(Math.random() * 4),
+      });
+      nu.special = 2.5; nu.summoned = false;
+      this.enemies.push(nu);
+    } else if (kind === "mirror") {
+      // PHASE4 anti-ranged: reflects projectiles that hit its front.
+      this.enemies.push(this.makeEnemy({
+        x: s.x, y: s.y, isBoss: false, archetype: "mirror",
+        hp: Math.round(3.2 * hpScale * 10) / 10, damage: Math.round(12 * dmgScale), speed: 140 * speedScale, size: BASE.ENEMY_RADIUS + 2,
+        xpReward: 18, monReward: 7 + tier * 2 + Math.floor(Math.random() * 4),
+      }));
     } else if (kind === "priest") {
       // Support: heals nearby allies — the priority target.
       const pr = this.makeEnemy({
@@ -5601,6 +5723,9 @@ export class GhostGame {
     const bomberChance = wave >= 5 ? Math.min(0.12, (wave - 4) * 0.02) : 0;
     const priestChance = wave >= 7 ? Math.min(0.08, (wave - 6) * 0.015) : 0;
     let cum = 0;
+    if (r < (cum += newEnemyChance("onryo", wave))) return "onryo";
+    if (r < (cum += newEnemyChance("nue", wave))) return "nue";
+    if (r < (cum += newEnemyChance("mirror", wave))) return "mirror";
     if (r < (cum += priestChance)) return "priest";
     if (r < (cum += bomberChance)) return "bomber";
     if (r < (cum += lanternChance)) return "lantern";
@@ -5919,6 +6044,9 @@ export class GhostGame {
   evoOrbits: { ang: number; life: number; dmg: number; hitCd: Map<number, number> }[] = [];
   evoShield = 0;
   blockRegenDelay = 0;
+  // PHASE4 state
+  inkPools: { x: number; y: number; t: number; life: number }[] = [];
+  playerRoot = 0;
   private evoNested = false;
   private katanaSwings = 0;
   private saiHits = 0;
@@ -6525,6 +6653,7 @@ export class GhostGame {
     this.updateHazards(dt);
     this.updateElites(dt);
     this.updateEvo(dt);
+    this.updateInk(dt);
     this.updateParticles(dt);
     this.updatePetals(dtRaw);
     this.updateAbilities(dt);
@@ -6671,7 +6800,7 @@ export class GhostGame {
     }
     // While mid-swing the player keeps most of their momentum (87%) instead
     // of grinding to a near-stop — feels much better when chaining attacks.
-    const slow = ((!dashing && p.attackAnim > 0) ? 0.87 : 1) * (dashing ? 1 : this.frostSlowMul());
+    const slow = ((!dashing && p.attackAnim > 0) ? 0.87 : 1) * (dashing ? 1 : this.frostSlowMul() * this.inkSlowMul() * (this.playerRoot > 0 ? 0 : 1));
     // Hard cap on player speed bonuses from all sources (perks + class + items).
     // Penalties (speedMul < 1, e.g. Tetsubo / Sumo) still apply normally; only
     // the *bonus* above 1.0 is clamped so the player can never out-run elites.
@@ -6775,6 +6904,7 @@ export class GhostGame {
       }
       p.dashAng = ang;
       p.dashTimer = BASE.DASH_DURATION;
+      this.playerRoot = 0;   // dashing breaks an Onryō root
       this.run.dashes++;
       p.dashCooldown = BASE.DASH_COOLDOWN * (this.stats.classId === "tengu" ? 0.6 : 1) * this.perks.dashCdMul * (this.ultWindTimer > 0 ? 0.15 : 1);
       if (this.ultWindTimer > 0) {
@@ -6937,6 +7067,14 @@ export class GhostGame {
     if (e.state === "dead") return;
     e.state = "dead";
     if (!this.sweeping) this.trackKill(e);
+    if (e.archetype === "nue" && !this.sweeping) {
+      if (!e.summoned) this.run.nueFirstStrike++;
+      // Its summons dissipate with it (they don't count as your kills).
+      const prev = this.sweeping;
+      this.sweeping = true;
+      for (const o of this.enemies) if (o.summonerId === e.id && o.state !== "dead") { this.spawnSpark(o.pos); this.killEnemy(o, "honor"); }
+      this.sweeping = prev;
+    }
     if (e.affixes && !this.sweeping) this.onEliteDeath(e);
     else if (e.isBoss && !this.sweeping) this.spiritChests.push({ x: e.pos.x, y: e.pos.y, life: ELITE.chestLife, t: 0 });
     e.deathTimer = 1.4;
@@ -7526,6 +7664,15 @@ export class GhostGame {
       const dx = this.player.pos.x - ep.pos.x;
       const dy = this.player.pos.y - ep.pos.y;
       if (Math.hypot(dx, dy) < BASE.PLAYER_RADIUS + ep.size * 0.5) {
+          // PHASE4 Onryō talisman — dash through it; otherwise it roots you briefly.
+          if (ep.kind === "talisman") {
+            if (this.player.dashTimer > 0 || this.player.invuln > 0) continue;
+            ep.life = 0;
+            this.playerRoot = ONRYO.rootTime;
+            this.applyEnemyHit(null, ep.damage, "onryō talisman");
+            if (!this.seenAffixes.has("tip:root")) { this.seenAffixes.add("tip:root"); this.flash("Rooted! Dash to break free"); }
+            continue;
+          }
           // EVOLUTION Fortress Wall: blocking with the evolved Tate reflects shots.
           if (this.input.blockHeld && this.stats.secondaryIds[this.stats.secondaryActiveSlot] === "tate" && this.isEvolved("tate")) {
             const sp = Math.hypot(ep.vel.x, ep.vel.y) * 1.2;
@@ -8741,6 +8888,57 @@ export class GhostGame {
         continue;
       }
 
+      // ===== PHASE4: Onryō (controller) =====
+      if (e.archetype === "onryo") {
+        this.kiteFrom(e, dist, angToPlayer, ONRYO.keepAway, speedMul, dt);
+        e.facing = angToPlayer;
+        e.special = (e.special ?? ONRYO.castEvery) - dt * speedMul;
+        if (e.special <= 0 && e.disarmedRemaining <= 0 && dist < 650) {
+          e.special = ONRYO.castEvery;
+          e.castCount = (e.castCount ?? 0) + 1;
+          this.inkPools.push({ x: p.pos.x + (Math.random() - 0.5) * 40, y: p.pos.y + (Math.random() - 0.5) * 40, t: 0, life: ONRYO.inkTelegraph + ONRYO.inkLife });
+          this.fx.burst(e.pos.x, e.pos.y, { count: 6, hue: 280, light: 30, speed: 90, life: 0.4 });
+          if (e.castCount % ONRYO.talismanEvery === 0) {
+            this.enemyProjectiles.push({
+              pos: { x: e.pos.x + Math.cos(angToPlayer) * 18, y: e.pos.y + Math.sin(angToPlayer) * 18 },
+              vel: { x: Math.cos(angToPlayer) * ONRYO.talismanSpeed, y: Math.sin(angToPlayer) * ONRYO.talismanSpeed },
+              life: 3, maxLife: 3, damage: Math.max(1, Math.round(e.damage * 0.5)), size: 10, kind: "talisman", trail: [],
+            });
+          }
+        }
+        continue;
+      }
+
+      // ===== PHASE4: Nue (summoner) =====
+      if (e.archetype === "nue") {
+        if ((e.summonCharge ?? 0) > 0) {
+          // Rooted in place while summoning (telegraphed by a glowing ring).
+          e.summonCharge = (e.summonCharge ?? 0) - dt * speedMul;
+          if (e.summonCharge <= 0) this.nueSummon(e);
+          continue;
+        }
+        // Hide behind the nearest ally, away from the player.
+        let ally: Enemy | null = null, ad = 420;
+        for (const o of this.enemies) {
+          if (o === e || o.state === "dead" || o.summonerId === e.id) continue;
+          const d2 = Math.hypot(o.pos.x - e.pos.x, o.pos.y - e.pos.y);
+          if (d2 < ad) { ad = d2; ally = o; }
+        }
+        if (ally && dist > 200) {
+          const a = Math.atan2(ally.pos.y - p.pos.y, ally.pos.x - p.pos.x);
+          const tx = ally.pos.x + Math.cos(a) * 90 - e.pos.x, ty = ally.pos.y + Math.sin(a) * 90 - e.pos.y, td = Math.hypot(tx, ty);
+          if (td > 20) { e.pos.x += (tx / td) * e.speed * speedMul * dt; e.pos.y += (ty / td) * e.speed * speedMul * dt; }
+        } else this.kiteFrom(e, dist, angToPlayer, NUE.keepAway, speedMul, dt);
+        e.facing = angToPlayer;
+        e.special = (e.special ?? NUE.summonEvery) - dt * speedMul;
+        const mine = this.enemies.filter(o => o.state !== "dead" && o.summonerId === e.id).length;
+        if (e.special <= 0 && e.disarmedRemaining <= 0 && mine < NUE.maxSummons) {
+          e.special = NUE.summonEvery;
+          e.summonCharge = NUE.summonCharge;
+        }
+        continue;
+      }
+
       if (e.archetype === "bomber") {
         const ideal = 300;
         e.facing = angToPlayer;
@@ -9226,6 +9424,7 @@ export class GhostGame {
     this.drawHazards();
     for (const e of this.enemies) if (e.state === "dead") this.drawEnemy(e, true);
     for (const p of this.particles) if (p.kind === "blood") this.drawParticle(p);
+    this.drawInk();
     this.drawEliteGround();
     this.drawEvo();
     for (const e of this.enemies) if (e.state !== "dead") this.drawEnemy(e, false);
@@ -10162,6 +10361,84 @@ export class GhostGame {
     const t = this.elapsed + e.id;
     const flash = e.hitFlash > 0;
     switch (e.archetype) {
+      case "onryo": {
+        // Vengeful ghost: floating pale robe, long black hair, violet haze.
+        const bob = Math.sin(t * 3) * 2.5;
+        ctx.save();
+        ctx.translate(0, bob);
+        ctx.globalAlpha = 0.85;
+        const haze = ctx.createRadialGradient(0, 0, 2, 0, 0, e.size * 2.2);
+        haze.addColorStop(0, "hsla(280, 70%, 55%, 0.35)"); haze.addColorStop(1, "hsla(280, 70%, 30%, 0)");
+        ctx.fillStyle = haze;
+        ctx.beginPath(); ctx.arc(0, 0, e.size * 2.2, 0, Math.PI * 2); ctx.fill();
+        ctx.rotate(e.facing);
+        ctx.fillStyle = flash ? "hsl(0, 0%, 100%)" : "hsl(220, 15%, 90%)";       // robe
+        ctx.beginPath(); ctx.ellipse(-2, 0, e.size * 1.05, e.size * 0.95, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "hsl(260, 25%, 8%)";                                       // hair falling back
+        ctx.beginPath(); ctx.moveTo(e.size * 0.5, -e.size * 0.6);
+        ctx.quadraticCurveTo(-e.size * 0.6, -e.size * 0.9 + Math.sin(t * 4) * 2, -e.size * 1.9, -e.size * 0.3);
+        ctx.lineTo(-e.size * 1.9, e.size * 0.3);
+        ctx.quadraticCurveTo(-e.size * 0.6, e.size * 0.9 + Math.sin(t * 4 + 1) * 2, e.size * 0.5, e.size * 0.6);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "hsl(0, 0%, 97%)";                                         // face
+        ctx.beginPath(); ctx.arc(e.size * 0.45, 0, e.size * 0.38, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+        // Cast charge: violet sigil fills before an ink pool.
+        const charge = Math.max(0, 1 - (e.special ?? ONRYO.castEvery) / 0.6);
+        if (charge > 0) {
+          ctx.strokeStyle = `hsla(280, 85%, 70%, ${charge})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(0, 0, e.size + 8, -Math.PI / 2, -Math.PI / 2 + charge * Math.PI * 2); ctx.stroke();
+        }
+        return true;
+      }
+      case "nue": {
+        // Chimera: tiger-striped body, monkey face, snake tail. Glows while summoning.
+        const charging = (e.summonCharge ?? 0) > 0;
+        if (charging) {
+          const k = 1 - (e.summonCharge ?? 0) / NUE.summonCharge;
+          ctx.strokeStyle = `hsla(270, 90%, 70%, ${0.4 + k * 0.6})`;
+          ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.arc(0, 0, e.size + 10 + k * 18, 0, Math.PI * 2); ctx.stroke();
+          ctx.fillStyle = `hsla(270, 90%, 60%, ${0.12 + k * 0.2})`;
+          ctx.beginPath(); ctx.arc(0, 0, e.size + 10 + k * 18, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.save();
+        ctx.rotate(e.facing);
+        ctx.strokeStyle = "hsl(110, 35%, 30%)";                                    // snake tail
+        ctx.lineWidth = 4; ctx.lineCap = "round";
+        ctx.beginPath(); ctx.moveTo(-e.size * 0.8, 0);
+        ctx.quadraticCurveTo(-e.size * 1.6, Math.sin(t * 5) * 8, -e.size * 2.3, Math.sin(t * 5 + 1.5) * 6);
+        ctx.stroke();
+        ctx.fillStyle = flash ? "hsl(40, 80%, 85%)" : "hsl(35, 70%, 45%)";       // tiger body
+        ctx.beginPath(); ctx.ellipse(0, 0, e.size * 1.05, e.size * 0.85, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "hsl(20, 40%, 12%)"; ctx.lineWidth = 2.5;
+        for (const sx of [-0.5, -0.1, 0.3]) { ctx.beginPath(); ctx.moveTo(e.size * sx, -e.size * 0.8); ctx.lineTo(e.size * (sx - 0.15), -e.size * 0.2); ctx.stroke(); ctx.beginPath(); ctx.moveTo(e.size * sx, e.size * 0.8); ctx.lineTo(e.size * (sx - 0.15), e.size * 0.2); ctx.stroke(); }
+        ctx.fillStyle = "hsl(25, 35%, 30%)";                                       // monkey face
+        ctx.beginPath(); ctx.arc(e.size * 0.85, 0, e.size * 0.45, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "hsl(30, 40%, 70%)";
+        ctx.beginPath(); ctx.arc(e.size * 1.0, 0, e.size * 0.25, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+        return true;
+      }
+      case "mirror": {
+        // Monk carrying a big bronze mirror in front — shots off the front bounce back.
+        ctx.save();
+        ctx.rotate(e.facing);
+        ctx.fillStyle = flash ? "hsl(30, 60%, 85%)" : "hsl(28, 45%, 38%)";       // robe
+        ctx.beginPath(); ctx.arc(0, 0, e.size, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "hsl(30, 30%, 70%)";                                       // shaved head
+        ctx.beginPath(); ctx.arc(e.size * 0.2, 0, e.size * 0.45, 0, Math.PI * 2); ctx.fill();
+        const mg = ctx.createLinearGradient(e.size, -e.size, e.size + 6, e.size);
+        mg.addColorStop(0, "hsl(45, 70%, 75%)"); mg.addColorStop(0.5, "hsl(40, 80%, 55%)"); mg.addColorStop(1, "hsl(35, 70%, 35%)");
+        ctx.fillStyle = mg;                                                        // bronze mirror
+        ctx.beginPath(); ctx.ellipse(e.size + 5, 0, 5, e.size * 1.15, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = `hsla(50, 100%, 90%, ${0.4 + Math.sin(t * 4) * 0.3})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(e.size + 7, -e.size * 0.6); ctx.lineTo(e.size + 7, e.size * 0.2); ctx.stroke();
+        ctx.restore();
+        return true;
+      }
       case "wisp": {
         // Hitodama: a blue spirit flame trailing behind its direction of travel.
         const back = e.facing + Math.PI;
@@ -13443,6 +13720,23 @@ export class GhostGame {
         pr.hitSet.add(e.id);
 
         const ang = Math.atan2(dy, dx);
+        // PHASE4 Mirror Monk — projectiles hitting its front bounce back at you.
+        if (e.archetype === "mirror") {
+          const incomingDir = Math.atan2(-pr.vel.y, -pr.vel.x);
+          let fd = incomingDir - e.facing;
+          while (fd > Math.PI) fd -= Math.PI * 2;
+          while (fd < -Math.PI) fd += Math.PI * 2;
+          if (Math.abs(fd) < MIRROR.frontArc) {
+            const a = Math.atan2(this.player.pos.y - e.pos.y, this.player.pos.x - e.pos.x);
+            const sp = Math.max(300, Math.hypot(pr.vel.x, pr.vel.y) * 0.8);
+            this.enemyProjectiles.push({ pos: { x: pr.pos.x, y: pr.pos.y }, vel: { x: Math.cos(a) * sp, y: Math.sin(a) * sp },
+              life: 1.6, maxLife: 1.6, damage: Math.max(1, Math.round(e.damage * MIRROR.reflectDmgShare)), size: 7, kind: "arrow", trail: [] });
+            this.spawnSpark(pr.pos);
+            audio.play("armorRing");
+            pr.life = 0;
+            break;
+          }
+        }
         if (pr.kind === "hook" && !e.isBoss) {
           // Latch + bleed
           pr.hookEnemyId = e.id;
@@ -14206,6 +14500,7 @@ export class GhostGame {
       if (ep.trail.length > 1) {
         ctx.strokeStyle = ep.kind === "orb"
           ? `hsla(355, 90%, 55%, ${0.55 * t})`
+          : ep.kind === "talisman" ? `hsla(280, 80%, 65%, ${0.6 * t})`
           : `hsla(0, 0%, 5%, ${0.55 * t})`;
         ctx.lineWidth = ep.kind === "orb" ? 3 : 2;
         ctx.beginPath();
@@ -14217,7 +14512,16 @@ export class GhostGame {
       ctx.translate(ep.pos.x, ep.pos.y);
       const ang = Math.atan2(ep.vel.y, ep.vel.x);
       ctx.rotate(ang);
-      if (ep.kind === "arrow") {
+      if (ep.kind === "talisman") {
+        // Ofuda: spinning paper charm with a red seal and violet glow.
+        ctx.rotate(this.elapsed * 6);
+        ctx.fillStyle = "hsla(280, 90%, 60%, 0.35)";
+        ctx.beginPath(); ctx.arc(0, 0, 13, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "hsl(45, 60%, 88%)";
+        ctx.fillRect(-5, -9, 10, 18);
+        ctx.fillStyle = "hsl(0, 75%, 45%)";
+        ctx.fillRect(-1.5, -6, 3, 12);
+      } else if (ep.kind === "arrow") {
         ctx.fillStyle = "hsl(0, 0%, 8%)";
         ctx.fillRect(-12, -1, 18, 2);
         ctx.fillStyle = "hsl(355, 70%, 50%)";

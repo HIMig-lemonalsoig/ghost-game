@@ -13,7 +13,7 @@ There are 7 phases, in the order they depend on each other. Each phase is roughl
 | 1 ✅ | Foundations: smooth stat curves, content files, balance tracking | Fixes how the stat caps feel, makes the later phases easier, and collects data | S |
 | 2 ✅ | Elite affixes | Lots of fight variety for little work; Phase 3 needs it | S–M |
 | 3 ✅ | Weapon evolutions + duo perks | Gives every run a goal to build toward (the biggest gap right now) | M |
-| 4 | New enemy roles: controller + summoner | Fills the two roles that are missing | M |
+| 4 ✅ | New enemy roles: controller + summoner | Fills the two roles that are missing | M |
 | 5 | Class signature passives | Makes the 25 classes play differently instead of just having different numbers | M–L |
 | 6 | Vows (Hades-style "Heat") | A long-term goal for players who've beaten Death | M |
 | 7 | Data-driven balance pass | Tune using real pick rates and wave numbers instead of guesses | S |
@@ -129,7 +129,9 @@ The evolved weapon replaces the base one in its slot. A gold glow on the weapon 
 
 ---
 
-## Phase 4: New enemy roles
+## Phase 4: New enemy roles ✅ done
+
+Shipped: all three, including the optional Mirror Monk. Tuning is in `src/content/enemies.ts`. Each one shows a first-encounter tip. Nue summons give 1 XP and 0 coins, so farming them isn't worth it. 2 achievements were added (Exorcist, Nip It in the Bud), and all three are in the dev panel's spawn list.
 
 | Enemy | Role | Behavior | From wave |
 |-------|------|----------|-----------|
