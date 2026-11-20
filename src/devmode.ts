@@ -6,6 +6,7 @@ import {
   PERK_POOL, CONSUMABLES, SECONDARIES, ABILITY_POOL, BOSS_INFO,
 } from "./GhostGame";
 import type { GhostGame, SecondaryId, ConsumableId, EnemyArchetype, BossKind } from "./GhostGame";
+import { reportHTML, getTelemetry, resetTelemetry } from "./telemetry";
 
 const UNLOCK_KEY = "ghostgame.dev.v1";
 const CODE = "ghostdev";
@@ -54,6 +55,23 @@ const CSS = `
   font: 12px ui-monospace, Menlo, monospace; transition: opacity .2s, transform .2s;
 }
 #devtoast.show { opacity: 1; transform: translate(-50%, 0); }
+#devreport {
+  position: fixed; inset: 0; z-index: 63; display: none; overflow-y: auto; padding: 24px 16px;
+  background: rgba(5, 8, 6, .9); color: #e6efe8; font: 13px/1.4 ui-monospace, Menlo, monospace;
+}
+#devreport.open { display: block; }
+#devreport .dr-wrap { max-width: 900px; margin: 0 auto; background: rgba(10,14,11,.96); border: 1px solid rgba(127,220,154,.35); border-radius: 12px; padding: 18px; }
+#devreport h3 { margin: 0 0 4px; color: #7fdc9a; font-size: 16px; }
+#devreport h4 { margin: 18px 0 6px; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: #8fa596; }
+#devreport .dr-sub, #devreport .dr-empty { color: #8fa596; font-size: 12px; }
+#devreport .dr-t { width: 100%; border-collapse: collapse; }
+#devreport .dr-t th { text-align: left; color: #8fa596; font-weight: 600; font-size: 11px; padding: 4px 6px; }
+#devreport .dr-t td { padding: 4px 6px; border-top: 1px solid rgba(255,255,255,.07); }
+#devreport .dr-hot { color: #ffb36b; font-size: 11px; } #devreport .dr-cold { color: #7fb6dc; font-size: 11px; }
+#devreport .dr-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+#devreport button { font: inherit; color: inherit; background: #18211b; border: 1px solid rgba(255,255,255,.14); border-radius: 6px; padding: 6px 10px; cursor: pointer; min-height: 32px; }
+#devreport button:hover { border-color: #7fdc9a; }
+#devreport button.danger { border-color: #d6453f; }
 `;
 
 export function initDevMode(getGame: () => GhostGame | null) {
@@ -73,7 +91,34 @@ export function initDevMode(getGame: () => GhostGame | null) {
   panel.id = "devpanel";
   const toast = document.createElement("div");
   toast.id = "devtoast";
-  document.body.append(badge, panel, toast);
+  const report = document.createElement("div");
+  report.id = "devreport";
+  report.setAttribute("role", "dialog");
+  report.setAttribute("aria-label", "Balance report");
+  document.body.append(badge, panel, toast, report);
+  let resetArmed = false;
+  const renderReport = () => {
+    report.innerHTML = `<div class="dr-wrap"><h3>Balance report</h3>${reportHTML()}
+      <div class="dr-actions"><button data-dr="copy">Copy JSON</button>
+      <button data-dr="reset" class="${resetArmed ? "danger" : ""}">${resetArmed ? "Click again to erase tracking data" : "Reset tracking data"}</button>
+      <button data-dr="close">Close · Esc</button></div></div>`;
+  };
+  const copyJson = async () => {
+    const text = JSON.stringify(getTelemetry(), null, 1);
+    try { await navigator.clipboard.writeText(text); notify("Balance data copied — paste it to Claude"); }
+    catch { notify("Copy blocked — select the text in the console instead"); console.log(text); }
+  };
+  report.addEventListener("click", e => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>("[data-dr]");
+    if (!b) return;
+    const a = b.dataset.dr;
+    if (a === "close") { report.classList.remove("open"); resetArmed = false; }
+    else if (a === "copy") void copyJson();
+    else if (a === "reset") {
+      if (resetArmed) { resetTelemetry(); resetArmed = false; notify("Tracking data erased"); } else resetArmed = true;
+      renderReport();
+    }
+  });
   let toastTimer = 0;
   const notify = (msg: string) => {
     toast.textContent = msg;
@@ -89,6 +134,10 @@ export function initDevMode(getGame: () => GhostGame | null) {
   panel.innerHTML = `
     <h3>DEV MODE <button class="x" data-dev="close" title="Close (\`)">✕</button></h3>
     <div class="status" data-dev-status></div>
+    <section>
+      <h4>Balance data</h4>
+      <div class="row"><button data-dev="report">Balance report</button><button data-dev="copyjson">Copy JSON</button></div>
+    </section>
     <section>
       <h4>Toggles</h4>
       <div class="row">
@@ -194,6 +243,9 @@ export function initDevMode(getGame: () => GhostGame | null) {
     if (!btn) return;
     const act = btn.dataset.dev!;
     if (act === "close") { setOpen(false); return; }
+    // Balance report doesn't need a run and doesn't count as cheating.
+    if (act === "report") { resetArmed = false; renderReport(); report.classList.add("open"); return; }
+    if (act === "copyjson") { void copyJson(); return; }
     const g = getGame();
     if (!g) { notify("Start a run first"); return; }
     g.devMode = true; // dev run — no records
@@ -243,6 +295,11 @@ export function initDevMode(getGame: () => GhostGame | null) {
         notify(unlocked ? "Dev mode unlocked — press ` to open" : "Dev mode locked");
         if (unlocked) setOpen(true);
       }
+    }
+    if (report.classList.contains("open") && e.code === "Escape") {
+      e.preventDefault(); e.stopPropagation();
+      report.classList.remove("open"); resetArmed = false;
+      return;
     }
     if (unlocked && e.code === "Backquote" && !e.repeat) {
       e.preventDefault();

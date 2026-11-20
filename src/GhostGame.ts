@@ -3,6 +3,7 @@ import { Fx, hueOf } from "./fx";
 import { Arena } from "./arena";
 import { ULT_STYLES, poseFrame, drawMotif, STRIKE } from "./ultimates";
 import type { UltMotif } from "./ultimates";
+import { defenseReduction, dexAttackSpeed, critFromPoints, moveSpeedFromMul } from "./content/curves";
 // Sections: classes, weapons, shop, consumables, saves, biomes, audio, VFX, gameplay.
 
 // ============================================================================
@@ -869,8 +870,8 @@ export const SHOP_POOL: PoolEntry[] = [
   { effect: "spd_rare",   kanji: "風", name: "Swift Sandals",    desc: "+8% movement speed.",                               priceMin: 42, priceMax: 60, rarity: "rare"     },
   { effect: "spd_leg",    kanji: "風", name: "Boots of the Gale",desc: "+15% movement speed.",                              priceMin: 90, priceMax: 120, rarity: "legendary" },
   // Defense (no common variant).
-  { effect: "def_rare",   kanji: "盾", name: "Lacquered Plate",  desc: "+1 defense (−1 damage from every hit).",          priceMin: 55, priceMax: 75, rarity: "rare"      },
-  { effect: "def_leg",    kanji: "盾", name: "Daimyo's Cuirass", desc: "+3 defense (−3 damage from every hit).",          priceMin: 100, priceMax: 140, rarity: "legendary" },
+  { effect: "def_rare",   kanji: "盾", name: "Lacquered Plate",  desc: "+2 defense — blocks a share of every hit.",        priceMin: 55, priceMax: 75, rarity: "rare"      },
+  { effect: "def_leg",    kanji: "盾", name: "Daimyo's Cuirass", desc: "+5 defense — blocks a share of every hit.",        priceMin: 100, priceMax: 140, rarity: "legendary" },
   // Max HP (cap removed).
   { effect: "hp_common",  kanji: "命", name: "Iron Resolve",     desc: "+10% max HP and heals fully.",                     priceMin: 32, priceMax: 48, rarity: "common"    },
   { effect: "hp_rare",    kanji: "命", name: "Steel Heart",      desc: "+15 max HP and heals 15.",                         priceMin: 48, priceMax: 65, rarity: "rare"      },
@@ -3330,7 +3331,8 @@ export interface GameStats {
     damage: number;        // base katana damage
     dexterity: number;
     defense: number;
-    moveSpeedPct: number;  // % of base speed (100 = baseline)
+    moveSpeedPct: number;  // % of base speed (100 = baseline), after the curve
+    defensePct: number;    // % of each hit blocked by Defense
     attackSpeedPct: number;// % of base atk speed (100 = baseline)
     critChancePct: number;
     hpRegen: number;
@@ -3390,6 +3392,12 @@ export type EnemyArchetype =
   | "lantern";
 
 export type BossKind = "oni" | "kitsune" | "gasha" | "raijin";
+
+/** Balance-tracking events (see src/telemetry.ts). */
+export type GameEvent =
+  | { t: "offer"; kind: "perk" | "shop"; ids: string[] }
+  | { t: "pick"; kind: "perk" | "shop"; id: string }
+  | { t: "death"; by: string; wave: number };
 
 /** Per-run counters the menu folds into lifetime career stats. */
 export interface RunCounters {
@@ -3771,19 +3779,18 @@ const MIN_DAMAGE_PER_HIT = 1;
 const MAX_KATANA_DAMAGE = 200;
 
 // ===== Balance caps =====
-// Every stat a shop item or perk can stack has a ceiling here, so no amount
-// of coins (or an old save) can make a run unkillable. Items for a maxed
-// stat stop appearing in the shop.
+// Defense, dexterity, crit and move speed use smooth diminishing-return
+// curves (src/content/curves.ts) — the values below are only backstops
+// against broken saves. The rest are real ceilings: items for a maxed stat
+// stop appearing in the shop.
 export const STAT_CAPS = {
-  dexSoft: 30,            // dexterity above this counts 40%
-  dexMaxRaw: 150,
+  dexMaxRaw: 300,         // backstop
   attackSpeedMax: 2.5,    // 250% attack speed, all sources combined
-  speedBonus: 0.35,       // +35% move speed (already enforced in movement)
-  defenseMax: 25,         // flat damage reduction per hit...
-  defenseHitShare: 0.5,   // ...but never more than half of any hit
+  speedMulMax: 4,         // backstop (real speed comes from the curve)
+  defenseMax: 200,        // backstop
+  critPointsMax: 3,       // backstop
   classDamageMul: 3.5,
   secondaryDmgMul: 4,
-  critChance: 0.6,
   hpRegen: 3,
   monMul: 2.2,
   ultChargeMul: 2,
@@ -3859,7 +3866,7 @@ export const PERK_POOL: Omit<PerkChoice, never>[] = [
   { id: "lightning_dmg_l", kanji: "雷", name: "Stormborn",          desc: "+8 lightning damage and +0.25s stun",                         rarity: "legendary" },
   // ===== Build-direction perks =====
   { id: "keen_eye",      kanji: "眼", name: "Keen Eye",       desc: "+6% critical hit chance",                                   rarity: "common" },
-  { id: "thick_hide",    kanji: "皮", name: "Thick Hide",     desc: "+1 defense (−1 damage from every hit)",                     rarity: "common" },
+  { id: "thick_hide",    kanji: "皮", name: "Thick Hide",     desc: "+2 defense (blocks a share of every hit)",                   rarity: "common" },
   { id: "quick_draw",    kanji: "抜", name: "Quick Draw",     desc: "Dash recharges 15% faster",                                 rarity: "common" },
   { id: "scavenger",     kanji: "拾", name: "Scavenger",      desc: "+20% coins from kills",                                     rarity: "common" },
   { id: "glass_cannon",  kanji: "硝", name: "Glass Cannon",   desc: "+35% damage, but −20% max HP",                              rarity: "rare" },
@@ -4295,6 +4302,7 @@ export class GhostGame {
         dexterity: 0,
         defense: 0,
         moveSpeedPct: 100,
+        defensePct: 0,
         attackSpeedPct: 100,
         critChancePct: 0,
         hpRegen: 0,
@@ -4805,18 +4813,6 @@ export class GhostGame {
     if (this.player.hp > this.player.maxHp) this.player.hp = this.player.maxHp;
   }
 
-  // Reduce incoming damage using the player's mitigation multiplier,
-  // clamped so % reduction can never exceed 15%, then subtract the
-  // player's flat Defense stat. Always returns a value of at least
-  // MIN_DAMAGE_PER_HIT so attacks still bite.
-  private mitigateIncoming(damage: number): number {
-    const mul = Math.max(MIN_DAMAGE_TAKEN_MUL, this.perks.damageTakenMul);
-    const afterPct = damage * mul;
-    const def = Math.min(Math.max(0, this.perks.defense), afterPct * STAT_CAPS.defenseHitShare);
-    const afterDef = afterPct - def;
-    return Math.max(MIN_DAMAGE_PER_HIT, Math.round(afterDef));
-  }
-
   // ===== Stats helpers =====
   // Effective fireCooldown for a weapon, factoring in Dexterity scaled by
   // the weapon's per-weapon dexScale. 1 point Dex = ~1.5% atk-speed at
@@ -4824,10 +4820,8 @@ export class GhostGame {
   // attackCooldownMul, then by an additional Dex floor of 0.4.
   private dexCooldownMul(dexScale: number): number {
     const raw = Math.max(0, this.perks.dexterity + (this.stats.buffHasteRemaining > 0 ? 15 : 0));
-    // Soft cap: points past dexSoft are worth 40%.
-    const dex = raw <= STAT_CAPS.dexSoft ? raw : STAT_CAPS.dexSoft + (raw - STAT_CAPS.dexSoft) * 0.4;
-    const reduce = dex * 0.015 * Math.max(0, dexScale);
-    return Math.max(1 / STAT_CAPS.attackSpeedMax, 1 - reduce);
+    // Diminishing curve: attack speed approaches +150% but never reaches it.
+    return Math.max(1 / STAT_CAPS.attackSpeedMax, 1 / dexAttackSpeed(raw * Math.max(0, dexScale)));
   }
 
   /** Katana swing cooldown multiplier — every attack-speed source, capped. */
@@ -4841,10 +4835,10 @@ export class GhostGame {
     const fin = (v: number, d: number) => (Number.isFinite(v) ? v : d);
     P.damage = Math.min(MAX_KATANA_DAMAGE, fin(P.damage, 3));
     P.dexterity = Math.min(C.dexMaxRaw, fin(P.dexterity, 0));
-    P.defense = Math.min(C.defenseMax, fin(P.defense, 0));
+    P.defense = Math.min(C.defenseMax, Math.max(0, fin(P.defense, 0)));
     P.classDamageMul = Math.min(C.classDamageMul, fin(P.classDamageMul, 1));
     P.secondaryDmgMul = Math.min(C.secondaryDmgMul, fin(P.secondaryDmgMul, 1));
-    P.critChance = Math.min(C.critChance, fin(P.critChance, 0));
+    P.critChance = Math.min(C.critPointsMax, fin(P.critChance, 0));
     P.hpRegen = Math.min(C.hpRegen, fin(P.hpRegen, 0));
     P.monMul = Math.min(C.monMul, fin(P.monMul, 1));
     P.ultChargeMul = Math.min(C.ultChargeMul, fin(P.ultChargeMul, 1));
@@ -4857,7 +4851,7 @@ export class GhostGame {
     P.healOnKill = Math.min(C.healOnKill, fin(P.healOnKill, 0));
     P.eliteBounty = Math.min(C.eliteBounty, fin(P.eliteBounty, 0));
     P.attackCooldownMul = Math.max(MIN_ATTACK_COOLDOWN_MUL, fin(P.attackCooldownMul, 1));
-    P.speedMul = Math.min(1 + C.speedBonus, fin(P.speedMul, 1));
+    P.speedMul = Math.min(C.speedMulMax, fin(P.speedMul, 1));
     P.maxHpBonus = Math.min(C.maxHpBonus, fin(P.maxHpBonus, 0));
     if (this.player) {
       this.player.maxHp = Math.min(this.player.maxHp, 100 + C.maxHpBonus);
@@ -4865,16 +4859,35 @@ export class GhostGame {
     }
   }
 
+  /** "Now → after" preview for shop items on curved stats (null for others). */
+  shopPreview(effect: string): string | null {
+    const P = this.perks;
+    const pc = (v: number) => `${Math.round(v * 100)}%`;
+    const def: Record<string, number> = { def_rare: 2, def_leg: 5 };
+    const dex: Record<string, number> = { dex_common: 3, dex_rare: 6, dex_leg: 12 };
+    const spd: Record<string, number> = { spd_common: 1.05, spd_rare: 1.08, spd_leg: 1.15, perk_ghost_steps: 1.10, perk_drifting_leaves: 1.05 };
+    const crit: Record<string, number> = { crit: 0.08, perk_cursed_eye: 0.05 };
+    if (effect in def) return `Blocked ${pc(defenseReduction(P.defense))} → ${pc(defenseReduction(P.defense + def[effect]))}`;
+    if (effect in dex) {
+      const now = 1 / Math.max(1 / STAT_CAPS.attackSpeedMax, P.attackCooldownMul / dexAttackSpeed(P.dexterity * 0.8));
+      const next = 1 / Math.max(1 / STAT_CAPS.attackSpeedMax, P.attackCooldownMul / dexAttackSpeed((P.dexterity + dex[effect]) * 0.8));
+      return `Attack speed ${pc(now)} → ${pc(next)}`;
+    }
+    if (effect in spd) return `Move speed ${pc(moveSpeedFromMul(P.speedMul))} → ${pc(moveSpeedFromMul(P.speedMul * spd[effect]))}`;
+    if (effect in crit) return `Crit ${pc(critFromPoints(P.critChance))} → ${pc(critFromPoints(P.critChance + crit[effect]))}`;
+    return null;
+  }
+
   /** Shop effects that would do nothing because their stat is already maxed. */
   maxedShopEffects(): Set<string> {
     const P = this.perks, C = STAT_CAPS, out = new Set<string>();
     const add = (cond: boolean, ...ids: string[]) => { if (cond) ids.forEach(i => out.add(i)); };
-    add(P.speedMul >= 1 + C.speedBonus - 1e-6, "spd_common", "spd_rare", "spd_leg", "perk_ghost_steps");
+    add(P.speedMul >= C.speedMulMax - 1e-6, "spd_common", "spd_rare", "spd_leg", "perk_ghost_steps");
     add(P.defense >= C.defenseMax, "def_rare", "def_leg");
     add(P.dexterity >= C.dexMaxRaw || this.katanaCdMul() <= 1 / C.attackSpeedMax + 1e-6, "dex_common", "dex_rare", "dex_leg", "perk_raging_current");
     add(P.classDamageMul >= C.classDamageMul - 1e-6, "perk_crimson_blade", "perk_war_paint", "shop_gamble");
     add(P.secondaryDmgMul >= C.secondaryDmgMul - 1e-6, "secondary_dmg_global", "perk_twin_fang");
-    add(P.critChance >= C.critChance - 1e-6, "crit");
+    add(P.critChance >= C.critPointsMax - 1e-6, "crit");
     add(P.hpRegen >= C.hpRegen - 1e-6, "hp_regen");
     add(P.monMul >= C.monMul - 1e-6, "shop_lucky_coin");
     add(P.ultChargeMul >= C.ultChargeMul - 1e-6, "shop_spirit_bell");
@@ -4927,7 +4940,9 @@ export class GhostGame {
     const hpRatio = Math.max(0.75, this.player.maxHp / 100);
     const hpScale = Math.min(1.6, 0.75 + (hpRatio - 0.75) * 0.55);
     const defMul = Math.max(MIN_DAMAGE_TAKEN_MUL, this.perks.damageTakenMul);
-    return Math.max(1, Math.round(raw * hpScale * defMul));
+    // Defense: a % of every hit, on a diminishing curve (max 80%).
+    const armor = 1 - defenseReduction(Math.max(0, this.perks.defense));
+    return Math.max(1, Math.round(raw * hpScale * defMul * armor));
   }
 
   spawnPetals(n: number) {
@@ -5397,9 +5412,10 @@ export class GhostGame {
       damage: this.perks.damage,
       dexterity: this.perks.dexterity,
       defense: this.perks.defense,
-      moveSpeedPct: Math.round(Math.min(this.perks.speedMul, 1 + STAT_CAPS.speedBonus) * 100),
+      moveSpeedPct: Math.round(moveSpeedFromMul(this.perks.speedMul) * 100),
+      defensePct: Math.round(defenseReduction(this.perks.defense) * 100),
       attackSpeedPct: Math.round((1 / Math.max(0.001, cdMulKatana)) * 100),
-      critChancePct: Math.round(this.perks.critChance * 100),
+      critChancePct: Math.round(critFromPoints(this.perks.critChance) * 100),
       hpRegen: this.perks.hpRegen,
       secondaryDmgMul: this.perks.secondaryDmgMul,
     };
@@ -5493,6 +5509,7 @@ export class GhostGame {
     delete this.stats.abilityCd[replaceId];
     delete this.stats.abilityMax[replaceId];
     this.equipAbilityInternal(newId, slot);
+    this.emitEvent({ t: "pick", kind: "perk", id: newId });
     this.stats.pendingAbilityId = null;
     this.acquiredPerks.push(`ability:${newId}`);
     this.afterPerkSelected();
@@ -5523,6 +5540,9 @@ export class GhostGame {
   // ============================================================
   devMode = false;
   run: RunCounters = newRunCounters();
+  onEvent?: (ev: GameEvent) => void;
+  lastHitBy = "unknown";
+  private emitEvent(ev: GameEvent) { try { this.onEvent?.(ev); } catch { /* tracking must never break the game */ } }
   private multiKillTimes: number[] = [];
   private sweeping = false;
   private ultKillCount = 0;
@@ -5722,6 +5742,7 @@ export class GhostGame {
       if (this.stats.equippedAbilities.includes(id)) return; // already have it
       if (this.stats.equippedAbilities.length < 2) {
         this.equipAbilityInternal(id);
+        this.emitEvent({ t: "pick", kind: "perk", id });
         this.acquiredPerks.push(`ability:${id}`);
         this.afterPerkSelected();
       } else {
@@ -5736,6 +5757,7 @@ export class GhostGame {
     // Passive perk
     this.applyPerk(id);
     this.enforceStatCaps();
+    this.emitEvent({ t: "pick", kind: "perk", id });
     this.acquiredPerks.push(id);
     this.afterPerkSelected();
   }
@@ -5807,8 +5829,8 @@ export class GhostGame {
         break;
       }
       case "wave_clear": this.perks.healBetweenWaves += 25; break;
-      case "keen_eye": this.perks.critChance = Math.min(0.9, this.perks.critChance + 0.06); break;
-      case "thick_hide": this.perks.defense += 1; break;
+      case "keen_eye": this.perks.critChance += 0.06; break;
+      case "thick_hide": this.perks.defense += 2; break;
       case "quick_draw": this.perks.dashCdMul *= 0.85; break;
       case "scavenger": this.perks.monMul += 0.2; break;
       case "glass_cannon": this.applyGlassCannon(1.35, 0.2); break;
@@ -5827,7 +5849,7 @@ export class GhostGame {
       case "tempest": this.perks.doubleStrike = true; break;
       case "shadow_lord": this.perks.stealthHeal += 6; break;
       case "momentum": this.perks.momentumCdr += 1; break;
-      case "crit_strike": this.perks.critChance = Math.min(0.9, this.perks.critChance + 0.20); break;
+      case "crit_strike": this.perks.critChance += 0.20; break;
       case "barrage_master": {
         this.perks.barrageCdMul *= 0.7;
         if (this.stats.equippedAbilities.includes("barrage")) {
@@ -5878,6 +5900,12 @@ export class GhostGame {
   }
 
   rollPerkChoices(): PerkChoice[] {
+    const out = this.rollPerkChoicesInner();
+    this.emitEvent({ t: "offer", kind: "perk", ids: out.map(c => c.id) });
+    return out;
+  }
+
+  private rollPerkChoicesInner(): PerkChoice[] {
     // Filter out passive perks that buff abilities the player hasn't equipped.
     const equipped = this.stats.equippedAbilities;
     const maxed = this.maxedShopEffects();
@@ -6128,6 +6156,7 @@ export class GhostGame {
         audio.play("levelUp");
       } else {
         this.stats.state = "defeat";
+        this.emitEvent({ t: "death", by: this.lastHitBy, wave: this.stats.wave });
         this.stats.message = "You have fallen.";
         audio.play("defeat");
         audio.stopMusic();
@@ -6208,10 +6237,8 @@ export class GhostGame {
     // Hard cap on player speed bonuses from all sources (perks + class + items).
     // Penalties (speedMul < 1, e.g. Tetsubo / Sumo) still apply normally; only
     // the *bonus* above 1.0 is clamped so the player can never out-run elites.
-    const MAX_SPEED_BONUS = STAT_CAPS.speedBonus;
-    const cappedSpeedMul = this.perks.speedMul > 1
-      ? Math.min(this.perks.speedMul, 1 + MAX_SPEED_BONUS)
-      : this.perks.speedMul;
+    // Diminishing curve on speed bonuses; penalties apply in full.
+    const cappedSpeedMul = moveSpeedFromMul(this.perks.speedMul);
     // Wind Charm consumable: +30% movement speed while active.
     const buffSpeedMul = (this.stats.buffWindCharmRemaining > 0 ? 1.30 : 1) * (this.ultWindTimer > 0 ? 1.6 : 1);
     if (dashing) {
@@ -6717,7 +6744,7 @@ export class GhostGame {
     }
     // Crit
     let isCrit = false;
-    const critChance = this.perks.critChance + (this.stats.buffLuckRemaining > 0 ? 0.4 : 0);
+    const critChance = critFromPoints(this.perks.critChance + (this.stats.buffLuckRemaining > 0 ? 0.4 : 0));
     if (this.ultFinaleTimer > 0 || (critChance > 0 && Math.random() < critChance)) {
       dmg *= 3;
       isCrit = true;
@@ -6845,7 +6872,7 @@ export class GhostGame {
   // Apply enemy damage to the player, respecting i-frames + parry.
   // Mirrors the inline melee block in updateEnemies but reusable for
   // assassin dashes and final-boss patterns.
-  applyEnemyHit(e: Enemy | null, baseDamage: number) {
+  applyEnemyHit(e: Enemy | null, baseDamage: number, source?: string) {
     if (this.player.invuln > 0) return;
     if (this.ultMountainTimer > 0 || this.ultBloodRageTimer > 0 || this.ultShadowStepTimer > 0) return;
     // ===== Phase 2 — Block check =====
@@ -6900,6 +6927,7 @@ export class GhostGame {
     baseDamage = Math.max(1, Math.round(this.scaleEnemyDamage(baseDamage) * bannerMul * lastStandMul));
     this.player.hp -= baseDamage;
     this.run.damageTaken += baseDamage;
+    this.lastHitBy = source ?? (e ? (e.archetype === "final" ? "final boss" : e.isBoss ? `${e.bossKind ?? "oni"} boss` : e.archetype) : "unknown");
     if (this.stats.classId === "sohei" && e && e.state !== "dead") {
       const thorns = Math.max(1, Math.round(baseDamage * 0.6));
       e.hp -= thorns;
@@ -7001,7 +7029,7 @@ export class GhostGame {
           continue;
         }
         // Route through the shared path so block and class shields apply.
-        this.applyEnemyHit(null, ep.damage);
+        this.applyEnemyHit(null, ep.damage, ep.kind === "arrow" ? "archer" : "boss projectile");
         ep.life = 0;
       }
     }
@@ -7014,7 +7042,7 @@ export class GhostGame {
       h.t += dt;
       if (h.t < h.max) continue;
       if (Math.hypot(this.player.pos.x - h.x, this.player.pos.y - h.y) <= h.r + BASE.PLAYER_RADIUS * 0.5) {
-        this.applyEnemyHit(null, h.damage);
+        this.applyEnemyHit(null, h.damage, h.kind === "bomb" ? "bomber" : "boss hazard");
       }
       if (h.kind === "bomb") {
         this.fx.shockwave(h.x, h.y, h.r * 1.2, { hue: 22, life: 0.4, width: 12, lines: 10 });
@@ -11208,6 +11236,7 @@ export class GhostGame {
             this.applyEnemyHit(owner, sw.damage);
           } else if (this.player.invuln <= 0) {
             this.player.hp -= sw.damage;
+            this.lastHitBy = "boss shockwave";
             this.spawnFloatText(this.player.pos, `-${fmtNum(sw.damage)}`, {
               color: "hsl(358 90% 65%)",
               size: 15,
@@ -12219,6 +12248,7 @@ export class GhostGame {
       this.flash("Early — partial hit");
     } else {
       this.player.hp -= 15;
+      this.lastHitBy = "own ultimate (mistimed)";
       this.player.hitFlash = 1;
       this.cameraShake = 0.6;
       this.screenFlashColor = "hsla(358, 80%, 50%, 0.5)";
@@ -13685,6 +13715,7 @@ export class GhostGame {
     const equipped = this.stats.secondaryIds.filter((s): s is SecondaryId => !!s);
     const infl = shopInflation(this.stats.wave);
     this.stats.shopOffer = this.dedupeOffer(rollShopOffer(6, equipped, this.maxedShopEffects())).map(it => ({ ...it, price: Math.round(it.price * infl) }));
+    this.emitEvent({ t: "offer", kind: "shop", ids: this.stats.shopOffer.map(it => it.effect) });
     this.stats.shopRerollCost = Math.round(SHOP_REROLL_COST * infl);
     this.stats.shopPurchasedIds = [];
     this.stats.state = "shop";
@@ -13706,6 +13737,7 @@ export class GhostGame {
     const equipped = this.stats.secondaryIds.filter((s): s is SecondaryId => !!s);
     const infl = shopInflation(this.stats.wave);
     this.stats.shopOffer = this.dedupeOffer(rollShopOffer(6, equipped, this.maxedShopEffects())).map(it => ({ ...it, price: Math.round(it.price * infl) }));
+    this.emitEvent({ t: "offer", kind: "shop", ids: this.stats.shopOffer.map(it => it.effect) });
     // Slight escalation so reroll spam isn't free.
     this.stats.shopRerollCost = Math.round(this.stats.shopRerollCost * 1.5);
     this.stats.shopPurchasedIds = [];
@@ -13747,6 +13779,7 @@ export class GhostGame {
     this.stats.mon -= item.price;
     this.stats.shopPurchasedIds.push(itemId);
     this.run.purchases++;
+    this.emitEvent({ t: "pick", kind: "shop", id: item.effect });
     try {
       this.applyShopEffect(item);
     } catch (err) {
@@ -13841,10 +13874,10 @@ export class GhostGame {
         this.perks.speedMul *= 1.15;
         break;
       case "def_rare":
-        this.perks.defense += 1;
+        this.perks.defense += 2;
         break;
       case "def_leg":
-        this.perks.defense += 3;
+        this.perks.defense += 5;
         break;
       case "crit":
         this.perks.critChance = this.perks.critChance + 0.08;
@@ -13926,7 +13959,7 @@ export class GhostGame {
         this.flash("War Paint");
         break;
       case "perk_cursed_eye":
-        this.perks.critChance = Math.min(0.9, this.perks.critChance + 0.05);
+        this.perks.critChance += 0.05;
         this.perks.classDamageMul += 0.05;
         this.flash("Cursed Eye");
         break;

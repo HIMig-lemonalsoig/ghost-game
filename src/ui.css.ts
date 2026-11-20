@@ -306,6 +306,7 @@ kbd {
 .card .cd { font-size: 13px; color: var(--muted); line-height: 1.45; margin-top: 10px; }
 .card .key { position: absolute; top: 10px; left: 10px; }
 .card .tag { position: absolute; top: 10px; right: 10px; font-size: 9px; font-weight: 800; letter-spacing: 1px; padding: 2px 5px; border-radius: 4px; background: var(--xp); color: var(--ink); }
+.card .preview { margin-top: 8px; font-size: 12px; font-weight: 700; color: var(--xp); background: rgba(0,0,0,.3); border-radius: 6px; padding: 4px 6px; }
 .card .price { margin-top: 12px; font-size: 16px; font-weight: 700; color: var(--gold); }
 .card.bought { opacity: .45; }
 .card.bought .price { color: var(--muted); }

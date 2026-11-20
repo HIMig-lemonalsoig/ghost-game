@@ -6,6 +6,7 @@ import { hueOf } from "./fx";
 import type { ClassId, GameStats, SecondaryId, Difficulty } from "./GhostGame";
 import { UI_CSS } from "./ui.css";
 import { initDevMode } from "./devmode";
+import { trackGame, trackStartWeapons } from "./telemetry";
 import { trackRun, commitRun, careerHTML, resetCareer, CAREER_CSS, getCareer, liveCareer, isFreshRun } from "./career";
 import { ACHIEVEMENTS, checkAchievements, achievementsHTML, achToastHTML, unlockedCount, ACH_CSS } from "./achievements";
 import type { AchCtx } from "./achievements";
@@ -453,6 +454,8 @@ function startGame(classId: ClassId, weapons: SecondaryId[]) {
   g.start(classId, pick[0]);
   g.equipWeapons([pick[0], pick[1]]);
   trackRun(g, true);
+  trackGame(g);
+  trackStartWeapons(pick);
   stats = { ...g.stats };
   beginLoop();
 }
@@ -463,6 +466,7 @@ function continueRun() {
   const g = bootGame();
   g.resumeFromSave(saved);
   trackRun(g, false);
+  trackGame(g);
   stats = { ...g.stats };
   beginLoop();
 }
@@ -840,6 +844,7 @@ function renderShop(s: GameStats) {
     return `<button class="card glow tilt ${rarityClass(it.rarity)}${bought ? " bought" : ""}" data-buy="${it.id}" ${bought || broke ? "disabled" : ""}>
       <kbd class="key">${i + 1}</kbd><div class="kanji">${it.kanji}</div><div class="cn">${it.name}</div>
       <div class="rar">${it.rarity}</div><div class="cd">${it.desc}</div>
+      ${(() => { const pv = game?.shopPreview(it.effect); return pv ? `<div class="preview num">${pv}</div>` : ""; })()}
       <div class="price num">${bought ? "Purchased" : `文 ${it.price}`}</div></button>`;
   }).join("");
   showOverlay(`<div class="panel">
@@ -874,9 +879,9 @@ function renderPause(s: GameStats) {
       </div>
       <div style="display:grid;gap:14px">
         <div class="pane"><h4>Stats</h4><div class="stats num">
-          <div>Damage <b>${d.damage.toFixed(1)}</b></div><div>Dexterity <b>${d.dexterity}${d.dexterity > STAT_CAPS.dexSoft ? ` <i class="soft">soft cap</i>` : ""}</b></div>
-          <div>Defense <b>${d.defense}${mx(d.defense >= STAT_CAPS.defenseMax)}</b></div><div>Move speed <b>${d.moveSpeedPct}%${mx(d.moveSpeedPct >= Math.round((1 + STAT_CAPS.speedBonus) * 100))}</b></div>
-          <div>Attack speed <b>${d.attackSpeedPct}%${mx(d.attackSpeedPct >= STAT_CAPS.attackSpeedMax * 100)}</b></div><div>Crit chance <b>${d.critChancePct}%${mx(d.critChancePct >= STAT_CAPS.critChance * 100)}</b></div>
+          <div>Damage <b>${d.damage.toFixed(1)}</b></div><div>Dexterity <b>${d.dexterity}</b></div>
+          <div>Defense <b>${d.defense} <i class="soft">${d.defensePct}% blocked</i></b></div><div>Move speed <b>${d.moveSpeedPct}%</b></div>
+          <div>Attack speed <b>${d.attackSpeedPct}%${mx(d.attackSpeedPct >= STAT_CAPS.attackSpeedMax * 100)}</b></div><div>Crit chance <b>${d.critChancePct}%</b></div>
           <div>HP regen <b>${d.hpRegen.toFixed(1)}/s${mx(d.hpRegen >= STAT_CAPS.hpRegen)}</b></div><div>Weapon dmg <b>×${d.secondaryDmgMul.toFixed(2)}${mx(d.secondaryDmgMul >= STAT_CAPS.secondaryDmgMul)}</b></div>
         </div></div>
         <div class="pane"><h4>Blessings</h4><div class="perk-list">${perks}</div></div>
