@@ -221,6 +221,13 @@ kbd {
 }
 .cell.held .cell-name { color: var(--gold); }
 .cell.stowed { opacity: .45; transform: scale(.92); }
+/* Class signature passive */
+.sig-box { display: flex; gap: 12px; align-items: flex-start; margin: 12px 0 4px; padding: 12px 14px; border-radius: 12px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 18%, transparent), rgba(0,0,0,.25));
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); }
+.sig-box .kanji { font-size: 28px; color: var(--accent); line-height: 1; }
+.sig-box b { font-size: 13px; letter-spacing: .5px; color: var(--bone); }
+.sig-box p { font-size: 13px; color: var(--muted); line-height: 1.45; margin-top: 3px; }
 /* Weapon evolutions */
 .slot.evo-ready { animation: evoReady 1.2s ease-in-out infinite; }
 @keyframes evoReady { 50% { box-shadow: 0 0 0 2px hsl(45 95% 65%), 0 0 22px hsl(45 95% 60%); } }

@@ -9,6 +9,7 @@ import type { AffixId } from "./content/elites";
 import { EVOLUTIONS, EVO_MASTERY, EVO_DAMAGE_MUL } from "./content/evolutions";
 import { DUOS, DUO_BY_ID } from "./content/duos";
 import { NEW_ENEMY_TIPS, ONRYO, NUE, MIRROR, newEnemyChance } from "./content/enemies";
+import { SIG } from "./content/signatures";
 // Sections: classes, weapons, shop, consumables, saves, biomes, audio, VFX, gameplay.
 
 // ============================================================================
@@ -3558,6 +3559,7 @@ interface Enemy {
   summonCharge?: number;    // Nue: >0 while charging a summon
   summoned?: boolean;       // Nue: has summoned at least once
   summonerId?: number;      // wisps summoned by a Nue
+  lastSrc?: string;         // weapon that last hit it (Arashi Tailwind)
   special?: number;   // per-archetype timer (heal pulse, bomb throw)
   fuse?: number;      // lantern self-destruct countdown
 }
@@ -3698,6 +3700,7 @@ interface SecondaryProjectile {
   // Blowgun: stacking poison applied on hit.
   poisonSeconds?: number;
   src?: SecondaryId;   // weapon that fired it (evolutions + hitstun)
+  pierceLeft?: number; // extra enemies it may pass through (Arashi)
   // Jutte/Twin Sai-style on-hit status chances (used when melee path forwards
   // a "virtual" secondary hit through dealDamage; kept here for extensibility).
 }
@@ -4626,6 +4629,8 @@ export class GhostGame {
     this.seenAffixes = new Set();
     this.evoWaves = []; this.evoZones = []; this.evoOrbits = [];
     this.inkPools = []; this.playerRoot = 0;
+    this.stillTimer = 0; this.vanishTimer = 0; this.prayerShield = 0; this.tailwindStacks = 0; this.tailwindTimer = 0;
+    this.feathers = []; this.braceCd = new Map(); this.forceCrit = false;
     this.evoShield = 0; this.katanaSwings = 0; this.saiHits = 0;
     this.cinematicTimer = 0;
     this.fx.clear();
@@ -5174,6 +5179,74 @@ export class GhostGame {
     this.spiritChests = this.spiritChests.filter(c => c.life > 0);
   }
 
+  // ===================== SIGNATURE helpers (Phase 5) =====================
+  private isClass(id: ClassId) { return this.stats.classId === id; }
+
+  /** Heal the player; Yamabushi turns the overflow into a shield. */
+  healPlayer(amount: number) {
+    if (amount <= 0) return;
+    const room = this.player.maxHp - this.player.hp;
+    this.player.hp = Math.min(this.player.maxHp, this.player.hp + amount);
+    const over = amount - Math.max(0, room);
+    if (over > 0 && this.isClass("yamabushi")) this.prayerShield = Math.min(SIG.yamaShieldMax, this.prayerShield + over);
+  }
+
+  private shopSlots() { return this.isClass("ronin") ? SIG.roninShopSlots : 6; }
+
+  /** Per-frame signature logic. */
+  private updateSignatures(dt: number, moving: boolean, dashing: boolean) {
+    const p = this.player;
+    this.stillTimer = moving || dashing ? 0 : this.stillTimer + dt;
+    if (this.vanishTimer > 0) this.vanishTimer = Math.max(0, this.vanishTimer - dt);
+    if (this.tailwindTimer > 0) { this.tailwindTimer -= dt; if (this.tailwindTimer <= 0) this.tailwindStacks = 0; }
+    if (this.isClass("ashigaru") && this.stillTimer >= SIG.ashigaruBraceTime) {
+      for (const [id, t] of this.braceCd) this.braceCd.set(id, t - dt);
+      for (const e of this.enemies) {
+        if (e.state === "dead" || (this.braceCd.get(e.id) ?? 0) > 0) continue;
+        const d = Math.hypot(e.pos.x - p.pos.x, e.pos.y - p.pos.y);
+        if (d > BASE.PLAYER_RADIUS + e.size + 10) continue;
+        this.braceCd.set(e.id, SIG.ashigaruCd);
+        const a = Math.atan2(e.pos.y - p.pos.y, e.pos.x - p.pos.x);
+        this.dealDamage(e, this.perks.damage * SIG.ashigaruDmg, a, e.isBoss ? 30 : 280);
+        e.attackTelegraph = 0;
+        this.spawnSpark(e.pos);
+      }
+    }
+    for (const f of this.feathers) {
+      f.t -= dt;
+      if (f.t > 0) continue;
+      for (const e of this.enemies) {
+        if (e.state === "dead") continue;
+        if (Math.hypot(e.pos.x - f.x, e.pos.y - f.y) > SIG.tenguBurstRadius + e.size) continue;
+        this.dealDamage(e, this.perks.damage * SIG.tenguDmg, Math.atan2(e.pos.y - f.y, e.pos.x - f.x), 120);
+      }
+      this.fx.burst(f.x, f.y, { count: 10, hue: 200, light: 85, speed: 240, life: 0.35 });
+      this.fx.shockwave(f.x, f.y, SIG.tenguBurstRadius, { hue: 200, light: 80, life: 0.3, width: 4 });
+    }
+    this.feathers = this.feathers.filter(f => f.t > 0);
+  }
+
+  private drawSignatures() {
+    const ctx = this.ctx, p = this.player.pos, t = this.elapsed;
+    ctx.save();
+    const focusReady = this.isClass("kensei") && this.stillTimer >= SIG.kenseiFocusTime;
+    const braced = this.isClass("ashigaru") && this.stillTimer >= SIG.ashigaruBraceTime;
+    if (focusReady || braced) {
+      ctx.strokeStyle = focusReady ? `hsla(45, 95%, 70%, ${0.55 + Math.sin(t * 8) * 0.25})` : `hsla(20, 85%, 60%, ${0.6 + Math.sin(t * 6) * 0.2})`;
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash(braced ? [4, 5] : []);
+      ctx.beginPath(); ctx.arc(p.x, p.y, BASE.PLAYER_RADIUS + (braced ? 14 : 9), 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    for (const f of this.feathers) {
+      ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(t * 4 + f.x);
+      ctx.fillStyle = `hsla(200, 70%, 90%, ${0.6 + (1 - f.t / SIG.tenguFeatherDelay) * 0.4})`;
+      ctx.beginPath(); ctx.ellipse(0, 0, 9, 3, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
   // ===================== PHASE4 helpers =====================
   /** Keep roughly `ideal` px from the player, strafing a little. */
   private kiteFrom(e: Enemy, dist: number, angToPlayer: number, ideal: number, speedMul: number, dt: number) {
@@ -5479,8 +5552,8 @@ export class GhostGame {
       for (let i = 0; i < 4; i++) { ctx.rotate(Math.PI / 2); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(11, -3); ctx.lineTo(3, 3); ctx.closePath(); ctx.fill(); }
       ctx.restore();
     }
-    if (this.evoShield > 0) {
-      ctx.strokeStyle = `hsla(45, 90%, 70%, ${0.3 + this.evoShield / 40})`;
+    if (this.evoShield + this.prayerShield > 0) {
+      ctx.strokeStyle = `hsla(45, 90%, 70%, ${0.3 + (this.evoShield + this.prayerShield) / 60})`;
       ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(this.player.pos.x, this.player.pos.y, BASE.PLAYER_RADIUS + 10, 0, Math.PI * 2); ctx.stroke();
     }
@@ -6047,6 +6120,15 @@ export class GhostGame {
   // PHASE4 state
   inkPools: { x: number; y: number; t: number; life: number }[] = [];
   playerRoot = 0;
+  // SIGNATURE state (Phase 5)
+  stillTimer = 0;            // seconds standing still (Kensei Focus, Ashigaru Spear Wall)
+  vanishTimer = 0;           // Shinobi Vanish
+  prayerShield = 0;          // Yamabushi Mountain Prayer
+  tailwindStacks = 0; tailwindTimer = 0;   // Arashi
+  feathers: { x: number; y: number; t: number }[] = [];   // Tengu
+  private braceCd = new Map<number, number>();
+  private forceCrit = false;
+  private roninFreeReroll = false;
   private evoNested = false;
   private katanaSwings = 0;
   private saiHits = 0;
@@ -6454,7 +6536,8 @@ export class GhostGame {
   }
 
   rollPerkChoices(): PerkChoice[] {
-    const out = this.rollPerkChoicesInner();
+    let out = this.rollPerkChoicesInner();
+    if (this.isClass("ronin")) out = out.slice(0, SIG.roninCards);   // SIGNATURE Masterless
     // DUO: 1 in 4 level-ups swaps the last card for an available duo perk.
     const duos = this.availableDuos();
     if (duos.length && out.length && Math.random() < 0.25) {
@@ -6693,7 +6776,7 @@ export class GhostGame {
       if (this.hpRegenAccumulator >= 1) {
         const heal = Math.floor(this.hpRegenAccumulator);
         this.hpRegenAccumulator -= heal;
-        this.player.hp = Math.min(this.player.maxHp, this.player.hp + heal);
+        this.healPlayer(heal);
       }
     }
 
@@ -6800,7 +6883,10 @@ export class GhostGame {
     }
     // While mid-swing the player keeps most of their momentum (87%) instead
     // of grinding to a near-stop — feels much better when chaining attacks.
-    const slow = ((!dashing && p.attackAnim > 0) ? 0.87 : 1) * (dashing ? 1 : this.frostSlowMul() * this.inkSlowMul() * (this.playerRoot > 0 ? 0 : 1));
+    if (this.isClass("tetsubo")) this.playerRoot = 0;   // SIGNATURE Unstoppable
+    const ctrlSlow = this.isClass("tetsubo") ? 1 : this.frostSlowMul() * this.inkSlowMul() * (this.playerRoot > 0 ? 0 : 1);
+    const slow = ((!dashing && p.attackAnim > 0) ? 0.87 : 1) * (dashing ? 1 : ctrlSlow) * (1 + this.tailwindStacks * SIG.arashiStack);
+    this.updateSignatures(dt, mag > 0.05, dashing);
     // Hard cap on player speed bonuses from all sources (perks + class + items).
     // Penalties (speedMul < 1, e.g. Tetsubo / Sumo) still apply normally; only
     // the *bonus* above 1.0 is clamped so the player can never out-run elites.
@@ -6831,6 +6917,7 @@ export class GhostGame {
         if (d < r + e.size) {
           // Dash contact damage scales with the player's flat damage perk.
           const dmg = BASE.DASH_DAMAGE * (this.perks.damage / BASE.ATTACK_DAMAGE) * this.perks.dashDmgMul;
+          if (this.isClass("tengu")) this.feathers.push({ x: e.pos.x, y: e.pos.y, t: SIG.tenguFeatherDelay });   // SIGNATURE Feather Dash
           // DUO Phantom Rush: weak non-elites die outright.
           if (this.hasDuo("duo_phantom") && !e.isBoss && !e.affixes && e.hp / e.maxHp < 0.4) {
             p.dashHitIds.add(e.id);
@@ -6857,7 +6944,9 @@ export class GhostGame {
     p.parryWindow = 0; // parry mechanic removed; field kept for legacy refs
     p.invuln = Math.max(0, p.invuln - dt);
     p.dashCooldown = Math.max(0, p.dashCooldown - dt);
+    const wasDashing = p.dashTimer > 0;
     p.dashTimer = Math.max(0, p.dashTimer - dt);
+    if (wasDashing && p.dashTimer === 0 && this.isClass("shinobi")) this.vanishTimer = SIG.shinobiVanish;   // SIGNATURE Vanish
     if (p.dashTimer <= 0 && p.dashHitIds.size > 0) p.dashHitIds.clear();
     p.hitFlash = Math.max(0, p.hitFlash - dt * 4);
     this.fireAnim = Math.max(0, this.fireAnim - dt * 5);
@@ -6941,7 +7030,7 @@ export class GhostGame {
     p.attackCooldown = BASE.ATTACK_COOLDOWN * this.katanaCdMul();
 
     const range = BASE.ATTACK_RANGE * this.perks.attackRangeMul;
-    const arc = BASE.ATTACK_ARC * this.perks.attackArcMul;
+    let arc = BASE.ATTACK_ARC * this.perks.attackArcMul;
     const stealthRange = BASE.STEALTH_KILL_RANGE * this.perks.stealthRangeMul;
 
     // Stealth kill — eligible if the enemy hasn't seen us (patrol + low
@@ -6950,9 +7039,11 @@ export class GhostGame {
     const nearest = this.findNearestEnemyInFront(stealthRange, Math.PI * 0.6);
     const isUnaware = nearest && nearest.state === "patrol" && nearest.alertness < 0.5;
     const isSmoked  = nearest && nearest.disorientRemaining > 0;
-    if (nearest && (isUnaware || isSmoked) && !nearest.isBoss) {
+    const isLost = nearest && !!nearest.lostTrack;   // searching for a hidden player
+    if (nearest && (isUnaware || isSmoked || isLost) && !nearest.isBoss) {
       this.killEnemy(nearest, "ghost");
       this.run.stealthKills++;
+      if (this.isClass("shinobi")) this.player.dashCooldown = 0;   // SIGNATURE Vanish: refund dash
       this.cameraShake = 0.4;
       this.hitstop = 0.08;
       audio.play("stealth");
@@ -6970,8 +7061,12 @@ export class GhostGame {
     }
 
     this.onKatanaSwing();
+    this.vanishTimer = 0;   // attacking breaks Shinobi's Vanish
+    const focused = this.isClass("kensei") && this.stillTimer >= SIG.kenseiFocusTime;   // SIGNATURE Focus
+    if (focused) { arc *= SIG.kenseiArcMul; this.forceCrit = true; this.stillTimer = 0; }
     const strikes = this.perks.doubleStrike ? 2 : 1;
     let hit = false;
+    const struck = new Set<number>();
     for (let s = 0; s < strikes; s++) {
       for (const e of this.enemies) {
         if (e.state === "dead") continue;
@@ -6986,8 +7081,15 @@ export class GhostGame {
         if (Math.abs(diff) <= arc / 2) {
           this.dealDamage(e, this.perks.damage, ang, e.isBoss ? 20 : 80, "katana");
           hit = true;
+          struck.add(e.id);
         }
       }
+    }
+    this.forceCrit = false;
+    if (focused) this.spawnFloatText(p.pos, "心 Focus", { color: "hsl(45 95% 70%)", size: 13, jp: true });
+    if (this.isClass("onna") && struck.size >= SIG.onnaHits) {   // SIGNATURE Sweeping Stance
+      p.dashCooldown = 0;
+      this.spawnFloatText(p.pos, "薙 Dash ready", { color: "hsl(200 80% 75%)", size: 12, jp: true });
     }
     if (hit) {
       this.cameraShake = Math.max(this.cameraShake, 0.15);
@@ -7067,6 +7169,11 @@ export class GhostGame {
     if (e.state === "dead") return;
     e.state = "dead";
     if (!this.sweeping) this.trackKill(e);
+    if (!this.sweeping && this.isClass("arashi") && e.lastSrc && e.lastSrc !== "katana" && e.lastSrc !== "other" &&
+        !isMeleeSecondary(e.lastSrc as SecondaryId)) {   // SIGNATURE Tailwind
+      this.tailwindStacks = Math.min(SIG.arashiMaxStacks, this.tailwindStacks + 1);
+      this.tailwindTimer = SIG.arashiTime;
+    }
     if (e.archetype === "nue" && !this.sweeping) {
       if (!e.summoned) this.run.nueFirstStrike++;
       // Its summons dissipate with it (they don't count as your kills).
@@ -7199,7 +7306,7 @@ export class GhostGame {
     if (killHeal > 0) {
       let heal = Math.min(MAX_HEAL_PER_KILL, killHeal);
       if (this.hasDuo("duo_undying") && this.player.hp / Math.max(1, this.player.maxHp) < 0.3) heal *= 3;  // DUO Undying Rage
-      this.player.hp = Math.min(this.player.maxHp, this.player.hp + heal);
+      this.healPlayer(heal);
     }
     // Momentum: kills reduce all equipped ability cooldowns
     if (this.perks.momentumCdr > 0) {
@@ -7373,7 +7480,7 @@ export class GhostGame {
     // Crit
     let isCrit = false;
     const critChance = critFromPoints(this.perks.critChance + (this.stats.buffLuckRemaining > 0 ? 0.4 : 0));
-    if (this.ultFinaleTimer > 0 || (critChance > 0 && Math.random() < critChance)) {
+    if (this.forceCrit || this.ultFinaleTimer > 0 || (critChance > 0 && Math.random() < critChance)) {
       dmg *= 3;
       isCrit = true;
       if (this.hasDuo("duo_venom") && e.poisonRemaining > 0) dmg *= 2;   // DUO Venom Strike
@@ -7416,6 +7523,20 @@ export class GhostGame {
     const kb = knockback * this.perks.knockbackMul;
     e.vel.x = Math.cos(ang) * kb;
     e.vel.y = Math.sin(ang) * kb;
+    e.lastSrc = weaponSource ?? "other";
+    if (this.isClass("tetsubo") && kb > 40 && !this.evoNested) {   // SIGNATURE Unstoppable clash
+      this.evoNested = true;
+      try {
+        for (const o of this.enemies) {
+          if (o === e || o.state === "dead") continue;
+          if (Math.hypot(o.pos.x - e.pos.x, o.pos.y - e.pos.y) > SIG.tetsuboClashRadius + o.size) continue;
+          o.stunTimer = Math.max(o.stunTimer, SIG.tetsuboStun);
+          e.stunTimer = Math.max(e.stunTimer, SIG.tetsuboStun);
+          this.dealDamage(o, this.perks.damage * SIG.tetsuboClashDmg, ang, 60);
+          this.spawnSpark({ x: (o.pos.x + e.pos.x) / 2, y: (o.pos.y + e.pos.y) / 2 });
+        }
+      } finally { this.evoNested = false; }
+    }
     // Shinobi poison-on-hit (passive) — duration stacks (capped at 8s).
     if (this.perks.poisonChance > 0 && Math.random() < this.perks.poisonChance) {
       e.poisonRemaining = Math.min(8, e.poisonRemaining + 4);
@@ -7563,10 +7684,12 @@ export class GhostGame {
     const lastStandMul = this.perks.lastStand && this.player.hp / Math.max(1, this.player.maxHp) < 0.3 ? 0.8 : 1;
     baseDamage = Math.max(1, Math.round(this.scaleEnemyDamage(baseDamage) * bannerMul * lastStandMul * this.commanderMul(e) * (1 - blockedShare)));
     if (blockedShare > 0) this.spawnFloatText(this.player.pos, "Guard broken!", { color: "hsl(45 80% 75%)", size: 12, vy: -70 });
-    // EVOLUTION Iron Warden shield soaks damage first.
-    if (this.evoShield > 0) {
-      const soak = Math.min(this.evoShield, baseDamage);
-      this.evoShield -= soak;
+    // Shields soak damage first: Yamabushi's Mountain Prayer, then Iron Warden.
+    if (this.evoShield + this.prayerShield > 0) {
+      const soak = Math.min(this.evoShield + this.prayerShield, baseDamage);
+      const fromPrayer = Math.min(this.prayerShield, soak);
+      this.prayerShield -= fromPrayer;
+      this.evoShield -= soak - fromPrayer;
       baseDamage -= soak;
       if (baseDamage <= 0) {
         this.player.invuln = Math.max(this.player.invuln, 0.3);
@@ -7664,6 +7787,7 @@ export class GhostGame {
       const dx = this.player.pos.x - ep.pos.x;
       const dy = this.player.pos.y - ep.pos.y;
       if (Math.hypot(dx, dy) < BASE.PLAYER_RADIUS + ep.size * 0.5) {
+          if (this.isClass("tengu") && this.player.dashTimer > 0) continue;   // SIGNATURE Feather Dash
           // PHASE4 Onryō talisman — dash through it; otherwise it roots you briefly.
           if (ep.kind === "talisman") {
             if (this.player.dashTimer > 0 || this.player.invuln > 0) continue;
@@ -9429,6 +9553,7 @@ export class GhostGame {
     this.drawEvo();
     for (const e of this.enemies) if (e.state !== "dead") this.drawEnemy(e, false);
     this.drawEliteTags();
+    this.drawSignatures();
     this.drawSearchMarkers();
     if (this.devShowHitboxes) this.drawDevHitboxes();
 
@@ -9745,6 +9870,7 @@ export class GhostGame {
     ctx.save();
     // Shinobi Shadow Step — go ghostly + shimmer trail.
     if (this.ultShadowStepTimer > 0) ctx.globalAlpha = 0.25;
+    else if (this.vanishTimer > 0) ctx.globalAlpha = 0.35;   // SIGNATURE Shinobi Vanish
     ctx.translate(p.pos.x, p.pos.y);
 
     ctx.fillStyle = "hsla(0, 0%, 0%, 0.5)";
@@ -10645,7 +10771,7 @@ export class GhostGame {
 
   /** True while the player is untargetable: Shadow Step, smoke pellet, or standing in smoke. */
   playerHidden(): boolean {
-    if (this.ultShadowStepTimer > 0 || this.stats.buffSmokeRemaining > 0) return true;
+    if (this.ultShadowStepTimer > 0 || this.stats.buffSmokeRemaining > 0 || this.vanishTimer > 0) return true;
     const p = this.player.pos;
     for (const s of this.smokeClouds) {
       if (Math.hypot(p.x - s.pos.x, p.y - s.pos.y) <= s.radius * 0.9) return true;
@@ -13347,6 +13473,7 @@ export class GhostGame {
 
   fireSecondary() {
     if (this.stats.secondaryCooldown > 0) return;
+    this.vanishTimer = 0;   // attacking breaks Shinobi's Vanish
     const slot = this.stats.secondaryActiveSlot;
     const id = this.stats.secondaryIds[slot];
     if (!id) return;
@@ -13482,6 +13609,7 @@ export class GhostGame {
         hookEnemyId: null,
         trail: [],
       };
+      if (this.isClass("arashi") && !proj.pierce) proj.pierceLeft = SIG.arashiPierce;   // SIGNATURE Tailwind
       if (kind === "shuriken") {
         proj.bouncesLeft = 4;
         proj.returning = false;
@@ -13794,6 +13922,7 @@ export class GhostGame {
         }
 
         if (!pr.pierce) {
+          if ((pr.pierceLeft ?? 0) > 0) { pr.pierceLeft = (pr.pierceLeft ?? 0) - 1; continue; }
           pr.life = 0;
           break;
         }
@@ -14653,9 +14782,11 @@ export class GhostGame {
     if (this.stats.state !== "playing") return;
     const equipped = this.stats.secondaryIds.filter((s): s is SecondaryId => !!s);
     const infl = shopInflation(this.stats.wave);
-    this.stats.shopOffer = this.dedupeOffer(rollShopOffer(6, equipped, this.maxedShopEffects())).map(it => ({ ...it, price: Math.round(it.price * infl) }));
+    this.stats.shopOffer = this.dedupeOffer(rollShopOffer(this.shopSlots(), equipped, this.maxedShopEffects())).map(it => ({ ...it, price: Math.round(it.price * infl) }));
     this.emitEvent({ t: "offer", kind: "shop", ids: this.stats.shopOffer.map(it => it.effect) });
     this.stats.shopRerollCost = Math.round(SHOP_REROLL_COST * infl);
+    this.roninFreeReroll = this.isClass("ronin");   // SIGNATURE Masterless: first reroll free
+    if (this.roninFreeReroll) this.stats.shopRerollCost = 0;
     this.stats.shopPurchasedIds = [];
     this.stats.state = "shop";
     audio.play("levelUp");
@@ -14675,10 +14806,11 @@ export class GhostGame {
     this.stats.mon -= this.stats.shopRerollCost;
     const equipped = this.stats.secondaryIds.filter((s): s is SecondaryId => !!s);
     const infl = shopInflation(this.stats.wave);
-    this.stats.shopOffer = this.dedupeOffer(rollShopOffer(6, equipped, this.maxedShopEffects())).map(it => ({ ...it, price: Math.round(it.price * infl) }));
+    this.stats.shopOffer = this.dedupeOffer(rollShopOffer(this.shopSlots(), equipped, this.maxedShopEffects())).map(it => ({ ...it, price: Math.round(it.price * infl) }));
     this.emitEvent({ t: "offer", kind: "shop", ids: this.stats.shopOffer.map(it => it.effect) });
     // Slight escalation so reroll spam isn't free.
-    this.stats.shopRerollCost = Math.round(this.stats.shopRerollCost * 1.5);
+    if (this.roninFreeReroll) { this.roninFreeReroll = false; this.stats.shopRerollCost = Math.round(SHOP_REROLL_COST * infl); }
+    else this.stats.shopRerollCost = Math.round(this.stats.shopRerollCost * 1.5);
     this.stats.shopPurchasedIds = [];
     audio.play("slash");
     this.emitStats();

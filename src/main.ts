@@ -8,6 +8,7 @@ import { UI_CSS } from "./ui.css";
 import { initDevMode } from "./devmode";
 import { EVOLUTIONS, EVO_MASTERY } from "./content/evolutions";
 import { DUO_BY_ID } from "./content/duos";
+import { SIGNATURES } from "./content/signatures";
 import { trackGame, trackStartWeapons } from "./telemetry";
 import { trackRun, commitRun, careerHTML, resetCareer, CAREER_CSS, getCareer, liveCareer, isFreshRun } from "./career";
 import { ACHIEVEMENTS, checkAchievements, achievementsHTML, achToastHTML, unlockedCount, ACH_CSS } from "./achievements";
@@ -319,8 +320,9 @@ function renderMenu() {
       <aside class="detail" style="--accent:${cls.accent}">
         <span class="bigmark" aria-hidden="true">${cls.kanji}</span>
         <div class="detail-head"><span class="kanji">${cls.kanji}</span><div><h2>${cls.name}</h2><div class="role">${cls.role}</div></div></div>
+        <div class="sig-box"><span class="kanji">${SIGNATURES[cls.id].kanji}</span><div><b>Signature · ${SIGNATURES[cls.id].name}</b><p>${SIGNATURES[cls.id].desc}</p></div></div>
         <h3>Passives</h3>
-        <ul>${cls.bonuses.filter(b => !/secondary|Starts with/i.test(b)).map(b => `<li>${b}</li>`).join("") || "<li>Balanced fighter</li>"}</ul>
+        <ul>${cls.bonuses.filter(b => !/secondary|Starts with/i.test(b) && !sameAsSignature(b, cls.id)).map(b => `<li>${b}</li>`).join("") || "<li>No stat bonuses. The signature is the whole kit</li>"}</ul>
         <h3>Ultimate · ${K("ult")}</h3>
         <div class="ult-box"><b><span class="kanji">${cls.ultKanji}</span> ${cls.ultName}</b><p>${cls.ultDesc}</p></div>
         <h3>Weapons · pick 2</h3>
@@ -352,6 +354,15 @@ function renderMenu() {
       <span><button class="btn ghost" style="min-height:30px;padding:0 10px" data-act="controls">Change keys</button></span>
     </div>
   </div>`;
+}
+
+/** True when a bonus line just repeats the class's signature passive (shared key words). */
+function sameAsSignature(bonus: string, id: ClassId): boolean {
+  const words = (t: string) => new Set(t.toLowerCase().match(/[a-z]{4,}/g) ?? []);
+  const sig = words(SIGNATURES[id].desc), b = words(bonus);
+  let shared = 0;
+  for (const w of b) if (sig.has(w)) shared++;
+  return shared >= 2;
 }
 
 function selectClass(id: ClassId) {

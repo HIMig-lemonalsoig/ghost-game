@@ -14,7 +14,7 @@ There are 7 phases, in the order they depend on each other. Each phase is roughl
 | 2 ✅ | Elite affixes | Lots of fight variety for little work; Phase 3 needs it | S–M |
 | 3 ✅ | Weapon evolutions + duo perks | Gives every run a goal to build toward (the biggest gap right now) | M |
 | 4 ✅ | New enemy roles: controller + summoner | Fills the two roles that are missing | M |
-| 5 | Class signature passives | Makes the 25 classes play differently instead of just having different numbers | M–L |
+| 5 ✅ | Class signature passives | Makes the 25 classes play differently instead of just having different numbers | M–L |
 | 6 | Vows (Hades-style "Heat") | A long-term goal for players who've beaten Death | M |
 | 7 | Data-driven balance pass | Tune using real pick rates and wave numbers instead of guesses | S |
 
@@ -144,7 +144,13 @@ Each new enemy shows its counterplay in the tutorial tip the first time it appea
 
 ---
 
-## Phase 5: Class signature passives
+## Phase 5: Class signature passives ✅ done
+
+Shipped: `src/content/signatures.ts` holds all 25 signatures (the 9 new ones are marked `added`) and their tuning. The class screen shows a highlighted Signature box, and Passives lines that just repeat it are hidden.
+
+Changes beyond the plan:
+- Enemies that are searching for a hidden player can now be stealth-killed. This applies to every class and makes Vanish and smoke work together.
+- Yamabushi's shield comes from regen and kill heals, through the new `healPlayer()`.
 
 Rule: **every class gets one passive that changes the rules**, not just a number. 16 classes already have one. These 9 only change stats:
 
