@@ -3631,6 +3631,8 @@ interface Input {
   joyActive: boolean; joyDx: number; joyDy: number;
   // Mouse aim (desktop)
   mouseAim: boolean; mouseX: number; mouseY: number;
+  // Touch: face the nearest enemy while attacking (phones have no cursor)
+  aimAssist?: boolean; attackHeld?: boolean;
 }
 
 // ============ Class-driven entity types ============
@@ -7102,6 +7104,11 @@ export class GhostGame {
       my /= Math.max(mag, 1);
       // Movement direction is default facing
       if (!this.input.mouseAim) p.facing = Math.atan2(my, mx);
+    }
+    // Touch aim assist: while attacking, turn to the nearest enemy in reach.
+    if (!this.input.mouseAim && this.input.aimAssist && this.input.attackHeld) {
+      const t = this.nearestEnemyTo(p.pos, 420);
+      if (t) p.facing = Math.atan2(t.pos.y - p.pos.y, t.pos.x - p.pos.x);
     }
 
     // Mouse aim takes priority on desktop. Mouse coords are in screen space —
@@ -13045,6 +13052,23 @@ export class GhostGame {
       this.executeUltimate();
     }
     this.emitStats();
+  }
+
+  /** Closest living enemy within range (touch aim assist). */
+  nearestEnemyTo(pos: Vec2, range: number): Enemy | null {
+    let best: Enemy | null = null, bd = range;
+    for (const e of this.enemies) {
+      if (e.state === "dead") continue;
+      const d = Math.hypot(e.pos.x - pos.x, e.pos.y - pos.y);
+      if (d < bd) { bd = d; best = e; }
+    }
+    return best;
+  }
+
+  /** Touch: point at the nearest enemy right now (before an ability / ult / shot). */
+  aimAtNearest(range = 520) {
+    const t = this.nearestEnemyTo(this.player.pos, range);
+    if (t) this.player.facing = Math.atan2(t.pos.y - this.player.pos.y, t.pos.x - this.player.pos.x);
   }
 
   /** Ultimate damage grows with the wave (+35%/wave, a bit under enemy HP's

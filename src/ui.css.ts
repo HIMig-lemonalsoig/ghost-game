@@ -114,6 +114,19 @@ kbd {
   .menu-body { grid-template-columns: 1fr; }
   .detail { position: static; }
 }
+/* Phones (landscape and portrait): compact menu so picking a class is quick. */
+@media (max-width: 760px), (max-height: 500px) {
+  .menu-wrap { padding: calc(12px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 28px calc(12px + env(safe-area-inset-left)); }
+  .logo .kanji { font-size: 32px; }
+  .logo h1 { font-size: 22px; letter-spacing: 3px; }
+  .logo p { font-size: 12px; }
+  .menu-actions { gap: 6px; }
+  .menu-actions .btn { min-height: 38px; padding: 0 12px; font-size: 13px; }
+  .class-grid { grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 6px; }
+  .class-card { padding: 8px 10px; }
+  .class-card .kanji { font-size: 22px; }
+  .controls-strip { display: none; }
+}
 
 /* ---------- HUD ---------- */
 #hud { position: fixed; inset: 0; z-index: 10; pointer-events: none; display: none; }

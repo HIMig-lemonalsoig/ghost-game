@@ -621,7 +621,7 @@ export function playIntro(): Promise<void> {
     title.innerHTML = `<h1>GHOST GAME</h1><p>Survive the waves. Forge your legend.</p>`;
     const skip = document.createElement("div");
     skip.className = "intro-skip";
-    skip.textContent = "Click or press any key to skip";
+    skip.textContent = window.matchMedia?.("(pointer: coarse)").matches ? "Tap to skip" : "Click or press any key to skip";
     root.append(canvas, title, skip);
     document.body.append(root);
 

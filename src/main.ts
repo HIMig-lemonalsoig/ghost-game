@@ -7,6 +7,7 @@ import type { ClassId, GameStats, SecondaryId, Difficulty } from "./GhostGame";
 import { UI_CSS } from "./ui.css";
 import { initDevMode } from "./devmode";
 import { playIntro } from "./intro";
+import { initTouch } from "./touch";
 import { EVOLUTIONS, EVO_MASTERY } from "./content/evolutions";
 import { DUO_BY_ID } from "./content/duos";
 import { SIGNATURES } from "./content/signatures";
@@ -78,6 +79,7 @@ let capturing: Action | null = null;
 let controlsOpen = false;
 let careerOpen = false;
 let guideOpen = false;
+let logoTaps = 0, logoTapAt = 0;
 let guideTab: GuideTab = "basics";
 // ─── Vows ─────────────────────────────────────────────────────────────────────
 const VOWS_KEY = "ghostgame.vows.v1";
@@ -354,6 +356,9 @@ let runStartedAt = 0;
 let overlayKey = "";
 let recordSet = false;
 let attackHeld = false;
+// Touch controls (turn on with the first touch). Attacks from touch also tell
+// the engine so its aim assist can face the nearest enemy.
+const touch = initTouch(() => game, held => { attackHeld = held; game?.setInput({ attackHeld: held }); });
 let blockHeld = false;
 let lastHp = Infinity;
 
@@ -520,7 +525,12 @@ function selectClass(id: ClassId) {
 menu.addEventListener("click", e => {
   const t = e.target as HTMLElement;
   const card = t.closest<HTMLElement>("[data-class]");
-  if (card) { selectClass(card.dataset.class as ClassId); return; }
+  if (card) {
+    selectClass(card.dataset.class as ClassId);
+    // Phones: the details + Begin button sit below the grid — bring them into view.
+    if (window.matchMedia("(max-width: 900px)").matches) $<HTMLElement>(".detail", menu)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
   const diffBtn = t.closest<HTMLElement>("[data-diff]");
   if (diffBtn) {
     settings.difficulty = diffBtn.dataset.diff as Difficulty;
@@ -539,6 +549,12 @@ menu.addEventListener("click", e => {
     }
     renderMenu();
     return;
+  }
+  if (t.closest(".logo .kanji")) {
+    const now = performance.now();
+    logoTaps = now - logoTapAt < 600 ? logoTaps + 1 : 1;
+    logoTapAt = now;
+    if (logoTaps >= 7) { logoTaps = 0; for (const ch of "ghostdev") window.dispatchEvent(new KeyboardEvent("keydown", { key: ch })); }
   }
   const act = t.closest<HTMLElement>("[data-act]")?.dataset.act;
   if (act === "start") startGame(currentClass, currentWeapons);
@@ -576,6 +592,7 @@ function stopGame() {
   if (animId !== null) cancelAnimationFrame(animId);
   animId = null;
   if (game) { commitRun(game); audio.stopMusic(); }
+  touch.update(null);
   game = null;
   stats = null;
   attackHeld = blockHeld = false;
@@ -589,6 +606,7 @@ function bootGame(): GhostGame {
   game = g;
   resize();
   g.onStatsChange = s => { stats = s; };
+  if (touch.active) g.setInput({ mouseAim: false, aimAssist: true });
   applySettings();
   return g;
 }
@@ -934,6 +952,7 @@ function updateHud(s: GameStats) {
   }
   runAchievementCheck();
   runTipCheck();
+  touch.update(s);
   // Career — fold progress in at each wave end and when the run ends.
   if (game && s.state !== careerSeenState) {
     if (s.state === "shop") commitRun(game);
@@ -945,7 +964,17 @@ function updateHud(s: GameStats) {
 let careerSeenState = "";
 
 hud.addEventListener("click", e => {
-  if ((e.target as HTMLElement).closest("[data-act=pause]")) pauseGame();
+  const t = e.target as HTMLElement;
+  if (t.closest("[data-act=pause]")) { pauseGame(); return; }
+  // Touch mode: weapon and item slots in the bottom bar are tappable.
+  if (!touch.active || !game || game.stats.state !== "playing") return;
+  const cell = t.closest<HTMLElement>(".hud-bottom .cell");
+  const group = cell?.parentElement?.dataset.h;
+  if (!cell || !group) return;
+  const cells = Array.from(cell.parentElement!.querySelectorAll(":scope > .cell:not(.tab-hint)"));
+  const i = cells.indexOf(cell);
+  if (group === "items" && i >= 0) game.useConsumable(i);
+  else if (group === "weapons" && (cell.classList.contains("tab-hint") || i !== game.stats.secondaryActiveSlot)) game.triggerSwap();
 });
 
 // ─── Overlays (level up / swap / shop / pause / end) ──────────────────────────
