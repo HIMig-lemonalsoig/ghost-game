@@ -3846,6 +3846,8 @@ const MIN_ATTACK_COOLDOWN_MUL = 1 / 3.0;
 // kill. Stealth-kill heal (Shadow Lord) is also clamped to this cap
 // at its own site since it's still a per-kill heal.
 const MAX_HEAL_PER_KILL = 6;
+// Seconds the block pool waits before regenerating after it soaks a hit.
+const BLOCK_REGEN_DELAY = 2;
 
 // All available perks. Some can stack.
 export const PERK_POOL: Omit<PerkChoice, never>[] = [
@@ -5916,6 +5918,7 @@ export class GhostGame {
   evoZones: { x: number; y: number; r: number; life: number; max: number; dmg: number; tick: number; kind: "fire" | "poison" }[] = [];
   evoOrbits: { ang: number; life: number; dmg: number; hitCd: Map<number, number> }[] = [];
   evoShield = 0;
+  blockRegenDelay = 0;
   private evoNested = false;
   private katanaSwings = 0;
   private saiHits = 0;
@@ -7365,12 +7368,19 @@ export class GhostGame {
     if (this.player.invuln > 0) return;
     if (this.ultMountainTimer > 0 || this.ultBloodRageTimer > 0 || this.ultShadowStepTimer > 0) return;
     // ===== Phase 2 — Block check =====
-    // If the player has any block HP remaining, fully absorb the hit and
-    // drain block HP by the (mitigated) incoming damage. Triggers a flash
-    // and sound but no actual HP loss / hit reaction.
+    // Block soaks damage up to what's left in the pool; any overflow goes
+    // through to HP. (It used to absorb the WHOLE hit if even 0.01 block
+    // remained, and regen during the i-frames refilled that sliver — so
+    // block classes like Sohei were effectively invincible.)
     const incoming = Math.max(1, Math.round(this.scaleEnemyDamage(baseDamage)));
-    if (this.stats.blockHpMax > 0 && this.stats.blockHp > 0) {
-      this.stats.blockHp = Math.max(0, this.stats.blockHp - incoming);
+    let blockedShare = 0;
+    if (this.stats.blockHpMax > 0 && this.stats.blockHp >= 1) {
+      const soak = Math.min(this.stats.blockHp, incoming);
+      this.stats.blockHp = Math.max(0, this.stats.blockHp - soak);
+      this.blockRegenDelay = BLOCK_REGEN_DELAY;
+      blockedShare = soak / incoming;
+    }
+    if (blockedShare >= 1) {
       this.player.invuln = Math.max(this.player.invuln, 0.25);
       this.player.hitFlash = 0.4;
       this.cameraShake = Math.max(this.cameraShake, 0.18);
@@ -7413,7 +7423,8 @@ export class GhostGame {
     // (banner is temporary so it lives outside the cap).
     const bannerMul = this.ultBannerActive ? 0.7 : 1;
     const lastStandMul = this.perks.lastStand && this.player.hp / Math.max(1, this.player.maxHp) < 0.3 ? 0.8 : 1;
-    baseDamage = Math.max(1, Math.round(this.scaleEnemyDamage(baseDamage) * bannerMul * lastStandMul * this.commanderMul(e)));
+    baseDamage = Math.max(1, Math.round(this.scaleEnemyDamage(baseDamage) * bannerMul * lastStandMul * this.commanderMul(e) * (1 - blockedShare)));
+    if (blockedShare > 0) this.spawnFloatText(this.player.pos, "Guard broken!", { color: "hsl(45 80% 75%)", size: 12, vy: -70 });
     // EVOLUTION Iron Warden shield soaks damage first.
     if (this.evoShield > 0) {
       const soak = Math.min(this.evoShield, baseDamage);
@@ -12910,7 +12921,9 @@ export class GhostGame {
       // Iron Powder consumable: triple block regen while active.
       const ipMul = this.stats.buffIronPowderRemaining > 0 ? 3 : 1;
       const effectiveRegen = baseRegen * ipMul;
-      if (effectiveRegen > 0 && this.stats.blockHp < this.stats.blockHpMax) {
+      // No regen for a moment after taking a hit on the guard.
+      this.blockRegenDelay = Math.max(0, this.blockRegenDelay - dt);
+      if (effectiveRegen > 0 && this.blockRegenDelay <= 0 && !this.input.blockHeld && this.stats.blockHp < this.stats.blockHpMax) {
         this.stats.blockHp = Math.min(
           this.stats.blockHpMax,
           this.stats.blockHp + effectiveRegen * dt,
