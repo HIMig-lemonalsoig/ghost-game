@@ -14,6 +14,7 @@ export interface Career {
   runs: number; deaths: number;
   kills: number; stealthKills: number; bossKills: number;
   bossByKind: Record<string, number>; killsByKind: Record<string, number>;
+  eliteKills: number; eliteByAffix: Record<string, number>; chests: number;
   wavesCleared: number; highestWave: number; highestWaveClass: string; highestWaveDiff: string;
   highestLevel: number; monEarned: number;
   damageDealt: number; damageTaken: number; biggestHit: number;
@@ -26,7 +27,7 @@ export interface Career {
 }
 
 const fresh = (): Career => ({
-  runs: 0, deaths: 0, kills: 0, stealthKills: 0, bossKills: 0, bossByKind: {}, killsByKind: {},
+  runs: 0, deaths: 0, kills: 0, stealthKills: 0, bossKills: 0, bossByKind: {}, killsByKind: {}, eliteKills: 0, eliteByAffix: {}, chests: 0,
   wavesCleared: 0, highestWave: 0, highestWaveClass: "", highestWaveDiff: "", highestLevel: 0, monEarned: 0,
   damageDealt: 0, damageTaken: 0, biggestHit: 0, ults: 0, items: 0, dashes: 0, time: 0,
   waveSum: 0, runsEnded: 0, byClass: {}, byDifficulty: {}, bestWaveByDiff: {}, firstPlayed: 0,
@@ -58,8 +59,10 @@ export function liveCareer(g: GhostGame | null): Career {
   out.highestWave = Math.max(out.highestWave, g.stats.wave);
   out.highestLevel = Math.max(out.highestLevel, g.stats.level);
   for (const k of ["kills", "stealthKills", "bossKills", "wavesCleared", "damageDealt", "damageTaken",
-    "monEarned", "ults", "items", "dashes", "time"] as const) out[k] += Math.max(0, g.run[k] - t.committed[k]);
+    "monEarned", "ults", "items", "dashes", "time", "eliteKills", "chests"] as const) out[k] += Math.max(0, g.run[k] - t.committed[k]);
   for (const k of Object.keys(g.run.bossByKind)) out.bossByKind[k] = (out.bossByKind[k] ?? 0) + Math.max(0, g.run.bossByKind[k] - (t.committed.bossByKind[k] ?? 0));
+  out.eliteByAffix = { ...career.eliteByAffix };
+  for (const k of Object.keys(g.run.eliteByAffix)) out.eliteByAffix[k] = (out.eliteByAffix[k] ?? 0) + Math.max(0, g.run.eliteByAffix[k] - (t.committed.eliteByAffix[k] ?? 0));
   out.biggestHit = Math.max(out.biggestHit, g.run.biggestHit);
   return out;
 }
@@ -94,7 +97,7 @@ export function commitRun(g: GhostGame | null, died = false) {
   t.counted = true;
 
   const nums = ["kills", "stealthKills", "bossKills", "wavesCleared", "damageDealt", "damageTaken",
-    "monEarned", "ults", "items", "dashes", "time"] as const;
+    "monEarned", "ults", "items", "dashes", "time", "eliteKills", "chests"] as const;
   for (const k of nums) {
     const d = Math.max(0, r[k] - c[k]);
     career[k] += d;
@@ -111,6 +114,7 @@ export function commitRun(g: GhostGame | null, died = false) {
   };
   foldMap(r.killsByKind, c.killsByKind, career.killsByKind);
   foldMap(r.bossByKind, c.bossByKind, career.bossByKind);
+  foldMap(r.eliteByAffix, c.eliteByAffix, career.eliteByAffix ??= {});
   career.biggestHit = Math.max(career.biggestHit, r.biggestHit);
   career.highestLevel = Math.max(career.highestLevel, s.level);
   if (s.wave > career.highestWave) {
@@ -188,6 +192,7 @@ export function careerHTML(confirmReset: boolean): string {
       <div class="pane"><h4>Combat</h4><div class="stats">
         ${row("Stealth kills", n(c.stealthKills))}
         ${row("Bosses slain", n(c.bossKills))}
+        ${row("Elites slain", n(c.eliteKills ?? 0))}
         ${row("Damage dealt", n(c.damageDealt))}
         ${row("Damage taken", n(c.damageTaken))}
         ${row("Biggest hit", n(c.biggestHit))}

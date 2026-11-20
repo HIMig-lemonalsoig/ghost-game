@@ -4,6 +4,7 @@
 // Lifetime goals read career totals; run goals read the live run. Runs that
 // touched dev mode never unlock anything.
 import { CLASSES } from "./GhostGame";
+import { AFFIX_IDS } from "./content/elites";
 import type { GameStats, RunCounters, Difficulty } from "./GhostGame";
 import type { Career } from "./career";
 
@@ -53,6 +54,7 @@ export const ACHIEVEMENTS: Ach[] = [
   { id: "silent", tier: "common", kanji: "忍", name: "Silent Blade", desc: "Get a stealth kill on an enemy that hasn't seen you (or is lost in smoke).", ...total("stealthKills", 1) },
   { id: "centurion", tier: "common", kanji: "百", name: "Centurion", desc: "Kill 100 enemies in total.", ...total("kills", 100) },
   { id: "wave5", tier: "common", kanji: "五", name: "Getting Started", desc: "Reach wave 5.", ...reachWave(5) },
+  { id: "elite_first", tier: "common", kanji: "精", name: "Elite Slayer", desc: "Kill an elite enemy (glowing outline and a name tag).", ...total("eliteKills", 1) },
   { id: "quick_feet", tier: "common", kanji: "走", name: "Quick Feet", desc: "Dash 100 times in total.", ...total("dashes", 100) },
 
   // ── Uncommon ──
@@ -66,6 +68,8 @@ export const ACHIEVEMENTS: Ach[] = [
   { id: "wanderer", tier: "uncommon", kanji: "旅", name: "Wanderer", desc: "Play 3 different classes.", check: x => classesPlayed(x) >= 3, progress: x => [Math.min(3, classesPlayed(x)), 3] },
   { id: "stocked", tier: "uncommon", kanji: "薬", name: "Well Stocked", desc: "Use 25 items in total.", ...total("items", 25) },
 
+  { id: "double_trouble", tier: "uncommon", kanji: "双", name: "Double Trouble", desc: "Kill an elite with two affixes (from wave 18).", ...runMax("doubleEliteKills", 1) },
+
   // ── Rare ──
   { id: "wave20", tier: "rare", kanji: "廿", name: "Veteran", desc: "Reach wave 20.", ...reachWave(20) },
   { id: "yokai_hunter", tier: "rare", kanji: "四", name: "Yokai Hunter", desc: "Slay all four bosses: Oni, Kitsune, Gashadokuro and Raijin.",
@@ -78,6 +82,10 @@ export const ACHIEVEMENTS: Ach[] = [
   { id: "hoarder", tier: "rare", kanji: "富", name: "Hoarder", desc: "Hold 1,500 coins at once.", ...runMax("maxMon", 1500) },
   { id: "executioner", tier: "rare", kanji: "斬", name: "Executioner", desc: "Kill 5,000 enemies in total.", ...total("kills", 5000) },
   { id: "level20", tier: "rare", kanji: "昂", name: "Ascendant", desc: "Reach level 20 in a single run.", check: x => Math.max(x.c.highestLevel, x.s?.level ?? 0) >= 20 },
+  { id: "elite_hunter", tier: "rare", kanji: "狩", name: "Elite Hunter", desc: "Kill an elite with each of the 8 affixes.",
+    check: x => AFFIX_IDS.every(a => (x.c.eliteByAffix?.[a] ?? 0) > 0),
+    progress: x => [AFFIX_IDS.filter(a => (x.c.eliteByAffix?.[a] ?? 0) > 0).length, AFFIX_IDS.length] },
+  { id: "treasure", tier: "rare", kanji: "宝", name: "Treasure Hunter", desc: "Open 25 Spirit Chests in total.", ...total("chests", 25) },
   { id: "clutch", tier: "rare", kanji: "危", name: "By a Thread", desc: "Clear a wave with 3 HP or less.", ...runMax("clutchWaves", 1) },
 
   // ── Epic ──

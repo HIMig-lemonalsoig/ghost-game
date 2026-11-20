@@ -4,6 +4,8 @@ import { Arena } from "./arena";
 import { ULT_STYLES, poseFrame, drawMotif, STRIKE } from "./ultimates";
 import type { UltMotif } from "./ultimates";
 import { defenseReduction, dexAttackSpeed, critFromPoints, moveSpeedFromMul } from "./content/curves";
+import { AFFIXES, ELITE, ENEMY_LABEL, rollAffixes } from "./content/elites";
+import type { AffixId } from "./content/elites";
 // Sections: classes, weapons, shop, consumables, saves, biomes, audio, VFX, gameplay.
 
 // ============================================================================
@@ -3425,12 +3427,17 @@ export interface RunCounters {
   bestUltKills: number;        // most kills during one ultimate
   maxMon: number;              // most coins held at once
   clutchWaves: number;         // waves cleared on 3 HP or less
+  eliteKills: number;
+  eliteByAffix: Record<string, number>;
+  doubleEliteKills: number;
+  chests: number;
 }
 export const newRunCounters = (): RunCounters => ({
   kills: 0, stealthKills: 0, bossKills: 0, bossByKind: {}, killsByKind: {}, wavesCleared: 0,
   damageDealt: 0, damageTaken: 0, biggestHit: 0, monEarned: 0, ults: 0, items: 0, dashes: 0, time: 0,
   purchases: 0, flawlessWaves: 0, flawlessStreak: 0, bestFlawlessStreak: 0, flawlessBossWaves: 0,
   bestMultiKill: 0, bestUltKills: 0, maxMon: 0, clutchWaves: 0,
+  eliteKills: 0, eliteByAffix: {}, doubleEliteKills: 0, chests: 0,
 });
 
 export const BOSS_INFO: Record<BossKind, { name: string; kanji: string }> = {
@@ -3448,6 +3455,7 @@ interface Hazard {
   damage: number;
   kind: "bomb" | "bolt" | "slam";
   fromX: number; fromY: number;
+  src?: string;       // death-cause label for balance tracking
 }
 
 interface Enemy {
@@ -3530,6 +3538,10 @@ interface Enemy {
   hitstunResist: number;
   bossKind?: BossKind;
   chill?: number;     // seconds spent inside Yuki-onna's blizzard
+  // ── Elite affixes (src/content/elites.ts) ──
+  affixes?: AffixId[];
+  wardHits?: number;
+  trailT?: number;
   special?: number;   // per-archetype timer (heal pulse, bomb throw)
   fuse?: number;      // lantern self-destruct countdown
 }
@@ -4579,6 +4591,9 @@ export class GhostGame {
     this.secProjectiles = [];
     this.enemyProjectiles = [];
     this.hazards = [];
+    this.firePatches = [];
+    this.spiritChests = [];
+    this.seenAffixes = new Set();
     this.cinematicTimer = 0;
     this.fx.clear();
     this.ultCutscene = null;
@@ -5049,6 +5064,125 @@ export class GhostGame {
   }
 
   spawnSingleEnemy(wave: number, kind: EnemyArchetype) {
+    const n = this.enemies.length;
+    this.spawnSingleEnemyInner(wave, kind);
+    for (let i = n; i < this.enemies.length; i++) {
+      const e = this.enemies[i];
+      if (e.isBoss) {
+        // Hard and Death bosses carry one affix.
+        if (this.difficulty === "hard" || this.difficulty === "death") this.makeElite(e, rollAffixes(1, true), true);
+      } else if (e.archetype !== "wisp" && Math.random() < ELITE.chanceAt(wave)) {
+        const count = wave >= ELITE.doubleFromWave && Math.random() < ELITE.doubleChance ? 2 : 1;
+        this.makeElite(e, rollAffixes(count));
+      }
+    }
+  }
+
+  /** Turn an enemy into an elite with the given affixes. */
+  makeElite(e: Enemy, affixes: AffixId[], boss = false) {
+    if (!affixes.length) return;
+    e.affixes = affixes;
+    if (!boss) {
+      e.hp = e.maxHp = e.maxHp * ELITE.hpMul;
+      e.size = Math.round(e.size * ELITE.sizeMul);
+      e.xpReward = Math.round(e.xpReward * ELITE.rewardMul);
+      e.monReward = Math.round(e.monReward * ELITE.rewardMul);
+    }
+    if (affixes.includes("hasted")) e.speed *= ELITE.hasteSpeed;
+    if (affixes.includes("warded")) e.wardHits = ELITE.wardHits;
+    // First time this run you meet an affix, say how to beat it.
+    for (const a of affixes) {
+      if (this.seenAffixes.has(a)) continue;
+      this.seenAffixes.add(a);
+      this.flash(`${AFFIXES[a].kanji} ${AFFIXES[a].name} elite: ${AFFIXES[a].hint}`);
+    }
+  }
+
+  /** "Burning Hasted Brute" */
+  eliteName(e: Enemy): string {
+    return `${(e.affixes ?? []).map(a => AFFIXES[a].name).join(" ")} ${ENEMY_LABEL[e.archetype] ?? e.archetype}`;
+  }
+
+  private hasAffix(e: Enemy, a: AffixId) { return !!e.affixes && e.affixes.includes(a); }
+
+  /** Fire trails, frost aura timing, chests — runs every frame while playing. */
+  private updateElites(dt: number) {
+    for (const e of this.enemies) {
+      if (e.state === "dead" || !e.affixes) continue;
+      if (this.hasAffix(e, "burning")) {
+        e.trailT = (e.trailT ?? 0) - dt;
+        if (e.trailT <= 0) {
+          e.trailT = ELITE.fireTrailEvery;
+          this.firePatches.push({ x: e.pos.x, y: e.pos.y, life: ELITE.fireLife, dmg: Math.max(1, Math.round(e.damage * ELITE.fireDmgShare)) });
+        }
+      }
+    }
+    // Fire patches hurt the player on a tick.
+    this.fireTickCd = Math.max(0, this.fireTickCd - dt);
+    for (const f of this.firePatches) {
+      f.life -= dt;
+      if (f.life > 0 && this.fireTickCd <= 0 &&
+          Math.hypot(this.player.pos.x - f.x, this.player.pos.y - f.y) < ELITE.fireRadius + BASE.PLAYER_RADIUS * 0.6) {
+        this.fireTickCd = ELITE.fireTick;
+        this.applyEnemyHit(null, f.dmg, "burning elite (fire trail)");
+      }
+    }
+    if (this.firePatches.length > 160) this.firePatches.splice(0, this.firePatches.length - 160);
+    this.firePatches = this.firePatches.filter(f => f.life > 0);
+    // Spirit chests: drift to the player when close, open on touch.
+    for (const c of this.spiritChests) {
+      c.life -= dt; c.t += dt;
+      const dx = this.player.pos.x - c.x, dy = this.player.pos.y - c.y, d = Math.hypot(dx, dy);
+      if (d < 120 && d > 1) { c.x += (dx / d) * 220 * dt; c.y += (dy / d) * 220 * dt; }
+      if (d < 34) { c.life = 0; this.openSpiritChest(c.x, c.y); }
+    }
+    this.spiritChests = this.spiritChests.filter(c => c.life > 0);
+  }
+
+  /** Player move multiplier from Frost elite auras. */
+  private frostSlowMul(): number {
+    for (const e of this.enemies) {
+      if (e.state !== "dead" && e.affixes && e.affixes.includes("frost") &&
+          Math.hypot(e.pos.x - this.player.pos.x, e.pos.y - this.player.pos.y) < ELITE.frostRadius) return ELITE.frostSlow;
+    }
+    return 1;
+  }
+
+  /** Damage multiplier for an attacker standing near a Commander. */
+  private commanderMul(e: Enemy | null): number {
+    if (!e) return 1;
+    for (const o of this.enemies) {
+      if (o.state !== "dead" && o.affixes && o.affixes.includes("commander") &&
+          Math.hypot(o.pos.x - e.pos.x, o.pos.y - e.pos.y) < ELITE.commanderRadius) return ELITE.commanderBuff;
+    }
+    return 1;
+  }
+
+  /** Spirit Chest reward. Phase 3 (weapon evolutions) hooks in here. */
+  openSpiritChest(x: number, y: number) {
+    this.run.chests++;
+    const D = DIFFICULTIES[this.difficulty];
+    const coins = Math.round((12 + this.stats.wave * 4) * D.coins);
+    this.stats.mon += coins;
+    this.run.monEarned += coins;
+    const parts = [`+${coins} 文`];
+    const slot = this.stats.consumables.findIndex(c => c === null);
+    if (slot !== -1) {
+      const id = rollConsumable();
+      this.stats.consumables[slot] = id;
+      parts.push(CONSUMABLES[id].name);
+    }
+    const heal = Math.round(this.player.maxHp * 0.15);
+    this.player.hp = Math.min(this.player.maxHp, this.player.hp + heal);
+    parts.push(`+${heal} HP`);
+    this.fx.shockwave(x, y, 80, { hue: 45, light: 70, life: 0.45, width: 6 });
+    this.fx.burst(x, y, { count: 14, hue: 45, light: 70, speed: 220, life: 0.6, grav: -60 });
+    audio.play("levelUp");
+    this.spawnFloatText({ x, y }, `Spirit Chest: ${parts.join(" · ")}`, { color: "hsl(45 95% 70%)", size: 14, vy: -55 });
+    this.emitStats();
+  }
+
+  private spawnSingleEnemyInner(wave: number, kind: EnemyArchetype) {
     const tier = Math.floor((wave - 1) / 5);
     // Phase 2 — slightly steeper HP/dmg curve to match the new stat upgrades.
     // Players now get flat +5 / +25 hits from rare/legendary perks, so basic
@@ -5540,6 +5674,11 @@ export class GhostGame {
   // ============================================================
   devMode = false;
   run: RunCounters = newRunCounters();
+  // Elite state
+  firePatches: { x: number; y: number; life: number; dmg: number }[] = [];
+  spiritChests: { x: number; y: number; life: number; t: number }[] = [];
+  private fireTickCd = 0;
+  private seenAffixes = new Set<string>();
   onEvent?: (ev: GameEvent) => void;
   lastHitBy = "unknown";
   private emitEvent(ev: GameEvent) { try { this.onEvent?.(ev); } catch { /* tracking must never break the game */ } }
@@ -5612,6 +5751,21 @@ export class GhostGame {
     this.spawnSingleEnemy(this.stats.wave, kind);
     this.stats.enemiesLeft = this.enemies.filter(e => e.state !== "dead").length;
     this.emitStats();
+  }
+
+  devSpawnElite(kind: EnemyArchetype, affix: AffixId | "random" | "double") {
+    if (this.stats.state !== "playing") return;
+    const n = this.enemies.length;
+    this.spawnSingleEnemyInner(Math.max(6, this.stats.wave), kind);
+    const e = this.enemies[n];
+    if (!e) return;
+    this.makeElite(e, affix === "random" ? rollAffixes(1) : affix === "double" ? rollAffixes(2) : [affix]);
+    this.stats.enemiesLeft = this.enemies.filter(o => o.state !== "dead").length;
+    this.emitStats();
+  }
+
+  devSpawnChest() {
+    this.spiritChests.push({ x: this.player.pos.x + 90, y: this.player.pos.y, life: ELITE.chestLife, t: 0 });
   }
 
   devSkipToWave(wave: number) {
@@ -6087,6 +6241,7 @@ export class GhostGame {
     this.updateEnemies(dt);
     this.updateEnemyProjectiles(dt);
     this.updateHazards(dt);
+    this.updateElites(dt);
     this.updateParticles(dt);
     this.updatePetals(dtRaw);
     this.updateAbilities(dt);
@@ -6233,7 +6388,7 @@ export class GhostGame {
     }
     // While mid-swing the player keeps most of their momentum (87%) instead
     // of grinding to a near-stop — feels much better when chaining attacks.
-    const slow = (!dashing && p.attackAnim > 0) ? 0.87 : 1;
+    const slow = ((!dashing && p.attackAnim > 0) ? 0.87 : 1) * (dashing ? 1 : this.frostSlowMul());
     // Hard cap on player speed bonuses from all sources (perks + class + items).
     // Penalties (speedMul < 1, e.g. Tetsubo / Sumo) still apply normally; only
     // the *bonus* above 1.0 is clamped so the player can never out-run elites.
@@ -6442,6 +6597,32 @@ export class GhostGame {
     return best;
   }
 
+  /** Splitting / Volatile death effects and the Spirit Chest drop. */
+  private onEliteDeath(e: Enemy) {
+    const aff = e.affixes!;
+    this.run.eliteKills++;
+    for (const a of aff) this.run.eliteByAffix[a] = (this.run.eliteByAffix[a] ?? 0) + 1;
+    if (aff.length >= 2) this.run.doubleEliteKills++;
+    if (aff.includes("splitting") && !e.isBoss) {
+      for (const side of [-1, 1]) {
+        const c = this.makeEnemy({
+          x: e.pos.x + side * 22, y: e.pos.y, isBoss: false, archetype: e.archetype,
+          hp: Math.max(1, e.maxHp * ELITE.splitHpShare), damage: e.damage, speed: e.speed,
+          size: Math.max(8, Math.round(e.size * ELITE.splitSize)),
+          xpReward: Math.max(1, Math.round(e.xpReward / 6)), monReward: Math.max(1, Math.round(e.monReward / 6)),
+        });
+        c.vel.x = side * 260;
+        this.enemies.push(c);
+      }
+      this.fx.burst(e.pos.x, e.pos.y, { count: 10, hue: AFFIXES.splitting.hue, light: 60, speed: 200, life: 0.4 });
+    }
+    if (aff.includes("volatile")) {
+      this.hazards.push({ x: e.pos.x, y: e.pos.y, r: ELITE.volatileRadius, t: 0, max: ELITE.volatileFuse,
+        damage: Math.round(e.damage * ELITE.volatileDmgMul), kind: "bomb", fromX: e.pos.x, fromY: e.pos.y, src: "volatile elite (explosion)" });
+    }
+    if (!e.isBoss) this.spiritChests.push({ x: e.pos.x, y: e.pos.y, life: ELITE.chestLife, t: 0 });
+  }
+
   /** Stats/achievement bookkeeping for a real kill. */
   private trackKill(e: Enemy) {
     this.run.kills++;
@@ -6464,6 +6645,7 @@ export class GhostGame {
     if (e.state === "dead") return;
     e.state = "dead";
     if (!this.sweeping) this.trackKill(e);
+    if (e.affixes && !this.sweeping) this.onEliteDeath(e);
     e.deathTimer = 1.4;
     e.hp = 0;
     // Death Mark — chain to next nearest enemy with 3s remaining.
@@ -6670,6 +6852,16 @@ export class GhostGame {
   // `weaponSource` is the secondary id of the weapon that produced the hit
   // (used for hitstun lookup). Pass undefined for katana / generic sources.
   dealDamage(e: Enemy, baseDmg: number, ang: number, knockback: number, weaponSource?: SecondaryId | "katana") {
+    // Warded elite — the first few hits are absorbed by its ward.
+    if (e.wardHits && e.wardHits > 0) {
+      e.wardHits--;
+      e.hitFlash = 0.5;
+      this.spawnSpark(e.pos);
+      this.fx.shockwave(e.pos.x, e.pos.y, e.size + 14, { hue: AFFIXES.warded.hue, light: 70, life: 0.25, width: 4 });
+      this.spawnFloatText(e.pos, e.wardHits > 0 ? `Ward ${e.wardHits}` : "Ward broken!", { color: "hsl(220 80% 75%)", size: 12 });
+      audio.play("armorRing");
+      return;
+    }
     // Phase 8 — assassin mid-dash i-frames negate damage entirely.
     if (e.dashInvuln > 0) {
       this.spawnSpark(e.pos);
@@ -6924,10 +7116,15 @@ export class GhostGame {
     // (banner is temporary so it lives outside the cap).
     const bannerMul = this.ultBannerActive ? 0.7 : 1;
     const lastStandMul = this.perks.lastStand && this.player.hp / Math.max(1, this.player.maxHp) < 0.3 ? 0.8 : 1;
-    baseDamage = Math.max(1, Math.round(this.scaleEnemyDamage(baseDamage) * bannerMul * lastStandMul));
+    baseDamage = Math.max(1, Math.round(this.scaleEnemyDamage(baseDamage) * bannerMul * lastStandMul * this.commanderMul(e)));
     this.player.hp -= baseDamage;
     this.run.damageTaken += baseDamage;
-    this.lastHitBy = source ?? (e ? (e.archetype === "final" ? "final boss" : e.isBoss ? `${e.bossKind ?? "oni"} boss` : e.archetype) : "unknown");
+    this.lastHitBy = source ?? (e ? (e.archetype === "final" ? "final boss" : e.isBoss ? `${e.bossKind ?? "oni"} boss` : e.affixes ? `elite ${e.archetype}` : e.archetype) : "unknown");
+    if (e && e.state !== "dead" && e.affixes && e.affixes.includes("vampiric") && e.hp < e.maxHp) {
+      const heal = e.maxHp * ELITE.vampHeal;
+      e.hp = Math.min(e.maxHp, e.hp + heal);
+      this.spawnFloatText(e.pos, `+${fmtNum(heal)}`, { color: "hsl(345 80% 65%)", size: 12 });
+    }
     if (this.stats.classId === "sohei" && e && e.state !== "dead") {
       const thorns = Math.max(1, Math.round(baseDamage * 0.6));
       e.hp -= thorns;
@@ -7042,7 +7239,7 @@ export class GhostGame {
       h.t += dt;
       if (h.t < h.max) continue;
       if (Math.hypot(this.player.pos.x - h.x, this.player.pos.y - h.y) <= h.r + BASE.PLAYER_RADIUS * 0.5) {
-        this.applyEnemyHit(null, h.damage, h.kind === "bomb" ? "bomber" : "boss hazard");
+        this.applyEnemyHit(null, h.damage, h.src ?? (h.kind === "bomb" ? "bomber" : "boss hazard"));
       }
       if (h.kind === "bomb") {
         this.fx.shockwave(h.x, h.y, h.r * 1.2, { hue: 22, life: 0.4, width: 12, lines: 10 });
@@ -8032,7 +8229,7 @@ export class GhostGame {
         continue;
       }
       e.stunTimer = Math.max(0, e.stunTimer - dt);
-      e.attackCooldown = Math.max(0, e.attackCooldown - dt);
+      e.attackCooldown = Math.max(0, e.attackCooldown - dt * (e.affixes && e.affixes.includes("hasted") ? ELITE.hasteAttack : 1));
       // Tick ability-driven debuffs (Death Mark / Smoke disorient / War Horn slow)
       if (e.markRemaining > 0) e.markRemaining = Math.max(0, e.markRemaining - dt);
       if (e.disorientRemaining > 0) {
@@ -8697,7 +8894,9 @@ export class GhostGame {
     this.drawHazards();
     for (const e of this.enemies) if (e.state === "dead") this.drawEnemy(e, true);
     for (const p of this.particles) if (p.kind === "blood") this.drawParticle(p);
+    this.drawEliteGround();
     for (const e of this.enemies) if (e.state !== "dead") this.drawEnemy(e, false);
+    this.drawEliteTags();
     this.drawSearchMarkers();
     if (this.devShowHitboxes) this.drawDevHitboxes();
 
@@ -9864,6 +10063,92 @@ export class GhostGame {
     ctx.beginPath(); ctx.arc(p.x, p.y, BASE.PLAYER_RADIUS, 0, Math.PI * 2); ctx.stroke();
     ctx.fillStyle = ctx.strokeStyle;
     ctx.fillText(hidden ? "HIDDEN" : `hp ${Math.ceil(this.player.hp)}`, p.x, p.y + BASE.PLAYER_RADIUS + 12);
+    ctx.restore();
+  }
+
+  /** Under the enemies: fire trails, frost / commander auras, Spirit Chests. */
+  private drawEliteGround() {
+    const ctx = this.ctx, t = this.elapsed;
+    ctx.save();
+    for (const f of this.firePatches) {
+      const a = Math.min(1, f.life / 0.6) * 0.55;
+      const r = ELITE.fireRadius * (0.85 + Math.sin(t * 9 + f.x) * 0.08);
+      const g = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, r);
+      g.addColorStop(0, `hsla(40, 100%, 65%, ${a})`);
+      g.addColorStop(0.6, `hsla(18, 100%, 50%, ${a * 0.7})`);
+      g.addColorStop(1, "hsla(10, 100%, 40%, 0)");
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(f.x, f.y, r, 0, Math.PI * 2); ctx.fill();
+    }
+    for (const e of this.enemies) {
+      if (e.state === "dead" || !e.affixes) continue;
+      if (e.affixes.includes("frost")) {
+        ctx.fillStyle = "hsla(195, 90%, 75%, 0.07)";
+        ctx.strokeStyle = `hsla(195, 90%, 80%, ${0.25 + Math.sin(t * 3) * 0.08})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(e.pos.x, e.pos.y, ELITE.frostRadius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      }
+      if (e.affixes.includes("commander")) {
+        ctx.strokeStyle = "hsla(275, 70%, 70%, 0.35)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([8, 10]); ctx.lineDashOffset = -t * 25;
+        ctx.beginPath(); ctx.arc(e.pos.x, e.pos.y, ELITE.commanderRadius, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+    for (const c of this.spiritChests) {
+      if (c.life < 5 && Math.floor(c.life * 6) % 2 === 0) continue; // blink before it fades
+      const bob = Math.sin(c.t * 4) * 3;
+      const glow = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, 34);
+      glow.addColorStop(0, "hsla(45, 100%, 65%, 0.45)"); glow.addColorStop(1, "hsla(45, 100%, 65%, 0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(c.x, c.y, 34, 0, Math.PI * 2); ctx.fill();
+      ctx.save();
+      ctx.translate(c.x, c.y + bob);
+      ctx.fillStyle = "hsl(355, 60%, 30%)";             // lacquer box
+      ctx.fillRect(-12, -7, 24, 15);
+      ctx.fillStyle = "hsl(355, 65%, 38%)";             // lid
+      ctx.fillRect(-13, -11, 26, 6);
+      ctx.fillStyle = "hsl(45, 90%, 60%)";              // gold trim + clasp
+      ctx.fillRect(-13, -6, 26, 2);
+      ctx.fillRect(-2.5, -7, 5, 6);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  /** Over the enemies: affix outline ring, name tag and ward pips. */
+  private drawEliteTags() {
+    const ctx = this.ctx, t = this.elapsed;
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = "bold 11px system-ui, sans-serif";
+    for (const e of this.enemies) {
+      if (e.state === "dead" || !e.affixes) continue;
+      const hue = AFFIXES[e.affixes[0]].hue;
+      ctx.strokeStyle = `hsla(${hue}, 95%, 65%, ${0.55 + Math.sin(t * 5 + e.id) * 0.25})`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(e.pos.x, e.pos.y, e.size + 5, 0, Math.PI * 2); ctx.stroke();
+      if (e.affixes[1]) {
+        ctx.strokeStyle = `hsla(${AFFIXES[e.affixes[1]].hue}, 95%, 65%, 0.6)`;
+        ctx.beginPath(); ctx.arc(e.pos.x, e.pos.y, e.size + 9, 0, Math.PI * 2); ctx.stroke();
+      }
+      if (e.isBoss) continue;   // bosses already have a big name bar
+      const label = `${e.affixes.map(a => AFFIXES[a].kanji).join("")} ${this.eliteName(e)}`;
+      const y = e.pos.y - e.size - (e.archetype === "priest" ? 42 : 22);
+      const w = ctx.measureText(label).width + 10;
+      ctx.fillStyle = "hsla(0, 0%, 4%, 0.72)";
+      ctx.fillRect(e.pos.x - w / 2, y - 8, w, 16);
+      ctx.fillStyle = `hsl(${hue}, 95%, 72%)`;
+      ctx.fillText(label, e.pos.x, y + 0.5);
+      if (e.wardHits && e.wardHits > 0) {
+        for (let i = 0; i < e.wardHits; i++) {
+          ctx.fillStyle = "hsl(220, 90%, 75%)";
+          ctx.beginPath(); ctx.arc(e.pos.x + w / 2 + 7 + i * 8, y, 3, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+    }
     ctx.restore();
   }
 
@@ -13439,6 +13724,9 @@ export class GhostGame {
     }
     if (swept > 0) audio.play("levelUp");
     this.xpOrbs = [];
+    for (const c of this.spiritChests) this.openSpiritChest(c.x, c.y);
+    this.spiritChests = [];
+    this.firePatches = [];
   }
 
   // ============= Render — secondaries =============

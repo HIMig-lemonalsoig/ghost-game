@@ -7,6 +7,8 @@ import {
 } from "./GhostGame";
 import type { GhostGame, SecondaryId, ConsumableId, EnemyArchetype, BossKind } from "./GhostGame";
 import { reportHTML, getTelemetry, resetTelemetry } from "./telemetry";
+import { AFFIXES } from "./content/elites";
+import type { AffixId } from "./content/elites";
 
 const UNLOCK_KEY = "ghostgame.dev.v1";
 const CODE = "ghostdev";
@@ -183,6 +185,9 @@ export function initDevMode(getGame: () => GhostGame | null) {
         <input type="number" min="1" max="30" value="1" data-dev-in="count"><button data-dev="spawn">Spawn</button></div>
       <div class="row"><select data-dev-in="boss">${opts([...Object.entries(BOSS_INFO).map(([k, b]) => [k, b.name] as [string, string]), ["final", "Final boss"]])}</select>
         <button data-dev="boss">Spawn boss</button></div>
+      <div class="row"><select data-dev-in="affix">${opts([["random", "Elite: random affix"], ["double", "Elite: 2 affixes"], ...Object.values(AFFIXES).map(a => [a.id, `Elite: ${a.kanji} ${a.name}`] as [string, string])])}</select>
+        <button data-dev="elite">Spawn elite</button></div>
+      <div class="row"><button data-dev="chest">Drop Spirit Chest</button></div>
     </section>
     <section>
       <h4>Give</h4>
@@ -271,6 +276,8 @@ export function initDevMode(getGame: () => GhostGame | null) {
         break;
       }
       case "boss": g.devSpawnBoss(val("boss") as BossKind | "final"); break;
+      case "elite": g.devSpawnElite(val("enemy") as EnemyArchetype, val("affix") as AffixId | "random" | "double"); break;
+      case "chest": g.devSpawnChest(); break;
       case "perk": g.devGivePerk(val("perk")); break;
       case "item": g.devGiveItem(val("item") as ConsumableId); break;
       case "w0": g.devSetWeapon(0, val("w0") as SecondaryId); break;

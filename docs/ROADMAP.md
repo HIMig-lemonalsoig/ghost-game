@@ -11,7 +11,7 @@ There are 7 phases, in the order they depend on each other. Each phase is roughl
 | # | Phase | Why it matters | Size |
 |---|-------|----------------|------|
 | 1 ✅ | Foundations: smooth stat curves, content files, balance tracking | Fixes how the stat caps feel, makes the later phases easier, and collects data | S |
-| 2 | Elite affixes | Lots of fight variety for little work; Phase 3 needs it | S–M |
+| 2 ✅ | Elite affixes | Lots of fight variety for little work; Phase 3 needs it | S–M |
 | 3 | Weapon evolutions + duo perks | Gives every run a goal to build toward (the biggest gap right now) | M |
 | 4 | New enemy roles: controller + summoner | Fills the two roles that are missing | M |
 | 5 | Class signature passives | Makes the 25 classes play differently instead of just having different numbers | M–L |
@@ -50,7 +50,9 @@ The shop text should show what an item really adds, for example "+1 defense (→
 
 ---
 
-## Phase 2: Elite affixes
+## Phase 2: Elite affixes ✅ done
+
+Shipped: `src/content/elites.ts` (all tuning), elites spawn through `spawnSingleEnemy`, Hard and Death bosses get 1 affix, Spirit Chests (coins, an item and +15% HP for now; `openSpiritChest()` is the hook for Phase 3), a first-encounter tip for each affix, the dev panel "Spawn elite" / "Drop Spirit Chest", and 4 achievements. Size is ×1.3 rather than the planned ×1.6, which was too big on screen.
 
 From wave 6, any normal enemy can spawn as an **elite** with one affix. That means 1.6× size, 2.5× HP, a colored aura and a name tag such as "Burning Brute".
 
