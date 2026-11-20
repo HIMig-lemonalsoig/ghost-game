@@ -11,6 +11,9 @@ import { EVOLUTIONS, EVO_MASTERY } from "./content/evolutions";
 import { DUO_BY_ID } from "./content/duos";
 import { SIGNATURES } from "./content/signatures";
 import { ULT_PERK_BY_ID } from "./content/ultperks";
+import { guideHTML, GUIDE_CSS } from "./guide";
+import type { GuideTab, GuideCtx } from "./guide";
+import { DUOS } from "./content/duos";
 import { VOWS, VOW_BY_ID, vowScore, vowRank, MAX_VOW_SCORE, VOW_UNLOCK_WAVE, VOW_COIN_BONUS } from "./content/vows";
 import type { VowSet, VowId } from "./content/vows";
 import { trackGame, trackStartWeapons } from "./telemetry";
@@ -74,6 +77,8 @@ const keys: Record<Action, string> = readJSON(KEYS_KEY, { ...DEFAULT_KEYS });
 let capturing: Action | null = null;
 let controlsOpen = false;
 let careerOpen = false;
+let guideOpen = false;
+let guideTab: GuideTab = "basics";
 // ─── Vows ─────────────────────────────────────────────────────────────────────
 const VOWS_KEY = "ghostgame.vows.v1";
 const vowSet: VowSet = readJSON<VowSet>(VOWS_KEY, {});
@@ -205,6 +210,92 @@ function closeVowsModal() {
   renderMenu();
 }
 
+// ─── Guide (tutorials) ────────────────────────────────────────────────────────
+function guideCtx(): GuideCtx {
+  const c = getCareer();
+  const g = game;
+  return {
+    owned: g ? [...g.acquiredPerks] : [],
+    ownedDuos: g ? [...g.perks.duos] : [],
+    discoveredDuos: c.duosBy ?? {},
+    evolvedEver: c.evolvedBy ?? {},
+    evolvedNow: g ? [...g.perks.evolved] : [],
+    equipped: g ? (g.stats.secondaryIds.filter(Boolean) as SecondaryId[]) : [],
+    classId: g?.stats.classId ?? currentClass,
+    highestWave: c.highestWave || 0,
+    mastery: g ? { ...g.perks.weaponMastery } : {},
+  };
+}
+function showGuide(tab: GuideTab = guideTab) {
+  guideOpen = true;
+  guideTab = tab;
+  if (game?.stats.state === "playing") game.pause();
+  overlay.classList.add("show", "top");
+  overlay.innerHTML = guideHTML(tab, guideCtx());
+}
+function closeGuide() {
+  guideOpen = false;
+  overlay.classList.remove("top");
+  if (menu.style.display !== "none") { overlay.classList.remove("show"); overlay.innerHTML = ""; renderMenu(); }
+  else overlayKey = "";   // let the pause screen redraw
+}
+
+/** Small lines on level-up / shop cards that explain what a card unlocks. */
+function cardHints(id: string): string {
+  if (!game) return "";
+  const out: string[] = [];
+  const owned = game.acquiredPerks;
+  for (const d of DUOS) {
+    if (game.perks.duos.includes(d.id)) continue;
+    const gi = d.needs.findIndex(gr => gr.includes(id));
+    if (gi < 0) continue;
+    const other = d.needs[1 - gi];
+    if (other.some(o => owned.includes(o))) out.push(`<div class="hint-line done">★ Completes duo: ${d.name}</div>`);
+    else if (!d.needs[gi].some(o => owned.includes(o))) out.push(`<div class="hint-line duo">◆ Duo piece: ${d.name}</div>`);
+    if (out.length >= 2) break;
+  }
+  for (const wid of game.stats.secondaryIds) {
+    if (!wid || game.perks.evolved.includes(wid)) continue;
+    const evo = EVOLUTIONS[wid];
+    if (evo.catalysts.includes(id) && !game.hasCatalyst(wid)) out.push(`<div class="hint-line evo">⚒ Catalyst: ${SECONDARIES[wid].name} → ${evo.name}</div>`);
+    const m = new RegExp(`^dmg_${wid}_(common|rare|leg)$`).exec(id);
+    if (m) out.push(`<div class="hint-line evo">⚒ Mastery ${Math.min(EVO_MASTERY, (game.perks.weaponMastery[wid] ?? 0) + 1)}/${EVO_MASTERY} → ${evo.name}</div>`);
+  }
+  return out.slice(0, 2).join("");
+}
+
+/** One-time tips (once per browser) when a new system becomes reachable. */
+const TIPS_KEY = "ghostgame.tipsSeen.v1";
+const tipsSeen: Record<string, number> = readJSON(TIPS_KEY, {});
+let tipCheckAt = 0;
+function showTip(id: string, kanji: string, text: string) {
+  if (tipsSeen[id] || !settings.tips) return;
+  tipsSeen[id] = Date.now();
+  writeJSON(TIPS_KEY, tipsSeen);
+  const el = document.createElement("div");
+  el.className = "tip-toast";
+  el.setAttribute("role", "status");
+  el.innerHTML = `<span class="kanji">${kanji}</span><div><span class="tip-label">Tip</span><p>${text}</p><div class="tip-guide">More in the Guide (pause or menu)</div></div>`;
+  achToasts.append(el);
+  setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 220); }, 7000);
+}
+function runTipCheck() {
+  if (!game || game.devMode || game.stats.state !== "playing" || !settings.tips) return;
+  const now = performance.now();
+  if (now - tipCheckAt < 500) return;
+  tipCheckAt = now;
+  const g = game;
+  if (g.stats.wave >= 1 && runStartedAt && now - runStartedAt > 15000) showTip("guide", "道", "New here? The <b>Guide</b> explains duo perks, weapon evolutions, elites, vows and more.");
+  const duo = g.availableDuos()[0];
+  if (duo) showTip("duo_ready", "双", `You own both halves of the duo <b>${duo.name}</b>. It can now show up on level-up cards.`);
+  else if (DUOS.some(d => d.needs.some(gr => gr.some(id => g.acquiredPerks.includes(id))))) showTip("duo_piece", "双", "You picked a <b>duo piece</b>. Get a perk from its partner group and a powerful duo perk can appear. Cards marked ◆ build toward one.");
+  const ready = g.evoReadyWeapon();
+  if (ready) showTip("evo_ready", "進", `<b>${SECONDARIES[ready].name}</b> is ready to evolve! Open a Spirit Chest (elites and bosses drop them).`);
+  else if (Object.values(g.perks.weaponMastery).some(v => v > 0)) showTip("evo_mastery", "進", `Weapon mastery started. Buy ${EVO_MASTERY} damage upgrades for a weapon and own its catalyst, then a Spirit Chest evolves it. Pause to see progress.`);
+  if (g.spiritChests.length) showTip("chest", "宝", "A <b>Spirit Chest</b> dropped! Walk over it for loot, or to evolve a weapon that's ready.");
+  if (g.enemies.some(e => e.state !== "dead" && e.affixes)) showTip("elite", "精", "<b>Elite</b> enemies glow and have a name tag. They're tougher, but always drop a Spirit Chest.");
+}
+
 function showCareerModal() {
   careerOpen = true;
   overlay.classList.add("show", "top");
@@ -233,7 +324,7 @@ function refreshControls() {
 
 // ─── DOM scaffolding ──────────────────────────────────────────────────────────
 const style = document.createElement("style");
-style.textContent = UI_CSS + CAREER_CSS + ACH_CSS;
+style.textContent = UI_CSS + CAREER_CSS + ACH_CSS + GUIDE_CSS;
 document.head.appendChild(style);
 
 const canvas = document.getElementById("game-canvas") as HTMLCanvasElement;
@@ -363,7 +454,7 @@ function renderMenu() {
   <div class="menu-wrap">
     <div class="menu-top">
       <div class="logo"><span class="kanji">幽</span><div><h1>GHOST GAME</h1><p>Survive the waves. Forge your legend.</p></div></div>
-      <div class="menu-actions">${continueBtn}<button class="btn ghost" data-act="ach">Achievements <span class="num" style="opacity:.7">${unlockedCount()}/${ACHIEVEMENTS.length}</span></button><button class="btn ghost" data-act="career">Career</button><button class="btn ghost" data-act="controls">Controls</button><button class="btn ghost" data-act="random">Random class</button></div>
+      <div class="menu-actions">${continueBtn}<button class="btn ghost" data-act="guide"><span class="kanji" style="color:var(--gold)">道</span> Guide</button><button class="btn ghost" data-act="ach">Achievements <span class="num" style="opacity:.7">${unlockedCount()}/${ACHIEVEMENTS.length}</span></button><button class="btn ghost" data-act="career">Career</button><button class="btn ghost" data-act="controls">Controls</button><button class="btn ghost" data-act="random">Random class</button></div>
     </div>
     <div class="menu-body">
       <div class="class-grid" role="listbox" aria-label="Classes">${cards}</div>
@@ -455,6 +546,7 @@ menu.addEventListener("click", e => {
   else if (act === "controls") showControlsModal();
   else if (act === "career") showCareerModal();
   else if (act === "ach") showAchModal();
+  else if (act === "guide") showGuide("basics");
   else if (act === "vows") showVowsModal();
   else if (act === "random") {
     const pool = CLASSES.filter(c => c.id !== currentClass);
@@ -841,6 +933,7 @@ function updateHud(s: GameStats) {
     if (s.state === "defeat" || s.state === "victory") recordSet = true;
   }
   runAchievementCheck();
+  runTipCheck();
   // Career — fold progress in at each wave end and when the run ends.
   if (game && s.state !== careerSeenState) {
     if (s.state === "shop") commitRun(game);
@@ -867,6 +960,7 @@ function showOverlay(html: string) {
 }
 
 function syncOverlay(s: GameStats) {
+  if (guideOpen) return;
   let key = s.state;
   if (s.state === "levelup") key += s.pendingChoices.map(c => c.id).join(",");
   if (s.state === "swap") key += s.pendingAbilityId;
@@ -885,10 +979,12 @@ function syncOverlay(s: GameStats) {
 function rarityClass(r: string) { return `r-${r}`; }
 
 function renderLevelUp(s: GameStats) {
+  if (s.pendingChoices.some(c => ULT_PERK_BY_ID[c.id])) showTip("ultperk", "極", "Cards tagged <b>ULTIMATE</b> upgrade your ultimate. Each class also has its own ultimate perk.");
+  if (s.pendingChoices.some(c => c.duo)) showTip("duo_card", "双", "A <b>DUO</b> perk! It combines two perks you own into something much stronger.");
   const cards = s.pendingChoices.map((c, i) => `
     <button class="card glow tilt ${rarityClass(c.rarity)}${c.duo ? " duo" : ""}" data-perk="${c.id}">
       <kbd class="key">${i + 1}</kbd>${c.kind === "ability" ? `<span class="tag">ABILITY</span>` : ""}${c.duo ? `<span class="tag duo-tag">DUO</span>` : ""}${ULT_PERK_BY_ID[c.id] ? `<span class="tag ult-tag">${ULT_PERK_BY_ID[c.id].cls ? `ULTIMATE · ${getClass(ULT_PERK_BY_ID[c.id].cls!).name.toUpperCase()}` : "ULTIMATE"}</span>` : ""}
-      <div class="kanji">${c.kanji}</div><div class="cn">${c.name}</div><div class="rar">${c.rarity}</div><div class="cd">${c.desc}</div>
+      <div class="kanji">${c.kanji}</div><div class="cn">${c.name}</div><div class="rar">${c.rarity}</div><div class="cd">${c.desc}</div>${cardHints(c.id)}
     </button>`).join("");
   showOverlay(`<div class="panel">
     <div class="panel-title">LEVEL ${s.level}</div>
@@ -917,7 +1013,7 @@ function renderShop(s: GameStats) {
     const broke = !bought && s.mon < it.price;
     return `<button class="card glow tilt ${rarityClass(it.rarity)}${bought ? " bought" : ""}" data-buy="${it.id}" ${bought || broke ? "disabled" : ""}>
       <kbd class="key">${i + 1}</kbd><div class="kanji">${it.kanji}</div><div class="cn">${it.name}</div>
-      <div class="rar">${it.rarity}</div><div class="cd">${it.desc}</div>
+      <div class="rar">${it.rarity}</div><div class="cd">${it.desc}</div>${cardHints(it.effect)}
       ${(() => { const pv = game?.shopPreview(it.effect); return pv ? `<div class="preview num">${pv}</div>` : ""; })()}
       <div class="price num">${bought ? "Purchased" : `文 ${it.price}`}</div></button>`;
   }).join("");
@@ -961,6 +1057,7 @@ function renderPause(s: GameStats) {
         <button class="btn primary" data-act="resume">Resume · Esc</button>
         <button class="btn" data-act="restart">Restart run</button>
         <button class="btn" data-act="quit">Quit to menu</button>
+        <button class="btn" data-act="guide"><span class="kanji" style="color:var(--gold)">道</span> Guide</button>
         <div class="pane" style="margin-top:6px">
           <h4>Settings</h4>
           ${sw("sound", "Sound & music")}${sw("shake", "Screen shake")}${sw("tips", "Control tips")}${sw("cutscenes", "Ultimate cutscenes")}${sw("autoPause", "Pause when tabbed out")}
@@ -1014,6 +1111,10 @@ overlay.addEventListener("click", e => {
   if (cact === "closecontrols") { closeControlsModal(); return; }
   if (cact === "closecareer") { closeCareerModal(); return; }
   if (cact === "closeach") { closeAchModal(); return; }
+  if (cact === "guide") { showGuide(guideTab); return; }
+  if (cact === "closeguide") { closeGuide(); return; }
+  const gt = t.closest<HTMLElement>("[data-guide]");
+  if (gt && guideOpen) { showGuide(gt.dataset.guide as GuideTab); overlay.scrollTop = 0; return; }
   if (cact === "closevows") { closeVowsModal(); return; }
   if (cact === "clearvows") { for (const k of Object.keys(vowSet)) delete vowSet[k as VowId]; writeJSON(VOWS_KEY, vowSet); showVowsModal(); return; }
   const vb = t.closest<HTMLElement>("[data-vow]");
@@ -1124,6 +1225,7 @@ window.addEventListener("keydown", e => {
   if (careerOpen) { if (e.code === "Escape") closeCareerModal(); return; }
   if (achOpen) { if (e.code === "Escape") closeAchModal(); return; }
   if (vowsOpen) { if (e.code === "Escape") closeVowsModal(); return; }
+  if (guideOpen) { if (e.code === "Escape") closeGuide(); return; }
   if (menu.style.display !== "none") { menuKeys(e); return; }
   if (!game) return;
   const s = game.stats;
