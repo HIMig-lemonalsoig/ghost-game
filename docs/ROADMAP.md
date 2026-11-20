@@ -12,7 +12,7 @@ There are 7 phases, in the order they depend on each other. Each phase is roughl
 |---|-------|----------------|------|
 | 1 ✅ | Foundations: smooth stat curves, content files, balance tracking | Fixes how the stat caps feel, makes the later phases easier, and collects data | S |
 | 2 ✅ | Elite affixes | Lots of fight variety for little work; Phase 3 needs it | S–M |
-| 3 | Weapon evolutions + duo perks | Gives every run a goal to build toward (the biggest gap right now) | M |
+| 3 ✅ | Weapon evolutions + duo perks | Gives every run a goal to build toward (the biggest gap right now) | M |
 | 4 | New enemy roles: controller + summoner | Fills the two roles that are missing | M |
 | 5 | Class signature passives | Makes the 25 classes play differently instead of just having different numbers | M–L |
 | 6 | Vows (Hades-style "Heat") | A long-term goal for players who've beaten Death | M |
@@ -76,7 +76,14 @@ From wave 6, any normal enemy can spawn as an **elite** with one affix. That mea
 
 ---
 
-## Phase 3: Weapon evolutions + duo perks
+## Phase 3: Weapon evolutions + duo perks ✅ done
+
+Shipped: `src/content/evolutions.ts` and `src/content/duos.ts`. Evolved weapons hit ×1.4 harder. Bosses now drop Spirit Chests too. The pause screen shows evolution progress, the weapon slot glows when a weapon is ready, and evolved weapons show their new name. 5 achievements were added, plus dev-panel buttons (Evolve / Ready / Give duo).
+
+Changes from the plan:
+- Blowgun's catalyst is Refined Toxin (poison) instead of Hemorrhage.
+- Jutte's catalyst is Counter Strike or Perfect Guard, and Crossbow also accepts Keen Eye or Killing Edge.
+- Two duos were rewritten to use perks that actually exist: Frostbite Venom became **Venom Strike** (Poison + Crit), and Blood Mirror became **Undying Rage** (Bloodlust + Last Stand).
 
 **Evolutions** (Vampire Survivors style). A weapon evolves when all three are true:
 1. **Mastery 3**: you bought 3 of its damage upgrades (Mastery, Honed or Forged)

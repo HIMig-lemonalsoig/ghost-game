@@ -5,6 +5,7 @@
 // Nothing leaves the browser — the dev panel can show it or copy it as JSON.
 import { PERK_POOL, ABILITY_POOL, SHOP_POOL, getClass, DIFFICULTIES } from "./GhostGame";
 import type { GhostGame, GameEvent, Difficulty, ClassId } from "./GhostGame";
+import { DUO_BY_ID } from "./content/duos";
 
 const KEY = "ghostgame.telemetry.v1";
 
@@ -64,7 +65,7 @@ export function trackStartWeapons(weapons: string[]) {
 }
 
 // ─── Report ───────────────────────────────────────────────────────────────────
-const perkName = (id: string) => PERK_POOL.find(p => p.id === id)?.name ?? ABILITY_POOL.find(a => a.id === id)?.name ?? id;
+const perkName = (id: string) => PERK_POOL.find(p => p.id === id)?.name ?? ABILITY_POOL.find(a => a.id === id)?.name ?? (DUO_BY_ID[id] ? `${DUO_BY_ID[id].name} (duo)` : id);
 const shopName = (id: string) => SHOP_POOL.find(p => p.effect === id)?.name ?? id;
 
 function rateTable(m: Record<string, Rate>, name: (id: string) => string, minOffers: number): string {

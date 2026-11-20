@@ -6,6 +6,8 @@ import type { UltMotif } from "./ultimates";
 import { defenseReduction, dexAttackSpeed, critFromPoints, moveSpeedFromMul } from "./content/curves";
 import { AFFIXES, ELITE, ENEMY_LABEL, rollAffixes } from "./content/elites";
 import type { AffixId } from "./content/elites";
+import { EVOLUTIONS, EVO_MASTERY, EVO_DAMAGE_MUL } from "./content/evolutions";
+import { DUOS, DUO_BY_ID } from "./content/duos";
 // Sections: classes, weapons, shop, consumables, saves, biomes, audio, VFX, gameplay.
 
 // ============================================================================
@@ -3221,6 +3223,7 @@ export interface PerkChoice {
   desc: string;
   rarity: "common" | "rare" | "legendary";
   kind?: "passive" | "ability";
+  duo?: boolean;
 }
 
 export interface AbilityInfo {
@@ -3431,13 +3434,15 @@ export interface RunCounters {
   eliteByAffix: Record<string, number>;
   doubleEliteKills: number;
   chests: number;
+  evolutions: string[];
+  duos: string[];
 }
 export const newRunCounters = (): RunCounters => ({
   kills: 0, stealthKills: 0, bossKills: 0, bossByKind: {}, killsByKind: {}, wavesCleared: 0,
   damageDealt: 0, damageTaken: 0, biggestHit: 0, monEarned: 0, ults: 0, items: 0, dashes: 0, time: 0,
   purchases: 0, flawlessWaves: 0, flawlessStreak: 0, bestFlawlessStreak: 0, flawlessBossWaves: 0,
   bestMultiKill: 0, bestUltKills: 0, maxMon: 0, clutchWaves: 0,
-  eliteKills: 0, eliteByAffix: {}, doubleEliteKills: 0, chests: 0,
+  eliteKills: 0, eliteByAffix: {}, doubleEliteKills: 0, chests: 0, evolutions: [], duos: [],
 });
 
 export const BOSS_INFO: Record<BossKind, { name: string; kanji: string }> = {
@@ -3681,6 +3686,7 @@ interface SecondaryProjectile {
   burnSeconds?: number;
   // Blowgun: stacking poison applied on hit.
   poisonSeconds?: number;
+  src?: SecondaryId;   // weapon that fired it (evolutions + hitstun)
   // Jutte/Twin Sai-style on-hit status chances (used when melee path forwards
   // a "virtual" secondary hit through dealDamage; kept here for extensibility).
 }
@@ -3694,6 +3700,7 @@ interface ArcBomb {
   life: number;
   damage: number;
   radius: number;
+  venom?: boolean;
 }
 
 // Caltrop field — DoT zone left by a bomb.
@@ -3704,6 +3711,7 @@ interface CaltropField {
   maxLife: number;
   dps: number;
   tickAccum: number;
+  venom?: boolean;     // Venom Caltrops evolution: the field poisons
 }
 
 // Smoke cloud — slows + reduces enemy alertness in radius.
@@ -3712,6 +3720,7 @@ interface SmokeCloud {
   radius: number;
   life: number;
   maxLife: number;
+  follow?: boolean;    // Ninja Fog evolution: the cloud tracks the player
 }
 
 // Pickup dropped by enemies — restores ammo for a secondary on touch.
@@ -3895,6 +3904,10 @@ export const PERK_POOL: Omit<PerkChoice, never>[] = [
 interface Perks {
   dashCdMul: number;        // multiplies dash cooldown
   dashDmgMul: number;       // multiplies dash contact damage
+  weaponMastery: Record<string, number>;  // damage upgrades bought per weapon (evolutions)
+  shopBought: string[];     // shop effects bought this run (evolution catalysts)
+  evolved: string[];        // evolved weapon ids
+  duos: string[];           // duo perk ids owned
   monMul: number;           // multiplies coins from kills
   eliteBounty: number;      // bonus coins (+2 HP) per elite kill
   ultChargeMul: number;     // multiplies ultimate charge gained
@@ -4004,6 +4017,10 @@ interface Perks {
 const defaultPerks = (): Perks => ({
   dashCdMul: 1,
   dashDmgMul: 1,
+  weaponMastery: {},
+  shopBought: [],
+  evolved: [],
+  duos: [],
   monMul: 1,
   eliteBounty: 0,
   ultChargeMul: 1,
@@ -4594,6 +4611,8 @@ export class GhostGame {
     this.firePatches = [];
     this.spiritChests = [];
     this.seenAffixes = new Set();
+    this.evoWaves = []; this.evoZones = []; this.evoOrbits = [];
+    this.evoShield = 0; this.katanaSwings = 0; this.saiHits = 0;
     this.cinematicTimer = 0;
     this.fx.clear();
     this.ultCutscene = null;
@@ -5158,9 +5177,222 @@ export class GhostGame {
     return 1;
   }
 
-  /** Spirit Chest reward. Phase 3 (weapon evolutions) hooks in here. */
+  // ===================== EVOLUTIONS =====================
+  isEvolved(id: string | null | undefined): boolean { return !!id && this.perks.evolved.includes(id); }
+
+  hasCatalyst(id: SecondaryId): boolean {
+    const evo = EVOLUTIONS[id];
+    return !!evo && evo.catalysts.some(c => this.acquiredPerks.includes(c) || this.perks.shopBought.includes(c));
+  }
+
+  /** What the HUD shows for a weapon: progress toward its evolution. */
+  evoStatus(id: SecondaryId): { state: "none" | "ready" | "evolved"; mastery: number; catalyst: boolean } {
+    const mastery = this.perks.weaponMastery[id] ?? 0;
+    const catalyst = this.hasCatalyst(id);
+    if (this.isEvolved(id)) return { state: "evolved", mastery, catalyst };
+    return { state: mastery >= EVO_MASTERY && catalyst ? "ready" : "none", mastery, catalyst };
+  }
+
+  evoReadyWeapon(): SecondaryId | null {
+    for (const id of this.stats.secondaryIds) {
+      if (id && this.evoStatus(id).state === "ready") return id;
+    }
+    return null;
+  }
+
+  evolveWeapon(id: SecondaryId, x = this.player.pos.x, y = this.player.pos.y) {
+    if (this.isEvolved(id)) return;
+    this.perks.evolved.push(id);
+    this.run.evolutions.push(id);
+    const evo = EVOLUTIONS[id];
+    this.flash(`EVOLUTION · ${evo.kanji} ${evo.name}: ${evo.desc}`);
+    this.stats.messageTimer = 4;
+    this.fx.shockwave(x, y, 160, { hue: 45, light: 75, life: 0.7, width: 10, lines: 16 });
+    this.fx.burst(x, y, { count: 30, hue: 45, light: 75, speed: 360, life: 0.8, grav: -40 });
+    this.whiteFlashTimer = 0.2; this.whiteFlashMax = 0.2; this.whiteFlashAlpha = 0.35;
+    this.hitstop = Math.max(this.hitstop, 0.12);
+    this.cameraShake = Math.max(this.cameraShake, 0.5);
+    audio.play("levelUp");
+    this.spawnFloatText({ x, y }, `${evo.kanji} ${evo.name}!`, { color: "hsl(45 100% 70%)", size: 20, jp: true, vy: -50 });
+    this.onActiveSecondaryChanged();
+    this.emitStats();
+  }
+
+  hasDuo(id: string) { return this.perks.duos.includes(id); }
+
+  /** Duo perks whose two requirements are met and that aren't owned yet. */
+  availableDuos() {
+    return DUOS.filter(d => !this.hasDuo(d.id) && d.needs.every(group => group.some(p => this.acquiredPerks.includes(p))));
+  }
+
+  /** Small piercing wind/crescent wave (Kusanagi, Moon Cleaver, Heaven's Reach). */
+  private spawnEvoWave(ang: number, dmg: number, r: number, speed: number, life: number, hue: number) {
+    const p = this.player.pos;
+    this.evoWaves.push({ x: p.x + Math.cos(ang) * 30, y: p.y + Math.sin(ang) * 30, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed,
+      life, max: life, dmg, r, hue, hit: new Set() });
+  }
+
+  /** Called whenever a secondary weapon fires or swings. */
+  private onEvoFire(id: SecondaryId) {
+    if (!this.isEvolved(id)) return;
+    const p = this.player, ang = p.facing;
+    const dmg = this.effectiveSecondaryDamage(id) * EVO_DAMAGE_MUL;
+    if (id === "flame_spear") {
+      for (let i = 1; i <= 5; i++) {
+        this.evoZones.push({ x: p.pos.x + Math.cos(ang) * 46 * i, y: p.pos.y + Math.sin(ang) * 46 * i, r: 30, life: 2.4, max: 2.4, dmg: dmg * 0.35, tick: 0, kind: "fire" });
+      }
+    } else if (id === "odachi") {
+      this.spawnEvoWave(ang, dmg * 0.9, 70, 620, 0.9, 210);
+    } else if (id === "shuriken_wheel") {
+      this.evoOrbits = [];
+      for (let i = 0; i < 3; i++) this.evoOrbits.push({ ang: (i / 3) * Math.PI * 2, life: 4, dmg: dmg * 0.5, hitCd: new Map() });
+    }
+  }
+
+  /** Called on every katana swing (hit or miss). */
+  private onKatanaSwing() {
+    const ang = this.player.facing;
+    this.katanaSwings++;
+    if (this.isEvolved("katana") && this.katanaSwings % 3 === 0) {
+      this.spawnEvoWave(ang, this.perks.damage * EVO_DAMAGE_MUL, 46, 760, 0.5, 140);
+    } else if (this.hasDuo("duo_reach")) {
+      this.spawnEvoWave(ang, this.perks.damage * 0.5, 34, 700, 0.4, 50);
+    }
+  }
+
+  /** Called after a weapon hit lands (not for the extra hits these spawn). */
+  private onEvoHit(e: Enemy, src: SecondaryId | "katana" | undefined, dmg: number, isCrit: boolean) {
+    if (this.evoNested) return;
+    this.evoNested = true;
+    try {
+      // ── DUO effects (any source) ──
+      if (this.hasDuo("duo_searing")) {
+        if (e.bleedRemaining > 0) { e.burnRemaining = Math.max(e.burnRemaining, 3); e.burnDps = Math.max(e.burnDps, 4); }
+        if (e.burnRemaining > 0) e.bleedRemaining = Math.max(e.bleedRemaining, 3);
+      }
+      if (isCrit && this.hasDuo("duo_thunder") && e.state !== "dead") this.chainZap(e, Math.max(1, dmg * 0.5), 2);
+      // ── EVOLUTION effects (by weapon) ──
+      if (!src || src === "katana" || !this.isEvolved(src)) return;
+      if (src === "yumi") this.chainZap(e, Math.max(1, dmg * 0.4), 2);
+      else if (src === "kusarigama") {
+        for (const o of this.enemies) {
+          if (o.state === "dead" || o.isBoss) continue;
+          const d = Math.hypot(o.pos.x - e.pos.x, o.pos.y - e.pos.y);
+          if (d > 160) continue;
+          const a = Math.atan2(this.player.pos.y - o.pos.y, this.player.pos.x - o.pos.x);
+          o.vel.x = Math.cos(a) * 520; o.vel.y = Math.sin(a) * 520;
+        }
+        this.chainBolts.spawn(this.player.pos.x, this.player.pos.y, e.pos.x, e.pos.y, 0.25);
+      } else if (src === "tessen") {
+        for (const o of this.enemies) {
+          if (o === e || o.state === "dead") continue;
+          const d = Math.hypot(o.pos.x - e.pos.x, o.pos.y - e.pos.y);
+          if (d < 100) this.dealDamage(o, dmg * 0.5, Math.atan2(o.pos.y - e.pos.y, o.pos.x - e.pos.x), o.isBoss ? 20 : 220);
+        }
+        this.fx.shockwave(e.pos.x, e.pos.y, 100, { hue: 170, light: 75, life: 0.3, width: 5 });
+      } else if (src === "jutte") {
+        this.evoShield = Math.min(20, this.evoShield + 2);
+      } else if (src === "ono") {
+        if (!e.isBoss && e.state !== "dead" && e.hp > 0 && e.hp / e.maxHp < 0.15) {
+          this.spawnFloatText(e.pos, "Execute!", { color: "hsl(0 90% 65%)", size: 15 });
+          this.killEnemy(e, "honor");
+        }
+      } else if (src === "twin_sai") {
+        if (++this.saiHits % 4 === 0) {
+          for (let i = 0; i < 3 && e.state !== "dead"; i++) this.dealDamage(e, dmg * 0.4, 0, 10);
+          this.spawnFloatText(e.pos, "Flurry!", { color: "hsl(300 80% 75%)", size: 13 });
+        }
+      } else if (src === "blowgun") {
+        if (this.plagueCd <= 0) {
+          this.plagueCd = 0.3;
+          this.evoZones.push({ x: e.pos.x, y: e.pos.y, r: 60, life: 3, max: 3, dmg: dmg * 0.25, tick: 0, kind: "poison" });
+        }
+      }
+    } finally {
+      this.evoNested = false;
+    }
+  }
+
+  private updateEvo(dt: number) {
+    this.plagueCd = Math.max(0, this.plagueCd - dt);
+    for (const w of this.evoWaves) {
+      w.life -= dt; w.x += w.vx * dt; w.y += w.vy * dt;
+      for (const e of this.enemies) {
+        if (e.state === "dead" || w.hit.has(e.id)) continue;
+        if (Math.hypot(e.pos.x - w.x, e.pos.y - w.y) > w.r + e.size) continue;
+        w.hit.add(e.id);
+        this.evoNested = true;
+        try { this.dealDamage(e, w.dmg, Math.atan2(w.vy, w.vx), e.isBoss ? 10 : 60); } finally { this.evoNested = false; }
+      }
+    }
+    this.evoWaves = this.evoWaves.filter(w => w.life > 0);
+    for (const z of this.evoZones) {
+      z.life -= dt; z.tick -= dt;
+      if (z.tick > 0) continue;
+      z.tick = 0.5;
+      for (const e of this.enemies) {
+        if (e.state === "dead" || Math.hypot(e.pos.x - z.x, e.pos.y - z.y) > z.r + e.size) continue;
+        if (z.kind === "fire") { e.burnRemaining = Math.max(e.burnRemaining, 2); e.burnDps = Math.max(e.burnDps, 4); }
+        else { e.poisonRemaining = Math.min(8, e.poisonRemaining + 1); if (this.perks.poisonDps <= 0) this.perks.poisonDps = 4; }
+        this.evoNested = true;
+        try { this.dealDamage(e, z.dmg, 0, 0); } finally { this.evoNested = false; }
+      }
+    }
+    if (this.evoZones.length > 60) this.evoZones.splice(0, this.evoZones.length - 60);
+    this.evoZones = this.evoZones.filter(z => z.life > 0);
+    for (const o of this.evoOrbits) {
+      o.life -= dt; o.ang += dt * 5;
+      const ox = this.player.pos.x + Math.cos(o.ang) * 72, oy = this.player.pos.y + Math.sin(o.ang) * 72;
+      for (const [id, t] of o.hitCd) o.hitCd.set(id, t - dt);
+      for (const e of this.enemies) {
+        if (e.state === "dead" || (o.hitCd.get(e.id) ?? 0) > 0) continue;
+        if (Math.hypot(e.pos.x - ox, e.pos.y - oy) > e.size + 14) continue;
+        o.hitCd.set(e.id, 0.4);
+        this.evoNested = true;
+        try { this.dealDamage(e, o.dmg, o.ang + Math.PI / 2, 40); } finally { this.evoNested = false; }
+      }
+    }
+    this.evoOrbits = this.evoOrbits.filter(o => o.life > 0);
+  }
+
+  private drawEvo() {
+    const ctx = this.ctx, t = this.elapsed;
+    ctx.save();
+    for (const z of this.evoZones) {
+      const a = Math.min(1, z.life / 0.5) * (z.kind === "fire" ? 0.5 : 0.35);
+      const g = ctx.createRadialGradient(z.x, z.y, 0, z.x, z.y, z.r);
+      if (z.kind === "fire") { g.addColorStop(0, `hsla(45, 100%, 65%, ${a})`); g.addColorStop(1, "hsla(15, 100%, 50%, 0)"); }
+      else { g.addColorStop(0, `hsla(110, 70%, 50%, ${a})`); g.addColorStop(1, "hsla(130, 70%, 40%, 0)"); }
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(z.x, z.y, z.r * (0.9 + Math.sin(t * 7 + z.x) * 0.06), 0, Math.PI * 2); ctx.fill();
+    }
+    for (const w of this.evoWaves) {
+      const a = Math.atan2(w.vy, w.vx), k = w.life / w.max;
+      ctx.strokeStyle = `hsla(${w.hue}, 90%, 80%, ${0.25 + k * 0.6})`;
+      ctx.lineWidth = 5 + w.r * 0.08;
+      ctx.lineCap = "round";
+      ctx.beginPath(); ctx.arc(w.x - Math.cos(a) * w.r * 0.6, w.y - Math.sin(a) * w.r * 0.6, w.r, a - 0.9, a + 0.9); ctx.stroke();
+    }
+    for (const o of this.evoOrbits) {
+      const ox = this.player.pos.x + Math.cos(o.ang) * 72, oy = this.player.pos.y + Math.sin(o.ang) * 72;
+      ctx.save(); ctx.translate(ox, oy); ctx.rotate(t * 18);
+      ctx.fillStyle = "hsl(190, 60%, 82%)";
+      for (let i = 0; i < 4; i++) { ctx.rotate(Math.PI / 2); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(11, -3); ctx.lineTo(3, 3); ctx.closePath(); ctx.fill(); }
+      ctx.restore();
+    }
+    if (this.evoShield > 0) {
+      ctx.strokeStyle = `hsla(45, 90%, 70%, ${0.3 + this.evoShield / 40})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(this.player.pos.x, this.player.pos.y, BASE.PLAYER_RADIUS + 10, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /** Spirit Chest reward — evolves a ready weapon first, otherwise loot. */
   openSpiritChest(x: number, y: number) {
     this.run.chests++;
+    const ready = this.evoReadyWeapon();
+    if (ready) { this.evolveWeapon(ready, x, y); return; }
     const D = DIFFICULTIES[this.difficulty];
     const coins = Math.round((12 + this.stats.wave * 4) * D.coins);
     this.stats.mon += coins;
@@ -5679,6 +5911,15 @@ export class GhostGame {
   spiritChests: { x: number; y: number; life: number; t: number }[] = [];
   private fireTickCd = 0;
   private seenAffixes = new Set<string>();
+  // EVOLUTION / DUO state
+  evoWaves: { x: number; y: number; vx: number; vy: number; life: number; max: number; dmg: number; r: number; hue: number; hit: Set<number> }[] = [];
+  evoZones: { x: number; y: number; r: number; life: number; max: number; dmg: number; tick: number; kind: "fire" | "poison" }[] = [];
+  evoOrbits: { ang: number; life: number; dmg: number; hitCd: Map<number, number> }[] = [];
+  evoShield = 0;
+  private evoNested = false;
+  private katanaSwings = 0;
+  private saiHits = 0;
+  private plagueCd = 0;
   onEvent?: (ev: GameEvent) => void;
   lastHitBy = "unknown";
   private emitEvent(ev: GameEvent) { try { this.onEvent?.(ev); } catch { /* tracking must never break the game */ } }
@@ -5761,6 +6002,29 @@ export class GhostGame {
     if (!e) return;
     this.makeElite(e, affix === "random" ? rollAffixes(1) : affix === "double" ? rollAffixes(2) : [affix]);
     this.stats.enemiesLeft = this.enemies.filter(o => o.state !== "dead").length;
+    this.emitStats();
+  }
+
+  /** Dev: evolve the weapon in a slot right now. */
+  devEvolve(slot: 0 | 1) {
+    const id = this.stats.secondaryIds[slot];
+    if (id) this.evolveWeapon(id);
+  }
+
+  /** Dev: max mastery + grant the catalyst, so the next Spirit Chest evolves it. */
+  devReadyEvolution(slot: 0 | 1) {
+    const id = this.stats.secondaryIds[slot];
+    if (!id) return;
+    this.perks.weaponMastery[id] = EVO_MASTERY;
+    const cat = EVOLUTIONS[id].catalysts[0];
+    if (!this.hasCatalyst(id)) { if (PERK_POOL.some(p => p.id === cat)) this.acquiredPerks.push(cat); else this.perks.shopBought.push(cat); }
+    this.emitStats();
+  }
+
+  devGiveDuo(id: string) {
+    if (!DUO_BY_ID[id]) return;
+    this.applyPerk(id);
+    this.acquiredPerks.push(id);
     this.emitStats();
   }
 
@@ -5952,6 +6216,11 @@ export class GhostGame {
   }
 
   applyPerk(id: string) {
+    if (DUO_BY_ID[id]) {
+      if (!this.perks.duos.includes(id)) { this.perks.duos.push(id); this.run.duos.push(id); }
+      this.flash(`DUO · ${DUO_BY_ID[id].kanji} ${DUO_BY_ID[id].name}`);
+      return;
+    }
     switch (id) {
       case "blade_edge":
         this.addKatanaDamagePct(0.15);
@@ -6055,6 +6324,12 @@ export class GhostGame {
 
   rollPerkChoices(): PerkChoice[] {
     const out = this.rollPerkChoicesInner();
+    // DUO: 1 in 4 level-ups swaps the last card for an available duo perk.
+    const duos = this.availableDuos();
+    if (duos.length && out.length && Math.random() < 0.25) {
+      const d = duos[Math.floor(Math.random() * duos.length)];
+      out[out.length - 1] = { id: d.id, name: d.name, kanji: d.kanji, desc: `${d.desc} (${d.needsLabel})`, rarity: "legendary", kind: "passive", duo: true };
+    }
     this.emitEvent({ t: "offer", kind: "perk", ids: out.map(c => c.id) });
     return out;
   }
@@ -6148,6 +6423,10 @@ export class GhostGame {
   // Wave over: spend banked level-ups first, then visit the shop.
   private finishWave() {
     this.run.wavesCleared++;
+    if (this.hasDuo("duo_flow")) {   // DUO Endless Flow
+      for (const id of Object.keys(this.stats.abilityCd)) this.stats.abilityCd[id] = 0;
+      this.addUltCharge(this.stats.ultMax * 0.25);
+    }
     if (this.run.damageTaken <= this.waveDmgMark) {
       this.run.flawlessWaves++;
       this.run.flawlessStreak++;
@@ -6242,6 +6521,7 @@ export class GhostGame {
     this.updateEnemyProjectiles(dt);
     this.updateHazards(dt);
     this.updateElites(dt);
+    this.updateEvo(dt);
     this.updateParticles(dt);
     this.updatePetals(dtRaw);
     this.updateAbilities(dt);
@@ -6419,6 +6699,14 @@ export class GhostGame {
         if (d < r + e.size) {
           // Dash contact damage scales with the player's flat damage perk.
           const dmg = BASE.DASH_DAMAGE * (this.perks.damage / BASE.ATTACK_DAMAGE) * this.perks.dashDmgMul;
+          // DUO Phantom Rush: weak non-elites die outright.
+          if (this.hasDuo("duo_phantom") && !e.isBoss && !e.affixes && e.hp / e.maxHp < 0.4) {
+            p.dashHitIds.add(e.id);
+            this.spawnFloatText(e.pos, "幻", { color: "hsl(260 80% 80%)", size: 15, jp: true });
+            this.killEnemy(e, "ghost");
+            this.run.stealthKills++;
+            continue;
+          }
           e.hp -= dmg;
           this.spawnFloatText(e.pos, fmtNum(dmg), {
             color: "hsl(36 90% 75%)",
@@ -6548,6 +6836,7 @@ export class GhostGame {
       return;
     }
 
+    this.onKatanaSwing();
     const strikes = this.perks.doubleStrike ? 2 : 1;
     let hit = false;
     for (let s = 0; s < strikes; s++) {
@@ -6620,7 +6909,7 @@ export class GhostGame {
       this.hazards.push({ x: e.pos.x, y: e.pos.y, r: ELITE.volatileRadius, t: 0, max: ELITE.volatileFuse,
         damage: Math.round(e.damage * ELITE.volatileDmgMul), kind: "bomb", fromX: e.pos.x, fromY: e.pos.y, src: "volatile elite (explosion)" });
     }
-    if (!e.isBoss) this.spiritChests.push({ x: e.pos.x, y: e.pos.y, life: ELITE.chestLife, t: 0 });
+    this.spiritChests.push({ x: e.pos.x, y: e.pos.y, life: ELITE.chestLife, t: 0 });
   }
 
   /** Stats/achievement bookkeeping for a real kill. */
@@ -6646,6 +6935,7 @@ export class GhostGame {
     e.state = "dead";
     if (!this.sweeping) this.trackKill(e);
     if (e.affixes && !this.sweeping) this.onEliteDeath(e);
+    else if (e.isBoss && !this.sweeping) this.spiritChests.push({ x: e.pos.x, y: e.pos.y, life: ELITE.chestLife, t: 0 });
     e.deathTimer = 1.4;
     e.hp = 0;
     // Death Mark — chain to next nearest enemy with 3s remaining.
@@ -6723,7 +7013,10 @@ export class GhostGame {
       for (const o of this.enemies) {
         if (o === e || o.state === "dead" || o.hp <= 0) continue;
         const d = Math.hypot(o.pos.x - e.pos.x, o.pos.y - e.pos.y);
-        if (d <= R + o.size) this.dealDamage(o, rd, Math.atan2(o.pos.y - e.pos.y, o.pos.x - e.pos.x), 120);
+        if (d <= R + o.size) {
+          if (this.hasDuo("duo_pyre")) { o.burnRemaining = Math.max(o.burnRemaining, 4); o.burnDps = Math.max(o.burnDps, 5); }  // DUO Funeral Pyre
+          this.dealDamage(o, rd, Math.atan2(o.pos.y - e.pos.y, o.pos.x - e.pos.x), 120);
+        }
       }
       this.fx.shockwave(e.pos.x, e.pos.y, R, { hue: 280, light: 70, life: 0.5, width: 10, lines: 14 });
       this.fx.seal(e.pos.x, e.pos.y - 30, "冥", 280, 30, 0.7);
@@ -6763,7 +7056,8 @@ export class GhostGame {
     if (this.odachiEquipped()) killHeal += 1;          // Odachi passive (was +2)
     if (this.ultBloodRageTimer > 0) killHeal += 3;     // Berserker Blood Rage (was +5)
     if (killHeal > 0) {
-      const heal = Math.min(MAX_HEAL_PER_KILL, killHeal);
+      let heal = Math.min(MAX_HEAL_PER_KILL, killHeal);
+      if (this.hasDuo("duo_undying") && this.player.hp / Math.max(1, this.player.maxHp) < 0.3) heal *= 3;  // DUO Undying Rage
       this.player.hp = Math.min(this.player.maxHp, this.player.hp + heal);
     }
     // Momentum: kills reduce all equipped ability cooldowns
@@ -6852,6 +7146,7 @@ export class GhostGame {
   // `weaponSource` is the secondary id of the weapon that produced the hit
   // (used for hitstun lookup). Pass undefined for katana / generic sources.
   dealDamage(e: Enemy, baseDmg: number, ang: number, knockback: number, weaponSource?: SecondaryId | "katana") {
+    if (weaponSource && this.isEvolved(weaponSource)) baseDmg *= EVO_DAMAGE_MUL;
     // Warded elite — the first few hits are absorbed by its ward.
     if (e.wardHits && e.wardHits > 0) {
       e.wardHits--;
@@ -6940,6 +7235,7 @@ export class GhostGame {
     if (this.ultFinaleTimer > 0 || (critChance > 0 && Math.random() < critChance)) {
       dmg *= 3;
       isCrit = true;
+      if (this.hasDuo("duo_venom") && e.poisonRemaining > 0) dmg *= 2;   // DUO Venom Strike
       if (this.stats.classId === "kabuki" && this.kabukiHealCd <= 0 && this.player.hp < this.player.maxHp) {
         this.kabukiHealCd = 0.5;
         this.player.hp = Math.min(this.player.maxHp, this.player.hp + 1);
@@ -6948,6 +7244,7 @@ export class GhostGame {
     e.hp -= dmg;
     this.run.damageDealt += dmg;
     if (dmg > this.run.biggestHit) this.run.biggestHit = dmg;
+    if (!this.evoNested && !this.raijinZapping) this.onEvoHit(e, weaponSource, dmg, isCrit);
     // Floating damage number above the enemy.
     const shown = fmtNum(dmg);
     this.spawnFloatText(e.pos, isCrit ? `${shown}!` : `${shown}`, {
@@ -7117,6 +7414,18 @@ export class GhostGame {
     const bannerMul = this.ultBannerActive ? 0.7 : 1;
     const lastStandMul = this.perks.lastStand && this.player.hp / Math.max(1, this.player.maxHp) < 0.3 ? 0.8 : 1;
     baseDamage = Math.max(1, Math.round(this.scaleEnemyDamage(baseDamage) * bannerMul * lastStandMul * this.commanderMul(e)));
+    // EVOLUTION Iron Warden shield soaks damage first.
+    if (this.evoShield > 0) {
+      const soak = Math.min(this.evoShield, baseDamage);
+      this.evoShield -= soak;
+      baseDamage -= soak;
+      if (baseDamage <= 0) {
+        this.player.invuln = Math.max(this.player.invuln, 0.3);
+        this.spawnFloatText(this.player.pos, `Shield ${soak}`, { color: "hsl(45 90% 70%)", size: 12 });
+        audio.play("armorRing");
+        return;
+      }
+    }
     this.player.hp -= baseDamage;
     this.run.damageTaken += baseDamage;
     this.lastHitBy = source ?? (e ? (e.archetype === "final" ? "final boss" : e.isBoss ? `${e.bossKind ?? "oni"} boss` : e.affixes ? `elite ${e.archetype}` : e.archetype) : "unknown");
@@ -7206,6 +7515,18 @@ export class GhostGame {
       const dx = this.player.pos.x - ep.pos.x;
       const dy = this.player.pos.y - ep.pos.y;
       if (Math.hypot(dx, dy) < BASE.PLAYER_RADIUS + ep.size * 0.5) {
+          // EVOLUTION Fortress Wall: blocking with the evolved Tate reflects shots.
+          if (this.input.blockHeld && this.stats.secondaryIds[this.stats.secondaryActiveSlot] === "tate" && this.isEvolved("tate")) {
+            const sp = Math.hypot(ep.vel.x, ep.vel.y) * 1.2;
+            const a = Math.atan2(-ep.vel.y, -ep.vel.x);
+            this.secProjectiles.push({ pos: { x: ep.pos.x, y: ep.pos.y }, vel: { x: Math.cos(a) * sp, y: Math.sin(a) * sp },
+              life: 1.2, maxLife: 1.2, damage: ep.damage * 2 + this.perks.damage, hitSet: new Set(), pierce: true,
+              kind: "kunai", hookEnemyId: null, trail: [] });
+            this.spawnSpark(ep.pos);
+            audio.play("parry");
+            ep.life = 0;
+            continue;
+          }
           // ===== Phase B — Tessen passive 10% projectile deflect while equipped =====
           if (this.tessenEquipped() && Math.random() < 0.10) {
             this.spawnSpark(ep.pos);
@@ -8895,6 +9216,7 @@ export class GhostGame {
     for (const e of this.enemies) if (e.state === "dead") this.drawEnemy(e, true);
     for (const p of this.particles) if (p.kind === "blood") this.drawParticle(p);
     this.drawEliteGround();
+    this.drawEvo();
     for (const e of this.enemies) if (e.state !== "dead") this.drawEnemy(e, false);
     this.drawEliteTags();
     this.drawSearchMarkers();
@@ -12768,6 +13090,7 @@ export class GhostGame {
     // We branch by id BEFORE the generic "self" path so smoke_bomb still works.
     if (isMeleeSecondary(id)) {
       this.swingMeleeSecondary(id, def);
+      this.onEvoFire(id);
       return;
     }
 
@@ -12775,11 +13098,13 @@ export class GhostGame {
       // Smoke bomb (secondary) — drops at player's feet.
       // Deliberately smaller and shorter than the Smoke Bomb ability
       // so the ability still feels distinct and powerful.
+      const fog = this.isEvolved("smoke_bomb");   // EVOLUTION: Ninja Fog
       this.smokeClouds.push({
         pos: { x: p.pos.x, y: p.pos.y },
-        radius: 80,
-        life: 3.5,
-        maxLife: 3.5,
+        radius: fog ? 125 : 80,
+        life: fog ? 4 : 3.5,
+        maxLife: fog ? 4 : 3.5,
+        follow: fog,
       });
       this.spawnInkSwirl(p.pos, "hsl(220 18% 75%)", 14);
       audio.play("smokeWoosh");
@@ -12816,7 +13141,8 @@ export class GhostGame {
         vh,
         life: T + 0.3,            // a little slack past the predicted landing
         damage: this.effectiveSecondaryDamage(id) + 4,
-        radius: 90,
+        radius: this.isEvolved(id) ? 126 : 90,     // EVOLUTION: Venom Caltrops
+        venom: this.isEvolved(id),
       });
       // Face the throw so the throwing animation reads correctly.
       p.facing = ang;
@@ -12826,8 +13152,11 @@ export class GhostGame {
     }
 
     // Aimed projectile (yumi / kunai / crossbow / kusarigama).
-    const count = def.projectiles;
-    const spread = def.spread;
+    // EVOLUTION: Raiden Bow / Shadow Fan / Siege Repeater fire extra shots.
+    const evo = this.isEvolved(id);
+    const extra = !evo ? 0 : id === "yumi" ? 2 : id === "kunai" ? 2 : id === "crossbow" ? 3 : 0;
+    const count = def.projectiles + extra;
+    const spread = extra && def.spread < 0.2 ? 0.22 + def.spread : def.spread;
     for (let i = 0; i < count; i++) {
       const t = count === 1 ? 0 : (i / (count - 1)) - 0.5;   // -0.5..0.5
       const ang = baseAng + t * spread;
@@ -12857,7 +13186,8 @@ export class GhostGame {
         damage: dmg,
         hitSet: new Set(),
         // arrows + spears pierce; shuriken bounces (handled separately, not pierce)
-        pierce: kind === "arrow" || kind === "spear",
+        pierce: kind === "arrow" || kind === "spear" || (evo && (id === "kunai" || id === "crossbow")),
+        src: id,
         kind,
         hookEnemyId: null,
         trail: [],
@@ -12871,6 +13201,7 @@ export class GhostGame {
       if (kind === "dart") proj.poisonSeconds = 3;
       this.secProjectiles.push(proj);
     }
+    this.onEvoFire(id);   // EVOLUTION hooks for projectile weapons (Storm Wheel)
     // Phase 6 — muzzle flash + per-weapon fire SFX
     const flashColor =
       id === "yumi" ? "hsl(200 80% 80%)" :
@@ -13103,7 +13434,7 @@ export class GhostGame {
           // Latch + bleed
           pr.hookEnemyId = e.id;
           e.bleedRemaining = Math.max(e.bleedRemaining, 3);
-          this.dealDamage(e, pr.damage, ang, 0);
+          this.dealDamage(e, pr.damage, ang, 0, pr.src);
           audio.play("hookClink");
           break;
         }
@@ -13118,7 +13449,7 @@ export class GhostGame {
           // Ensure there's some poison DPS even if class doesn't grant it.
           if (this.perks.poisonDps <= 0) this.perks.poisonDps = 4;
         }
-        this.dealDamage(e, pr.damage, ang, pr.kind === "kunai" ? 30 : 60);
+        this.dealDamage(e, pr.damage, ang, pr.kind === "kunai" ? 30 : 60, pr.src);
         // Phase 6 — per-weapon impact sound + tiny shake on heavy bolts/arrows.
         if (pr.kind === "arrow") { audio.play("arrowHit"); this.cameraShake = Math.max(this.cameraShake, 0.12); }
         else if (pr.kind === "bolt") audio.play("crossbowSnap");
@@ -13196,6 +13527,7 @@ export class GhostGame {
           maxLife: 4,
           dps: 6,
           tickAccum: 0,
+          venom: b.venom,
         });
         b.life = 0;
       }
@@ -13214,6 +13546,7 @@ export class GhostGame {
           if (e.state === "dead") continue;
           const d = Math.hypot(e.pos.x - c.pos.x, e.pos.y - c.pos.y);
           if (d <= c.radius) {
+            if (c.venom) { e.poisonRemaining = Math.min(8, e.poisonRemaining + 0.5); if (this.perks.poisonDps <= 0) this.perks.poisonDps = 4; }
             e.hp -= tick;
             e.hitFlash = Math.max(e.hitFlash, 0.3);
             if (e.hp <= 0) this.killEnemy(e, "ghost");
@@ -13227,6 +13560,7 @@ export class GhostGame {
   updateSmokeClouds(dt: number) {
     for (const s of this.smokeClouds) {
       s.life -= dt;
+      if (s.follow) { s.pos.x += (this.player.pos.x - s.pos.x) * Math.min(1, dt * 8); s.pos.y += (this.player.pos.y - s.pos.y) * Math.min(1, dt * 8); }
       // Slow + lower alertness + disorient enemies inside the cloud.
       // Disorient is what makes enemies eligible for stealth kills, so
       // both the smoke-bomb ability AND the smoke-bomb secondary now
@@ -14067,6 +14401,11 @@ export class GhostGame {
     this.stats.mon -= item.price;
     this.stats.shopPurchasedIds.push(itemId);
     this.run.purchases++;
+    if (!this.perks.shopBought.includes(item.effect)) this.perks.shopBought.push(item.effect);
+    {
+      const m = /^dmg_([a-z_]+)_(common|rare|leg)$/.exec(item.effect);
+      if (m) this.perks.weaponMastery[m[1]] = (this.perks.weaponMastery[m[1]] ?? 0) + 1;
+    }
     this.emitEvent({ t: "pick", kind: "shop", id: item.effect });
     try {
       this.applyShopEffect(item);

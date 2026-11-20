@@ -221,6 +221,23 @@ kbd {
 }
 .cell.held .cell-name { color: var(--gold); }
 .cell.stowed { opacity: .45; transform: scale(.92); }
+/* Weapon evolutions */
+.slot.evo-ready { animation: evoReady 1.2s ease-in-out infinite; }
+@keyframes evoReady { 50% { box-shadow: 0 0 0 2px hsl(45 95% 65%), 0 0 22px hsl(45 95% 60%); } }
+.slot.evolved { background: linear-gradient(160deg, rgba(240,199,94,.22), rgba(0,0,0,.4)); border-color: hsl(45 85% 60%); }
+.slot.evolved .k-base, .slot.evolved .k-fill { color: hsl(45 95% 70%); }
+.evo-list { display: grid; gap: 8px; }
+.evo-row { display: grid; grid-template-columns: 28px 1fr; column-gap: 8px; font-size: 13px; color: var(--muted); }
+.evo-row .kanji { grid-row: span 4; font-size: 22px; color: var(--dim); }
+.evo-row b { color: var(--bone); }
+.evo-row i { font-style: normal; color: var(--dim); font-size: 12px; }
+.evo-row.ready .kanji, .evo-row.done .kanji { color: var(--ult); }
+.evo-row.ready b { color: var(--ult); }
+.evo-row.done b { color: var(--ult); }
+/* Duo perk card */
+.card.duo { border-image: linear-gradient(135deg, var(--legendary), var(--rare)) 1; background: linear-gradient(160deg, rgba(244,200,66,.10), rgba(177,151,252,.12)), var(--surface-2); }
+.card .duo-tag { background: linear-gradient(90deg, var(--legendary), var(--rare)); }
+@media (prefers-reduced-motion: reduce) { .slot.evo-ready { animation: none; box-shadow: 0 0 0 2px hsl(45 95% 65%); } }
 .buffs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
 .buff {
   display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 2px 7px 2px 4px;

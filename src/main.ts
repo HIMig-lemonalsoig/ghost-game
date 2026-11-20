@@ -6,6 +6,8 @@ import { hueOf } from "./fx";
 import type { ClassId, GameStats, SecondaryId, Difficulty } from "./GhostGame";
 import { UI_CSS } from "./ui.css";
 import { initDevMode } from "./devmode";
+import { EVOLUTIONS, EVO_MASTERY } from "./content/evolutions";
+import { DUO_BY_ID } from "./content/duos";
 import { trackGame, trackStartWeapons } from "./telemetry";
 import { trackRun, commitRun, careerHTML, resetCareer, CAREER_CSS, getCareer, liveCareer, isFreshRun } from "./career";
 import { ACHIEVEMENTS, checkAchievements, achievementsHTML, achToastHTML, unlockedCount, ACH_CSS } from "./achievements";
@@ -241,6 +243,7 @@ function perkLabel(id: string): { kanji: string; name: string } {
     const a = abilityInfo(id.slice(8));
     return a ? { kanji: a.kanji, name: a.name } : { kanji: "技", name: id.slice(8) };
   }
+  if (DUO_BY_ID[id]) return { kanji: DUO_BY_ID[id].kanji, name: `${DUO_BY_ID[id].name} (duo)` };
   const base = id.split(/[#:x]/)[0];
   const p = PERK_POOL.find(pp => pp.id === id || pp.id === base);
   return p ? { kanji: p.kanji, name: p.name } : { kanji: "印", name: id.replace(/_/g, " ") };
@@ -670,7 +673,11 @@ function updateHud(s: GameStats) {
     const c = wCells[i];
     if (!id) { setCell(c, `w${i}`, "—", "Empty", 40, "", true); return; }
     const w = SECONDARIES[id];
-    setCell(c, `w${i}${id}`, w.kanji, w.name, SLASH_HUE[id] ?? 40, i === 0 ? "1st" : "2nd", false);
+    const evo = game?.evoStatus(id);
+    const evolved = evo?.state === "evolved";
+    setCell(c, `w${i}${id}${evolved ? "E" : ""}`, evolved ? EVOLUTIONS[id].kanji : w.kanji, evolved ? EVOLUTIONS[id].name : w.name, SLASH_HUE[id] ?? 40, i === 0 ? "1st" : "2nd", false);
+    toggle(c.slot, "evo-ready", evo?.state === "ready");
+    toggle(c.slot, "evolved", evolved);
     const reloading = s.secondaryReloadMax[i] > 0 && s.secondaryReload[i] > 0;
     const p = reloading ? 1 - s.secondaryReload[i] / s.secondaryReloadMax[i] : 1;
     const ammo = s.secondaryAmmoMax[i] > 0 ? `${s.secondaryAmmo[i]}/${s.secondaryAmmoMax[i]}` : "∞";
@@ -812,8 +819,8 @@ function rarityClass(r: string) { return `r-${r}`; }
 
 function renderLevelUp(s: GameStats) {
   const cards = s.pendingChoices.map((c, i) => `
-    <button class="card glow tilt ${rarityClass(c.rarity)}" data-perk="${c.id}">
-      <kbd class="key">${i + 1}</kbd>${c.kind === "ability" ? `<span class="tag">ABILITY</span>` : ""}
+    <button class="card glow tilt ${rarityClass(c.rarity)}${c.duo ? " duo" : ""}" data-perk="${c.id}">
+      <kbd class="key">${i + 1}</kbd>${c.kind === "ability" ? `<span class="tag">ABILITY</span>` : ""}${c.duo ? `<span class="tag duo-tag">DUO</span>` : ""}
       <div class="kanji">${c.kanji}</div><div class="cn">${c.name}</div><div class="rar">${c.rarity}</div><div class="cd">${c.desc}</div>
     </button>`).join("");
   showOverlay(`<div class="panel">
@@ -857,6 +864,21 @@ function renderShop(s: GameStats) {
     </div></div>`);
 }
 
+function evoRows(s: GameStats): string {
+  const ids = [...new Set(s.secondaryIds.filter((x): x is SecondaryId => !!x))];
+  if (!game || !ids.length) return "";
+  return ids.map(id => {
+    const st = game!.evoStatus(id), evo = EVOLUTIONS[id];
+    if (st.state === "evolved") return `<div class="evo-row done"><span class="kanji">${evo.kanji}</span><b>${evo.name}</b><span>${evo.desc}</span></div>`;
+    const m = Math.min(EVO_MASTERY, st.mastery);
+    return `<div class="evo-row${st.state === "ready" ? " ready" : ""}"><span class="kanji">${SECONDARIES[id].kanji}</span>
+      <b>${SECONDARIES[id].name} → ${evo.name}</b>
+      <span>${m >= EVO_MASTERY ? "✓" : "○"} Mastery ${m}/${EVO_MASTERY} <i>(buy "${id === "katana" ? "Whetstone" : SECONDARIES[id].name + " Mastery/Honed/Forged"}" in the shop)</i></span>
+      <span>${st.catalyst ? "✓" : "○"} Catalyst: ${evo.catalystLabel}</span>
+      <span>${st.state === "ready" ? "★ Ready! Open a Spirit Chest (elites and bosses drop them)" : "○ Then open a Spirit Chest"}</span></div>`;
+  }).join("");
+}
+
 function renderPause(s: GameStats) {
   const d = s.derivedStats;
   const perks = s.perks.length
@@ -885,6 +907,7 @@ function renderPause(s: GameStats) {
           <div>HP regen <b>${d.hpRegen.toFixed(1)}/s${mx(d.hpRegen >= STAT_CAPS.hpRegen)}</b></div><div>Weapon dmg <b>×${d.secondaryDmgMul.toFixed(2)}${mx(d.secondaryDmgMul >= STAT_CAPS.secondaryDmgMul)}</b></div>
         </div></div>
         <div class="pane"><h4>Blessings</h4><div class="perk-list">${perks}</div></div>
+        <div class="pane"><h4>Weapon evolutions</h4><div class="evo-list">${evoRows(s)}</div></div>
         <div class="pane"><h4>Controls · click a key to change it</h4>${controlsPanel()}</div>
       </div>
     </div></div>`);

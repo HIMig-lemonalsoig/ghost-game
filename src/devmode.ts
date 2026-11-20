@@ -8,6 +8,7 @@ import {
 import type { GhostGame, SecondaryId, ConsumableId, EnemyArchetype, BossKind } from "./GhostGame";
 import { reportHTML, getTelemetry, resetTelemetry } from "./telemetry";
 import { AFFIXES } from "./content/elites";
+import { DUOS } from "./content/duos";
 import type { AffixId } from "./content/elites";
 
 const UNLOCK_KEY = "ghostgame.dev.v1";
@@ -195,6 +196,8 @@ export function initDevMode(getGame: () => GhostGame | null) {
       <div class="row"><select data-dev-in="item">${opts(Object.values(CONSUMABLES).map(c => [c.id, c.name]))}</select><button data-dev="item">Give</button></div>
       <div class="row">W1 <select data-dev-in="w0">${weaponOpts}</select><button data-dev="w0">Equip</button></div>
       <div class="row">W2 <select data-dev-in="w1">${weaponOpts}</select><button data-dev="w1">Equip</button></div>
+      <div class="row">Evolve <button data-dev="evo0">W1 now</button><button data-dev="evo1">W2 now</button><button data-dev="rdy0">Ready W1</button><button data-dev="rdy1">Ready W2</button></div>
+      <div class="row"><select data-dev-in="duo">${opts(DUOS.map(d => [d.id, `Duo: ${d.name}`] as [string, string]))}</select><button data-dev="duo">Give</button></div>
       <div class="row">A1 <select data-dev-in="a0">${abilityOpts}</select><button data-dev="a0">Set</button></div>
       <div class="row">A2 <select data-dev-in="a1">${abilityOpts}</select><button data-dev="a1">Set</button></div>
     </section>
@@ -278,6 +281,11 @@ export function initDevMode(getGame: () => GhostGame | null) {
       case "boss": g.devSpawnBoss(val("boss") as BossKind | "final"); break;
       case "elite": g.devSpawnElite(val("enemy") as EnemyArchetype, val("affix") as AffixId | "random" | "double"); break;
       case "chest": g.devSpawnChest(); break;
+      case "evo0": g.devEvolve(0); break;
+      case "evo1": g.devEvolve(1); break;
+      case "rdy0": g.devReadyEvolution(0); break;
+      case "rdy1": g.devReadyEvolution(1); break;
+      case "duo": g.devGiveDuo(val("duo")); break;
       case "perk": g.devGivePerk(val("perk")); break;
       case "item": g.devGiveItem(val("item") as ConsumableId); break;
       case "w0": g.devSetWeapon(0, val("w0") as SecondaryId); break;

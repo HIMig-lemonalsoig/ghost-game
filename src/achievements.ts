@@ -5,6 +5,11 @@
 // touched dev mode never unlock anything.
 import { CLASSES } from "./GhostGame";
 import { AFFIX_IDS } from "./content/elites";
+import { EVOLUTIONS } from "./content/evolutions";
+import { DUOS } from "./content/duos";
+const EVO_COUNT = Object.keys(EVOLUTIONS).length;
+const evolvedKinds = (x: AchCtx) => Object.keys(x.c.evolvedBy ?? {}).length;
+const duoKinds = (x: AchCtx) => Object.keys(x.c.duosBy ?? {}).length;
 import type { GameStats, RunCounters, Difficulty } from "./GhostGame";
 import type { Career } from "./career";
 
@@ -68,6 +73,7 @@ export const ACHIEVEMENTS: Ach[] = [
   { id: "wanderer", tier: "uncommon", kanji: "旅", name: "Wanderer", desc: "Play 3 different classes.", check: x => classesPlayed(x) >= 3, progress: x => [Math.min(3, classesPlayed(x)), 3] },
   { id: "stocked", tier: "uncommon", kanji: "薬", name: "Well Stocked", desc: "Use 25 items in total.", ...total("items", 25) },
 
+  { id: "evolved", tier: "uncommon", kanji: "進", name: "Evolution", desc: "Evolve a weapon (Mastery 3 + its catalyst + a Spirit Chest).", check: x => evolvedKinds(x) >= 1 },
   { id: "double_trouble", tier: "uncommon", kanji: "双", name: "Double Trouble", desc: "Kill an elite with two affixes (from wave 18).", ...runMax("doubleEliteKills", 1) },
 
   // ── Rare ──
@@ -85,6 +91,7 @@ export const ACHIEVEMENTS: Ach[] = [
   { id: "elite_hunter", tier: "rare", kanji: "狩", name: "Elite Hunter", desc: "Kill an elite with each of the 8 affixes.",
     check: x => AFFIX_IDS.every(a => (x.c.eliteByAffix?.[a] ?? 0) > 0),
     progress: x => [AFFIX_IDS.filter(a => (x.c.eliteByAffix?.[a] ?? 0) > 0).length, AFFIX_IDS.length] },
+  { id: "duo_first", tier: "rare", kanji: "双", name: "Better Together", desc: "Take a duo perk (own the two perks it needs, then it can show up at level-up).", check: x => duoKinds(x) >= 1 },
   { id: "treasure", tier: "rare", kanji: "宝", name: "Treasure Hunter", desc: "Open 25 Spirit Chests in total.", ...total("chests", 25) },
   { id: "clutch", tier: "rare", kanji: "危", name: "By a Thread", desc: "Clear a wave with 3 HP or less.", ...runMax("clutchWaves", 1) },
 
@@ -99,6 +106,7 @@ export const ACHIEVEMENTS: Ach[] = [
   { id: "master_of_many", tier: "epic", kanji: "衆", name: "Master of Many", desc: `Play every class (${CLASSES.length}).`,
     check: x => classesPlayed(x) >= CLASSES.length, progress: x => [Math.min(CLASSES.length, classesPlayed(x)), CLASSES.length] },
   { id: "in_the_zone", tier: "epic", kanji: "心", name: "In the Zone", desc: "Clear 3 waves in a row without taking damage.", ...runMax("bestFlawlessStreak", 3) },
+  { id: "arsenal", tier: "epic", kanji: "庫", name: "Arsenal", desc: "Evolve 8 different weapons.", check: x => evolvedKinds(x) >= 8, progress: x => [Math.min(8, evolvedKinds(x)), 8] },
   { id: "marathon", tier: "epic", kanji: "時", name: "Marathon", desc: "Play for 5 hours in total.",
     check: x => x.c.time >= 5 * 3600, progress: x => [Math.min(300, Math.floor(x.c.time / 60)), 300] },
 
@@ -109,6 +117,8 @@ export const ACHIEVEMENTS: Ach[] = [
   { id: "ten_thousand", tier: "legendary", kanji: "万", name: "Ten Thousand Blades", desc: "Kill 10,000 enemies in total.", ...total("kills", 10000) },
   { id: "untouchable", tier: "legendary", kanji: "空", name: "Untouchable", desc: "Clear 5 waves in a row without taking damage.", ...runMax("bestFlawlessStreak", 5) },
   { id: "tyrants_end", tier: "legendary", kanji: "覇", name: "Tyrant's End", desc: "Slay the Final Boss on Hard or Death.", check: x => atLeast(x, "hard") && runBossFinal(x) },
+  { id: "master_smith", tier: "legendary", kanji: "鍛", name: "Master Smith", desc: `Evolve every weapon (${EVO_COUNT}).`, check: x => evolvedKinds(x) >= EVO_COUNT, progress: x => [evolvedKinds(x), EVO_COUNT] },
+  { id: "harmony", tier: "legendary", kanji: "和", name: "Perfect Harmony", desc: `Take every duo perk (${DUOS.length}).`, check: x => duoKinds(x) >= DUOS.length, progress: x => [duoKinds(x), DUOS.length] },
   { id: "annihilation", tier: "legendary", kanji: "滅", name: "Annihilation", desc: "Kill 20 enemies within half a second.", ...runMax("bestMultiKill", 20) },
 
   // ── Mythic (insanely rare) ──
