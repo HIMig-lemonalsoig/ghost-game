@@ -6,6 +6,7 @@ import { hueOf } from "./fx";
 import type { ClassId, GameStats, SecondaryId, Difficulty } from "./GhostGame";
 import { UI_CSS } from "./ui.css";
 import { initDevMode } from "./devmode";
+import { playIntro } from "./intro";
 import { EVOLUTIONS, EVO_MASTERY } from "./content/evolutions";
 import { DUO_BY_ID } from "./content/duos";
 import { SIGNATURES } from "./content/signatures";
@@ -1123,3 +1124,4 @@ document.addEventListener("visibilitychange", () => {
 initDevMode(() => game);
 applySettings();
 showMenu();
+void playIntro();   // liquid-glass 幽 reveal over the menu each time the game opens
