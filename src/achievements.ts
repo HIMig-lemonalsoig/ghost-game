@@ -4,6 +4,8 @@
 // Lifetime goals read career totals; run goals read the live run. Runs that
 // touched dev mode never unlock anything.
 import { CLASSES } from "./GhostGame";
+import { wonClasses, totalWins } from "./career";
+const wonOn = (x: AchCtx, ...ds: string[]) => Object.keys(x.c.wins ?? {}).some(k => ds.includes(k.split("@")[1]));
 import { AFFIX_IDS } from "./content/elites";
 import { EVOLUTIONS } from "./content/evolutions";
 import { DUOS } from "./content/duos";
@@ -81,6 +83,7 @@ export const ACHIEVEMENTS: Ach[] = [
   { id: "double_trouble", tier: "uncommon", kanji: "双", name: "Double Trouble", desc: "Kill an elite with two affixes (from wave 18).", ...runMax("doubleEliteKills", 1) },
 
   // ── Rare ──
+  { id: "first_win", tier: "rare", kanji: "勝", name: "Empire Forged", desc: "Win a run by slaying the Final Boss on wave 25.", check: x => totalWins(x.c) >= 1 },
   { id: "wave20", tier: "rare", kanji: "廿", name: "Veteran", desc: "Reach wave 20.", ...reachWave(20) },
   { id: "yokai_hunter", tier: "rare", kanji: "四", name: "Yokai Hunter", desc: "Slay all four bosses: Oni, Kitsune, Gashadokuro and Raijin.",
     check: x => ["oni", "kitsune", "gasha", "raijin"].every(k => (x.c.bossByKind[k] ?? 0) > 0),
@@ -114,6 +117,9 @@ export const ACHIEVEMENTS: Ach[] = [
   { id: "arsenal", tier: "epic", kanji: "庫", name: "Arsenal", desc: "Evolve 8 different weapons.", check: x => evolvedKinds(x) >= 8, progress: x => [Math.min(8, evolvedKinds(x)), 8] },
   { id: "sworn", tier: "epic", kanji: "誓", name: "Sworn", desc: "Reach wave 15 with a Vow score of 10 or more.",
     check: x => (x.vow >= 10 && (x.s?.wave ?? 0) >= 15) || ((x.c.vowBest?.score ?? 0) >= 10 && (x.c.vowBest?.wave ?? 0) >= 15) },
+  { id: "win_hard", tier: "epic", kanji: "難", name: "Hard-Won", desc: "Win a run on Hard or Death.", check: x => wonOn(x, "hard", "death") },
+  { id: "win_10", tier: "epic", kanji: "十", name: "Ten Victories", desc: "Win with 10 different classes.",
+    check: x => wonClasses(x.c).size >= 10, progress: x => [Math.min(10, wonClasses(x.c).size), 10] },
   { id: "marathon", tier: "epic", kanji: "時", name: "Marathon", desc: "Play for 5 hours in total.",
     check: x => x.c.time >= 5 * 3600, progress: x => [Math.min(300, Math.floor(x.c.time / 60)), 300] },
 
@@ -128,6 +134,7 @@ export const ACHIEVEMENTS: Ach[] = [
   { id: "harmony", tier: "legendary", kanji: "和", name: "Perfect Harmony", desc: `Take every duo perk (${DUOS.length}).`, check: x => duoKinds(x) >= DUOS.length, progress: x => [duoKinds(x), DUOS.length] },
   { id: "oathbound", tier: "legendary", kanji: "盟", name: "Oathbound", desc: "Reach wave 15 with a Vow score of 20 or more.",
     check: x => (x.vow >= 20 && (x.s?.wave ?? 0) >= 15) || ((x.c.vowBest?.score ?? 0) >= 20 && (x.c.vowBest?.wave ?? 0) >= 15) },
+  { id: "win_death", tier: "legendary", kanji: "死", name: "Death Conquered", desc: "Win a run on Death difficulty.", check: x => wonOn(x, "death") },
   { id: "annihilation", tier: "legendary", kanji: "滅", name: "Annihilation", desc: "Kill 20 enemies within half a second.", ...runMax("bestMultiKill", 20) },
 
   // ── Mythic (insanely rare) ──
@@ -138,6 +145,8 @@ export const ACHIEVEMENTS: Ach[] = [
     check: x => x.fresh && !!x.r && !!x.s && x.r.purchases === 0 && x.s.wave >= 20 },
   { id: "every_oath", tier: "mythic", kanji: "極", name: "Every Oath Sworn", desc: "Reach wave 25 with every vow at max rank (Vow score 30).",
     check: x => x.vow >= 30 && (x.s?.wave ?? 0) >= 25 },
+  { id: "win_all", tier: "mythic", kanji: "覇", name: "Shogun of All", desc: `Win with every class (${CLASSES.length}).`,
+    check: x => wonClasses(x.c).size >= CLASSES.length, progress: x => [wonClasses(x.c).size, CLASSES.length] },
   { id: "beyond_death", tier: "mythic", kanji: "超", name: "Beyond Death", desc: "Reach wave 30 on Death difficulty.",
     check: x => bestOn(x, "death") >= 30 || (x.diff === "death" && (x.s?.wave ?? 0) >= 30) },
 ];

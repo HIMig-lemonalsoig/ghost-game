@@ -18,7 +18,7 @@ import { DUOS } from "./content/duos";
 import { VOWS, VOW_BY_ID, vowScore, vowRank, MAX_VOW_SCORE, VOW_UNLOCK_WAVE, VOW_COIN_BONUS } from "./content/vows";
 import type { VowSet, VowId } from "./content/vows";
 import { trackGame, trackStartWeapons } from "./telemetry";
-import { trackRun, commitRun, careerHTML, resetCareer, CAREER_CSS, getCareer, liveCareer, isFreshRun } from "./career";
+import { trackRun, commitRun, careerHTML, resetCareer, CAREER_CSS, getCareer, liveCareer, isFreshRun, recordWin, wonClasses } from "./career";
 import { ACHIEVEMENTS, checkAchievements, achievementsHTML, achToastHTML, unlockedCount, ACH_CSS } from "./achievements";
 import type { AchCtx } from "./achievements";
 
@@ -433,7 +433,8 @@ function renderMenu() {
   const saved = hasSavedRun() ? loadRun() : null;
   const cards = CLASSES.map(c => {
     const b = best[bestKey(c.id, settings.difficulty)];
-    const badge = b ? `<span class="best num">Best W${b}</span>` : "";
+    const won = wonClasses().has(c.id);
+    const badge = (b ? `<span class="best num">${won ? "✓ " : ""}Best W${b}</span>` : won ? `<span class="best num">✓ Won</span>` : "");
     return `<button class="class-card glow${c.id === currentClass ? " sel" : ""}" data-class="${c.id}" style="--accent:${c.accent}" aria-pressed="${c.id === currentClass}">
       <span class="watermark" aria-hidden="true">${c.ultKanji}</span>${badge}<div class="kanji">${c.kanji}</div><div class="name">${c.name}</div><div class="role">${c.role}</div>
     </button>`;
@@ -829,10 +830,10 @@ function updateHud(s: GameStats) {
     const D = DIFFICULTIES[game.difficulty];
     const tag = H("difftag");
     const vs = game.vowScore;
-    if (tag && cache.get("difftag") !== `${game.difficulty}${vs}`) {
-      cache.set("difftag", `${game.difficulty}${vs}`);
+    if (tag && cache.get("difftag") !== `${game.difficulty}${vs}${game.endless}`) {
+      cache.set("difftag", `${game.difficulty}${vs}${game.endless}`);
       tag.style.setProperty("--c", D.color);
-      tag.innerHTML = `<span class="kanji">${D.kanji}</span> ${D.name.toUpperCase()}${vs ? ` · <span class="kanji">誓</span> ${vs}` : ""}`;
+      tag.innerHTML = `<span class="kanji">${D.kanji}</span> ${D.name.toUpperCase()}${vs ? ` · <span class="kanji">誓</span> ${vs}` : ""}${game.endless ? " · ∞ ENDLESS" : ""}`;
     }
   }
 
@@ -944,7 +945,7 @@ function updateHud(s: GameStats) {
     `<span class="buff" style="--c:${c}"><b class="kanji">${k}</b>${label}${t >= 0 ? ` <i class="num">${Math.ceil(t)}s</i>` : ""}</span>`).join(""));
 
   // Records
-  const bk = bestKey(s.classId, game?.difficulty ?? "normal");
+  const bk = bestKey(s.classId, game?.difficulty ?? "normal") + (game?.endless ? "#endless" : "");
   if (!game?.devMode && s.wave > (best[bk] ?? 0) && (s.state === "defeat" || s.state === "victory" || s.state === "shop")) {
     best[bk] = s.wave;
     writeJSON(BEST_KEY, best);
@@ -956,7 +957,8 @@ function updateHud(s: GameStats) {
   // Career — fold progress in at each wave end and when the run ends.
   if (game && s.state !== careerSeenState) {
     if (s.state === "shop") commitRun(game);
-    else if (s.state === "defeat" || s.state === "victory") commitRun(game, true);
+    else if (s.state === "defeat") commitRun(game, true);
+    else if (s.state === "victory") { commitRun(game); recordWin(game); }   // run continues if they go Endless
     careerSeenState = s.state;
     runAchievementCheck(true);
   }
@@ -1108,12 +1110,14 @@ function renderPause(s: GameStats) {
 
 function renderEnd(s: GameStats) {
   const won = s.state === "victory";
+  const endless = !!game?.endless;
   const mins = Math.floor((performance.now() - runStartedAt) / 60000);
   showOverlay(`<div class="panel">
     <div class="end-kanji" style="color:${won ? "var(--gold)" : "var(--crimson)"}">${won ? "天" : "敗"}</div>
-    <div class="panel-title" style="margin-top:8px">${won ? "VICTORY" : "YOU HAVE FALLEN"}</div>
+    <div class="panel-title" style="margin-top:8px">${won ? "VICTORY" : endless ? "THE LEGEND ENDS" : "YOU HAVE FALLEN"}</div>
+    ${won ? `<div class="panel-sub" style="color:var(--gold)">The Final Boss is slain. 天下統一, the realm is yours.</div>` : endless ? `<div class="panel-sub" style="color:var(--gold)">∞ Endless run: you reached wave ${s.wave}</div>` : ""}
     <div class="panel-sub">${s.className} · ${DIFFICULTIES[game?.difficulty ?? "normal"].name}${game?.vowScore ? ` · Vow score ${game.vowScore}` : ""}</div>
-    ${recordSet ? `<div class="record">NEW BEST · WAVE ${s.wave}</div>` : `<div class="panel-sub num">Best on ${DIFFICULTIES[game?.difficulty ?? "normal"].name}: wave ${best[bestKey(s.classId, game?.difficulty ?? "normal")] ?? s.wave}</div>`}
+    ${won ? "" : recordSet ? `<div class="record">NEW ${endless ? "ENDLESS " : ""}BEST · WAVE ${s.wave}</div>` : `<div class="panel-sub num">${endless ? "Endless best" : "Best"} on ${DIFFICULTIES[game?.difficulty ?? "normal"].name}: wave ${best[bestKey(s.classId, game?.difficulty ?? "normal") + (endless ? "#endless" : "")] ?? s.wave}</div>`}
     <div class="end-stats num">
       <div class="end-stat"><b>${s.wave}</b><span>Wave</span></div>
       <div class="end-stat"><b>${s.level}</b><span>Level</span></div>
@@ -1122,7 +1126,9 @@ function renderEnd(s: GameStats) {
       <div class="end-stat"><b>${mins}m</b><span>Time</span></div>
     </div>
     <div class="panel-actions">
-      <button class="btn primary" data-act="retry">Try again · <kbd>Enter</kbd></button>
+      ${won ? `<button class="btn primary" data-act="endless">∞ Continue (Endless) · <kbd>Enter</kbd></button>
+      <button class="btn" data-act="retry">New run</button>`
+      : `<button class="btn primary" data-act="retry">Try again · <kbd>Enter</kbd></button>`}
       <button class="btn" data-act="quit">Change class · <kbd>Esc</kbd></button>
     </div></div>`);
 }
@@ -1194,6 +1200,7 @@ function runAction(act: string) {
       break;
     }
     case "quit": showMenu(); break;
+    case "endless": game.continueEndless(); overlayKey = ""; break;
   }
 }
 
@@ -1231,7 +1238,7 @@ function overlayKeys(e: KeyboardEvent, s: GameStats): boolean {
       return true;
     case "defeat":
     case "victory":
-      if (e.code === "Enter") { e.preventDefault(); runAction("retry"); }
+      if (e.code === "Enter") { e.preventDefault(); runAction(s.state === "victory" ? "endless" : "retry"); }
       if (e.code === "Escape") runAction("quit");
       return true;
   }

@@ -232,7 +232,7 @@ The core systems are covered; these are what's still missing. Recommended order:
 
 | # | Phase | Inspired by | Why | Size |
 |---|-------|-------------|-----|------|
-| 8 | Victory + Endless mode | Brotato, Vampire Survivors | The game never says "you won" | S–M |
+| 8 ✅ | Victory + Endless mode | Brotato, Vampire Survivors | The game never says "you won" | S–M |
 | 9 | Level-up control: Reroll / Banish / Skip | Halls of Torment, Brotato | A bad set of cards can't be fixed | S |
 | 10 | Better end-of-run screen + death recap | Risk of Rain 2, LoL Death Recap | Players can't see *why* a run ended | S–M |
 | 11 | Unlocks across runs (sideways unlocks + small upgrade tree) | Hades Mirror of Night, Dead Cells | Runs don't feed into anything permanent | L |
@@ -246,7 +246,11 @@ The core systems are covered; these are what's still missing. Recommended order:
 
 ---
 
-## Phase 8: Victory + Endless mode
+## Phase 8: Victory + Endless mode ✅ done
+
+Shipped: after the first wave-25 Final Boss and its cinematic you get the Victory screen. Any level-ups earned during the cinematic are saved for later. "∞ Continue (Endless)" (Enter) then gives those level-ups and the shop and carries on. Endless shows a badge in the HUD and keeps its own record (`best["cls#endless"]`), and an Endless death shows "THE LEGEND ENDS". Wins are recorded per class and difficulty in Career, class cards show a ✓, and there are 5 win achievements plus a dev "Win now" button.
+
+Changes from the plan: no separate Endless-wave-40 achievement was added, because the existing wave 40 and wave 50 achievements now effectively require Endless.
 
 - **Win condition:** beating the **wave-25 Final Boss** gives a **Victory** screen with a summary and a gold "勝" seal. (`stats.state = "victory"` already exists and is handled by the end screen, but nothing triggers it yet.)
 - **Endless option:** the victory screen offers **"Continue (Endless)"**. Waves keep scaling, an "∞ Endless" badge shows in the HUD, and wave records are kept separately (e.g. "Endless best: 34").

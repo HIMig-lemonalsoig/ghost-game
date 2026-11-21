@@ -1180,6 +1180,7 @@ export interface SavedRun {
   v: number;
   savedAt: number;
   atShop?: boolean;          // saved right after a wave cleared
+  endless?: boolean;
   vows?: VowSet;
   difficulty?: Difficulty;
   classId: ClassId;
@@ -4541,6 +4542,8 @@ export class GhostGame {
   ultArrowTick = 0;
   difficulty: Difficulty = "normal";
   vows: VowSet = {};          // VOW ranks sworn for this run (set by the menu before start)
+  endless = false;            // VICTORY: true after choosing "Continue (Endless)"
+  private victoryPending = false;
   vr(id: VowId) { return vowRank(this.vows, id); }
   get vowScore() { return vowScore(this.vows); }
   bagFullWarnAt = -99;
@@ -4668,6 +4671,7 @@ export class GhostGame {
     this.seenAffixes = new Set();
     this.evoWaves = []; this.evoZones = []; this.evoOrbits = [];
     this.inkPools = []; this.playerRoot = 0;
+    this.endless = false; this.victoryPending = false;
     this.stillTimer = 0; this.vanishTimer = 0; this.prayerShield = 0; this.tailwindStacks = 0; this.tailwindTimer = 0;
     this.feathers = []; this.braceCd = new Map(); this.forceCrit = false;
     this.evoShield = 0; this.katanaSwings = 0; this.saiHits = 0;
@@ -6472,6 +6476,27 @@ export class GhostGame {
     this.emitStats();
   }
 
+  /** VICTORY: keep playing after winning. Waves keep scaling; records go to Endless. */
+  continueEndless() {
+    if (this.stats.state !== "victory") return;
+    this.endless = true;
+    this.stats.state = "playing";
+    this.flash("∞ ENDLESS — how far can you go?");
+    this.persistResumeSnapshot(true);
+    this.finishWave();          // the level-ups and shop the Final Boss wave earned
+    this.emitStats();
+  }
+
+  /** Dev: jump straight to the victory screen. */
+  devWin() {
+    if (this.stats.state !== "playing") return;
+    this.stats.wave = Math.max(this.stats.wave, 25);
+    for (const e of this.enemies) e.state = "dead";
+    this.enemies = [];
+    this.stats.state = "victory";
+    this.emitStats();
+  }
+
   devSpawnChest() {
     this.spiritChests.push({ x: this.player.pos.x + 90, y: this.player.pos.y, life: ELITE.chestLife, t: 0 });
   }
@@ -6867,7 +6892,8 @@ export class GhostGame {
     audio.play("levelUp");
     this.fx.levelUp(this.player.pos.x, this.player.pos.y);
     // Mid-wave level-ups are banked so combat isn't interrupted.
-    if (this.stats.state === "playing" && this.stats.waveTimer <= 0) this.openPendingLevelUp();
+    // (Not while the Final Boss victory is pending: those wait for Endless.)
+    if (this.stats.state === "playing" && this.stats.waveTimer <= 0 && !this.victoryPending && this.cinematicTimer <= 0) this.openPendingLevelUp();
   }
 
   private openPendingLevelUp() {
@@ -6955,6 +6981,12 @@ export class GhostGame {
         // Award an extra honor + extend the wave a touch so player can loot
         this.stats.honor += 5;
         this.flash("天下統一 — Empire forged");
+        if (this.victoryPending) {
+          this.victoryPending = false;
+          this.stats.state = "victory";
+          audio.stopMusic();
+          audio.play("levelUp");
+        }
         this.emitStats();
       }
       return;
@@ -7623,7 +7655,10 @@ export class GhostGame {
         setTimeout(() => this.cameraZoom.setTarget(1, 4), 800);
         this.cleanupWaveEnd();
         this.persistResumeSnapshot(true);
-        this.finishWave();
+        // VICTORY: the first Final Boss ends the run in triumph (after its
+        // cinematic). Level-ups and the shop resume if you continue in Endless.
+        if (e.archetype === "final" && !this.endless) this.victoryPending = true;
+        else this.finishWave();
       }
     }
     this.emitStats();
@@ -14634,6 +14669,7 @@ export class GhostGame {
     try {
       saveRun({
         atShop,
+        endless: this.endless,
         vows: { ...this.vows },
         classId: this.lastClassId,
         difficulty: this.difficulty,
@@ -14677,6 +14713,7 @@ export class GhostGame {
     this.difficulty = s.difficulty ?? "normal";
     this.vows = { ...(s.vows ?? {}) };
     this.start(s.classId, s.secondaryId);
+    this.endless = s.endless ?? s.wave > 25;
     // Overlay numeric perks (captures shop-bought upgrades that aren't in
     // acquiredPerks). Spread carefully — keep keys we don't recognize so
     // forward-compat survives.

@@ -17,6 +17,7 @@ export interface Career {
   eliteKills: number; eliteByAffix: Record<string, number>; chests: number;
   evolvedBy: Record<string, number>; duosBy: Record<string, number>;
   vowBest?: { score: number; wave: number };   // highest Vow score run (then wave)
+  wins?: Record<string, number>;               // VICTORY: "classId@difficulty" → wins
   wavesCleared: number; highestWave: number; highestWaveClass: string; highestWaveDiff: string;
   highestLevel: number; monEarned: number;
   damageDealt: number; damageTaken: number; biggestHit: number;
@@ -73,6 +74,17 @@ export function liveCareer(g: GhostGame | null): Career {
   return out;
 }
 export function resetCareer() { career = fresh(); save(); }
+
+/** VICTORY: record a win for this class + difficulty (dev runs don't count). */
+export function recordWin(g: GhostGame | null) {
+  if (!g || g.devMode) return;
+  const key = `${g.stats.classId}@${g.difficulty}`;
+  (career.wins ??= {})[key] = (career.wins[key] ?? 0) + 1;
+  save();
+}
+/** Classes won with at least once (any difficulty). */
+export const wonClasses = (c: Career = career) => new Set(Object.keys(c.wins ?? {}).map(k => k.split("@")[0]));
+export const totalWins = (c: Career = career) => Object.values(c.wins ?? {}).reduce((n, v) => n + v, 0);
 
 // What has already been folded in, per game instance.
 interface Track { committed: RunCounters; isNew: boolean; counted: boolean; ended: boolean; }
@@ -213,6 +225,7 @@ export function careerHTML(confirmReset: boolean): string {
         ${row("Elites slain", n(c.eliteKills ?? 0))}
         ${row("Weapons evolved", `${Object.keys(c.evolvedBy ?? {}).length}`)}
         ${row("Best Vow run", c.vowBest ? `誓${c.vowBest.score} · W${c.vowBest.wave}` : "—")}
+        ${row("Victories", `${totalWins(c)} (${wonClasses(c).size} classes)`)}
         ${row("Damage dealt", n(c.damageDealt))}
         ${row("Damage taken", n(c.damageTaken))}
         ${row("Biggest hit", n(c.biggestHit))}

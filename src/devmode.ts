@@ -178,6 +178,7 @@ export function initDevMode(getGame: () => GhostGame | null) {
       <div class="row">
         <button data-dev="clear">End wave → shop</button>
         <button data-dev="killall">Kill all (not bosses)</button>
+        <button data-dev="win">Win now</button>
       </div>
       <div class="row">Go to wave <input type="number" min="1" max="99" value="5" data-dev-in="wave"><button data-dev="wave">Go</button></div>
     </section>
@@ -279,6 +280,7 @@ export function initDevMode(getGame: () => GhostGame | null) {
       case "shadow": g.ultShadowStepTimer = 4; break;
       case "clear": g.devClearWave(); break;
       case "killall": g.devKillAllEnemies(); break;
+      case "win": g.devWin(); break;
       case "wave": g.devSkipToWave(Math.max(1, Math.min(99, Number(val("wave")) || 1))); break;
       case "spawn": {
         const n = Math.max(1, Math.min(30, Number(val("count")) || 1));
