@@ -271,6 +271,7 @@ function startDaily() {
   g.vows = { ...d.vows };
   g.meta = { ...NO_META };   // Shrine off: same run for everyone
   g.daily = d.date;
+  g.assistDR = assistLevel();
   runAchCount = 0;
   g.start(d.classId, d.weapons[0]);
   g.equipWeapons([d.weapons[0], d.weapons[1]]);
@@ -363,6 +364,56 @@ function showGuide(tab: GuideTab = guideTab) {
   overlay.classList.add("show", "top");
   overlay.innerHTML = guideHTML(tab, guideCtx());
 }
+// ─── Accessibility (Phase 15) ────────────────────────────────────────────────
+const A11Y_KEY = "ghostgame.a11y.v1";
+interface A11y { colorblind: 0 | 1 | 2; uiScale: number; bigNumbers: boolean; outline: boolean; music: number; sfx: number; ui: number; assist: boolean; assistDeaths: number; }
+const a11y: A11y = readJSON(A11Y_KEY, { colorblind: 0, uiScale: 100, bigNumbers: false, outline: false, music: 100, sfx: 100, ui: 100, assist: false, assistDeaths: 0 } as A11y);
+let a11yOpen = false;
+const assistLevel = () => (a11y.assist ? Math.min(0.8, 0.2 + 0.02 * a11y.assistDeaths) : 0);
+function applyA11y() {
+  audio.setVolumes({ music: a11y.music / 100, sfx: a11y.sfx / 100, ui: a11y.ui / 100 });
+  const z = String(Math.max(0.9, Math.min(1.5, a11y.uiScale / 100)));
+  for (const el of [hud, menu, overlay, achToasts]) (el.style as CSSStyleDeclaration & { zoom: string }).zoom = z;
+  if (game) game.a11y = { colorblind: a11y.colorblind, bigNumbers: a11y.bigNumbers, outline: a11y.outline };
+  writeJSON(A11Y_KEY, a11y);
+}
+function a11yHTML(): string {
+  const tg = (k: "bigNumbers" | "outline" | "assist", label: string, sub = "") =>
+    `<button class="toggle" data-a11yt="${k}" role="switch" aria-checked="${a11y[k]}"><span>${label}${sub ? `<i class="a11y-sub">${sub}</i>` : ""}</span><span class="switch${a11y[k] ? " on" : ""}"></span></button>`;
+  const sl = (k: "music" | "sfx" | "ui" | "uiScale", label: string, min: number, max: number, step: number, unit = "%") =>
+    `<label class="a11y-slider"><span>${label}</span><input type="range" data-a11ys="${k}" min="${min}" max="${max}" step="${step}" value="${a11y[k]}" aria-label="${label}"><b class="num" data-a11yv="${k}">${a11y[k]}${unit}</b></label>`;
+  const cbs = ["Off", "Red-green safe", "Blue-yellow safe"];
+  return `<div class="panel vow-panel" style="text-align:left">
+    <div class="panel-title" style="text-align:center">ACCESSIBILITY</div>
+    <div class="a11y-grid">
+      <div class="pane"><h4>Vision</h4>
+        <div class="a11y-seg" role="radiogroup" aria-label="Colorblind mode"><span>Colorblind mode</span><div>${cbs.map((c, i) => `<button class="diff${a11y.colorblind === i ? " on" : ""}" data-a11ycb="${i}" role="radio" aria-checked="${a11y.colorblind === i}">${c}</button>`).join("")}</div></div>
+        <p class="hint">Danger zones get stripes and a white edge, enemies about to attack show a <b>!</b>, and elite affixes show their kanji in a clear box.</p>
+        ${sl("uiScale", "UI scale", 90, 150, 10)}
+        ${tg("bigNumbers", "Bigger damage numbers")}
+        ${tg("outline", "Highlight my character", "A bright ring around you in busy fights")}
+      </div>
+      <div class="pane"><h4>Sound</h4>
+        ${sl("music", "Music", 0, 100, 5)}${sl("sfx", "Sound effects", 0, 100, 5)}${sl("ui", "Menu sounds", 0, 100, 5)}
+        <h4 style="margin-top:14px">Assist mode</h4>
+        ${tg("assist", "Assist mode", `Take ${Math.round(assistLevel() * 100) || 20}% less damage, +2% each death (max 80%). Runs show an Assist tag.`)}
+      </div>
+    </div>
+    <div class="panel-actions"><button class="btn primary" data-act="closea11y">Done · Esc</button></div>
+  </div>`;
+}
+function showA11yModal() {
+  a11yOpen = true;
+  overlay.classList.add("show", "top");
+  overlay.innerHTML = a11yHTML();
+}
+function closeA11yModal() {
+  a11yOpen = false;
+  overlay.classList.remove("top");
+  if (menu.style.display !== "none") { overlay.classList.remove("show"); overlay.innerHTML = ""; renderMenu(); }
+  else overlayKey = "";   // let the pause screen redraw
+}
+
 function closeGuide() {
   guideOpen = false;
   overlay.classList.remove("top");
@@ -607,7 +658,7 @@ function renderMenu() {
   <div class="menu-wrap">
     <div class="menu-top">
       <div class="logo"><span class="kanji">幽</span><div><h1>YŪKEN</h1><p>Survive the waves. Forge your legend.</p></div></div>
-      <div class="menu-actions">${continueBtn}<button class="btn ghost" data-act="guide"><span class="kanji" style="color:var(--gold)">道</span> Guide</button><button class="btn ghost" data-act="ach">Achievements <span class="num" style="opacity:.7">${unlockedCount()}/${ACHIEVEMENTS.length}</span></button><button class="btn ghost" data-act="career">Career</button><button class="btn ghost" data-act="daily"><span class="kanji" style="color:var(--gold)">日</span> Daily${dailyDay() ? "" : ` <span class="dl-new">NEW</span>`}</button><button class="btn ghost" data-act="shrine"><span class="kanji" style="color:var(--gold)">祖</span> Shrine <span class="num" style="opacity:.7">${getShrine().embers} 火</span></button><button class="btn ghost" data-act="controls">Controls</button><button class="btn ghost" data-act="random">Random class</button></div>
+      <div class="menu-actions">${continueBtn}<button class="btn ghost" data-act="guide"><span class="kanji" style="color:var(--gold)">道</span> Guide</button><button class="btn ghost" data-act="ach">Achievements <span class="num" style="opacity:.7">${unlockedCount()}/${ACHIEVEMENTS.length}</span></button><button class="btn ghost" data-act="career">Career</button><button class="btn ghost" data-act="daily"><span class="kanji" style="color:var(--gold)">日</span> Daily${dailyDay() ? "" : ` <span class="dl-new">NEW</span>`}</button><button class="btn ghost" data-act="shrine"><span class="kanji" style="color:var(--gold)">祖</span> Shrine <span class="num" style="opacity:.7">${getShrine().embers} 火</span></button><button class="btn ghost" data-act="controls">Controls</button><button class="btn ghost" data-act="a11y">Accessibility</button><button class="btn ghost" data-act="random">Random class</button></div>
     </div>
     <div class="menu-body">
       <div class="class-grid" role="listbox" aria-label="Classes">${cards}</div>
@@ -716,6 +767,7 @@ menu.addEventListener("click", e => {
   else if (act === "vows") showVowsModal();
   else if (act === "shrine") showShrineModal();
   else if (act === "daily") showDailyModal();
+  else if (act === "a11y") showA11yModal();
   else if (act === "random") {
     const pool = CLASSES.filter(c => c.id !== currentClass && classUnlocked(c.id));
     selectClass(pool[Math.floor(Math.random() * pool.length)].id);
@@ -760,6 +812,7 @@ function bootGame(): GhostGame {
   g.onStatsChange = s => { stats = s; };
   if (touch.active) g.setInput({ mouseAim: false, aimAssist: true });
   applySettings();
+  applyA11y();
   return g;
 }
 
@@ -783,6 +836,7 @@ function startGame(classId: ClassId, weapons: SecondaryId[]) {
   g.difficulty = settings.difficulty;
   g.vows = activeVows();
   g.meta = shrineBonus() ?? { ...NO_META };   // SHRINE
+  g.assistDR = assistLevel();   // A11Y Assist
   runAchCount = 0;
   g.start(classId, pick[0]);
   g.equipWeapons([pick[0], pick[1]]);
@@ -987,7 +1041,7 @@ function updateHud(s: GameStats) {
     if (tag && cache.get("difftag") !== `${game.difficulty}${vs}${game.endless}`) {
       cache.set("difftag", `${game.difficulty}${vs}${game.endless}`);
       tag.style.setProperty("--c", D.color);
-      tag.innerHTML = `<span class="kanji">${D.kanji}</span> ${D.name.toUpperCase()}${vs ? ` · <span class="kanji">誓</span> ${vs}` : ""}${game.endless ? " · ∞ ENDLESS" : ""}${game.daily ? " · 日 DAILY" : ""}`;
+      tag.innerHTML = `<span class="kanji">${D.kanji}</span> ${D.name.toUpperCase()}${vs ? ` · <span class="kanji">誓</span> ${vs}` : ""}${game.endless ? " · ∞ ENDLESS" : ""}${game.daily ? " · 日 DAILY" : ""}${game.assistDR ? ` · ASSIST ${Math.round(game.assistDR * 100)}%` : ""}`;
     }
   }
 
@@ -1111,7 +1165,7 @@ function updateHud(s: GameStats) {
   // Career — fold progress in at each wave end and when the run ends.
   if (game && s.state !== careerSeenState) {
     if (s.state === "shop") commitRun(game);
-    else if (s.state === "defeat") { commitRun(game, true); awardEmbers(game); recordDaily(game); }
+    else if (s.state === "defeat") { commitRun(game, true); awardEmbers(game); recordDaily(game); if (game.assistDR > 0) { a11y.assistDeaths++; writeJSON(A11Y_KEY, a11y); } }
     else if (s.state === "victory") { commitRun(game); recordWin(game); awardEmbers(game); recordDaily(game); }   // run continues if they go Endless
     careerSeenState = s.state;
     runAchievementCheck(true);
@@ -1145,7 +1199,7 @@ function showOverlay(html: string) {
 }
 
 function syncOverlay(s: GameStats) {
-  if (guideOpen) return;
+  if (guideOpen || a11yOpen) return;
   let key = s.state;
   if (s.state === "levelup") key += s.pendingChoices.map(c => c.id).join(",") + `|${banishMode}|${game?.perks.rerolls}|${game?.perks.banishes}`;
   if (s.state === "swap") key += s.pendingAbilityId;
@@ -1255,6 +1309,7 @@ function renderPause(s: GameStats) {
         <button class="btn" data-act="restart">Restart run</button>
         <button class="btn" data-act="quit">Quit to menu</button>
         <button class="btn" data-act="guide"><span class="kanji" style="color:var(--gold)">道</span> Guide</button>
+        <button class="btn" data-act="a11y">Accessibility</button>
         <div class="pane" style="margin-top:6px">
           <h4>Settings</h4>
           ${sw("sound", "Sound & music")}${sw("shake", "Screen shake")}${sw("tips", "Control tips")}${sw("cutscenes", "Ultimate cutscenes")}${sw("autoPause", "Pause when tabbed out")}${sw("rumble", "Controller rumble")}
@@ -1282,7 +1337,7 @@ function renderEnd(s: GameStats) {
     <div class="end-kanji" style="color:${won ? "var(--gold)" : "var(--crimson)"}">${won ? "天" : "敗"}</div>
     <div class="panel-title" style="margin-top:8px">${won ? "VICTORY" : endless ? "THE LEGEND ENDS" : "YOU HAVE FALLEN"}</div>
     ${won ? `<div class="panel-sub" style="color:var(--gold)">The Final Boss is slain. 天下統一, the realm is yours.</div>` : endless ? `<div class="panel-sub" style="color:var(--gold)">∞ Endless run: you reached wave ${s.wave}</div>` : ""}
-    <div class="panel-sub">${s.className} · ${DIFFICULTIES[game?.difficulty ?? "normal"].name}${game?.vowScore ? ` · Vow score ${game.vowScore}` : ""}</div>
+    <div class="panel-sub">${s.className} · ${DIFFICULTIES[game?.difficulty ?? "normal"].name}${game?.vowScore ? ` · Vow score ${game.vowScore}` : ""}${game?.assistDR ? ` · <span class="assist-tag">Assist ${Math.round(game.assistDR * 100)}%</span>` : ""}</div>
     ${won ? "" : recordSet ? `<div class="record">NEW ${endless ? "ENDLESS " : ""}BEST · WAVE ${s.wave}</div>` : `<div class="panel-sub num">${endless ? "Endless best" : "Best"} on ${DIFFICULTIES[game?.difficulty ?? "normal"].name}: wave ${best[bestKey(s.classId, game?.difficulty ?? "normal") + (endless ? "#endless" : "")] ?? s.wave}</div>`}
     <div class="end-stats num">
       <div class="end-stat"><b>${s.wave}</b><span>Wave</span></div>
@@ -1320,6 +1375,19 @@ const mx = (on: boolean) => (on ? ` <i class="maxed">MAX</i>` : "");
 function pauseGame() { if (game?.stats.state === "playing") { releaseInputs(); game.pause(); } }
 function resumeGame() { game?.resume(); }
 
+overlay.addEventListener("input", e => {
+  const r = (e.target as HTMLElement).closest<HTMLInputElement>("[data-a11ys]");
+  if (!r) return;
+  const k = r.dataset.a11ys as "music" | "sfx" | "ui" | "uiScale";
+  a11y[k] = Number(r.value);
+  const v = overlay.querySelector(`[data-a11yv="${k}"]`); if (v) v.textContent = `${a11y[k]}%`;
+  if (k !== "uiScale") applyA11y();
+});
+overlay.addEventListener("change", e => {
+  // UI scale applies on release so the slider doesn't jump under your finger.
+  if ((e.target as HTMLElement).closest('[data-a11ys="uiScale"]')) applyA11y();
+  if ((e.target as HTMLElement).closest('[data-a11ys="ui"]')) audio.playUi("monPing");
+});
 overlay.addEventListener("click", e => {
   const t = e.target as HTMLElement;
   const bind = t.closest<HTMLElement>("[data-bind]");
@@ -1339,6 +1407,14 @@ overlay.addEventListener("click", e => {
   if (cact === "closevows") { closeVowsModal(); return; }
   if (cact === "closeshrine") { closeShrineModal(); return; }
   if (cact === "closedaily") { closeDailyModal(); return; }
+  if (cact === "a11y") { showA11yModal(); return; }
+  if (cact === "closea11y") { closeA11yModal(); return; }
+  if (a11yOpen) {
+    const cb = t.closest<HTMLElement>("[data-a11ycb]");
+    if (cb) { a11y.colorblind = Number(cb.dataset.a11ycb) as 0 | 1 | 2; applyA11y(); showA11yModal(); return; }
+    const tg = t.closest<HTMLElement>("[data-a11yt]");
+    if (tg) { const k = tg.dataset.a11yt as "bigNumbers" | "outline" | "assist"; a11y[k] = !a11y[k]; applyA11y(); showA11yModal(); return; }
+  }
   if (cact === "startdaily") { startDaily(); return; }
   if (cact === "copydaily") { void copyText(shareText(todayKey()), t.closest<HTMLElement>("[data-act]")); return; }
   if (cact === "refundshrine") { refundShrine(); showShrineModal(); return; }
@@ -1480,6 +1556,7 @@ window.addEventListener("keydown", e => {
   if (achOpen) { if (e.code === "Escape") closeAchModal(); return; }
   if (vowsOpen) { if (e.code === "Escape") closeVowsModal(); return; }
   if (shrineOpen) { if (e.code === "Escape") closeShrineModal(); return; }
+  if (a11yOpen) { if (e.code === "Escape") closeA11yModal(); return; }
   if (dailyOpen) { if (e.code === "Escape") closeDailyModal(); else if (e.code === "Enter") { e.preventDefault(); startDaily(); } return; }
   if (guideOpen) { if (e.code === "Escape") closeGuide(); return; }
   if (menu.style.display !== "none") { menuKeys(e); return; }
@@ -1548,5 +1625,6 @@ document.addEventListener("visibilitychange", () => {
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 initDevMode(() => game);
 applySettings();
+applyA11y();
 showMenu();
 void playIntro();   // liquid-glass 幽 reveal over the menu each time the game opens

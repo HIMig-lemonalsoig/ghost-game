@@ -99,7 +99,7 @@ export function summaryText(g: GhostGame, s: GameStats, won: boolean, mins: numb
   const r = g.run;
   const total = Math.max(1, r.damageDealt);
   const lines = [
-    `Yūken · ${s.className} · ${DIFFICULTIES[g.difficulty].name}${g.vowScore ? ` · Vow ${g.vowScore}` : ""}${g.endless ? " · Endless" : ""}`,
+    `Yūken · ${s.className} · ${DIFFICULTIES[g.difficulty].name}${g.vowScore ? ` · Vow ${g.vowScore}` : ""}${g.endless ? " · Endless" : ""}${g.daily ? ` · Daily ${g.daily}` : ""}${g.assistDR ? ` · Assist ${Math.round(g.assistDR * 100)}%` : ""}`,
     won ? `VICTORY on wave ${s.wave}` : `Fell on wave ${s.wave} to ${attackerName(g.lastHitBy)}`,
     `Level ${s.level} · ${r.kills} kills · ${r.eliteKills} elites · ${r.bossKills} bosses · ${mins}m`,
     `Biggest hit ${fmt(r.biggestHit)} · best multi-kill ${r.bestMultiKill}`,

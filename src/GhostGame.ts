@@ -1196,6 +1196,7 @@ export const NO_META: MetaBonus = {
 export interface SavedRun {
   meta?: MetaBonus;
   daily?: string;            // DAILY: date key of a daily run
+  assist?: number;           // A11Y: Assist mode damage reduction for this run
   v: number;
   savedAt: number;
   atShop?: boolean;          // saved right after a wave cleared
@@ -1539,15 +1540,41 @@ class AudioEngine {
     this.master.gain.value = this.muted ? 0 : 0.9;
     this.master.connect(this.ctx.destination);
 
+    // A11Y: separate volume buses (music / sound effects / UI).
+    this.musicVol = this.ctx.createGain();
+    this.musicVol.gain.value = this.vol.music;
+    this.musicVol.connect(this.master);
     this.musicGain = this.ctx.createGain();
     this.musicGain.gain.value = 0;
-    this.musicGain.connect(this.master);
+    this.musicGain.connect(this.musicVol);
 
     this.sfxGain = this.ctx.createGain();
-    this.sfxGain.gain.value = 0.85;
+    this.sfxGain.gain.value = 0.85 * this.vol.sfx;
     this.sfxGain.connect(this.master);
 
+    this.uiGain = this.ctx.createGain();
+    this.uiGain.gain.value = 0.85 * this.vol.ui;
+    this.uiGain.connect(this.master);
+
     return this.ctx;
+  }
+
+  private musicVol: GainNode | null = null;
+  private uiGain: GainNode | null = null;
+  private vol = { music: 1, sfx: 1, ui: 1 };
+  /** A11Y: volumes 0–1 for each bus. */
+  setVolumes(v: Partial<{ music: number; sfx: number; ui: number }>) {
+    Object.assign(this.vol, v);
+    if (this.musicVol) this.musicVol.gain.value = this.vol.music;
+    if (this.sfxGain) this.sfxGain.gain.value = 0.85 * this.vol.sfx;
+    if (this.uiGain) this.uiGain.gain.value = 0.85 * this.vol.ui;
+  }
+  /** Play a sound on the UI bus (menus, toasts, buttons). */
+  playUi(name: Sfx) {
+    this.ensure();
+    const keep = this.sfxGain;
+    if (this.uiGain) this.sfxGain = this.uiGain;
+    try { this.play(name); } finally { this.sfxGain = keep; }
   }
 
   // Browsers require a user gesture to start audio
@@ -4578,6 +4605,12 @@ export class GhostGame {
   private victoryPending = false;
   vr(id: VowId) { return vowRank(this.vows, id); }
   get vowScore() { return vowScore(this.vows); }
+  /** A11Y options (set by the UI). colorblind: 0 off, 1 red-green safe, 2 blue-yellow safe. */
+  a11y = { colorblind: 0 as 0 | 1 | 2, bigNumbers: false, outline: false };
+  /** A11Y Assist mode: fraction of enemy damage removed (0 = off). Runs show an "Assist" tag. */
+  assistDR = 0;
+  /** Hue used for "danger" telegraphs. */
+  get dangerHue() { return this.a11y.colorblind === 1 ? 50 : this.a11y.colorblind === 2 ? 300 : 0; }
   /** SHRINE bonuses for this run (set by the menu before start; NO_META when the shrine is off). */
   meta: MetaBonus = { ...NO_META };
   bagFullWarnAt = -99;
@@ -5175,7 +5208,7 @@ export class GhostGame {
     const defMul = Math.max(MIN_DAMAGE_TAKEN_MUL, this.perks.damageTakenMul) * (1 + 0.15 * this.vr("sharp_steel"));   // VOW Sharp Steel
     // Defense: a % of every hit, on a diminishing curve (max 80%).
     const armor = 1 - defenseReduction(Math.max(0, this.perks.defense));
-    return Math.max(1, Math.round(raw * hpScale * defMul * armor));
+    return Math.max(1, Math.round(raw * hpScale * defMul * armor * (1 - this.assistDR)));   // A11Y Assist
   }
 
   spawnPetals(n: number) {
@@ -8376,8 +8409,9 @@ export class GhostGame {
     const ctx = this.ctx;
     for (const h of this.hazards) {
       const p = Math.min(1, h.t / h.max);
-      const hue = h.kind === "bolt" ? 205 : h.kind === "bomb" ? 18 : 0;
+      const hue = h.kind === "bolt" ? 205 : h.kind === "bomb" ? 18 : this.dangerHue;
       ctx.save();
+      if (this.a11y.colorblind) this.hatchCircle(h.x, h.y, h.r, 0.25 + p * 0.35);   // A11Y: pattern, not just colour
       ctx.fillStyle = `hsla(${hue}, 85%, 50%, ${0.1 + p * 0.12})`;
       ctx.beginPath(); ctx.arc(h.x, h.y, h.r, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = `hsla(${hue}, 90%, 55%, ${0.18 + p * 0.22})`;
@@ -8398,6 +8432,62 @@ export class GhostGame {
         ctx.fillStyle = `hsl(${30 + Math.random() * 20}, 100%, 65%)`;
         ctx.beginPath(); ctx.arc(bx + 3, by - 5, 2, 0, Math.PI * 2); ctx.fill();
       }
+      ctx.restore();
+    }
+  }
+
+  /** A11Y: diagonal hatching + white outline so danger zones read without colour. */
+  private hatchCircle(x: number, y: number, r: number, alpha: number) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.clip();
+    ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let d = -r * 2; d < r * 2; d += 12) { ctx.moveTo(x + d - r, y - r); ctx.lineTo(x + d + r, y + r); }
+    ctx.stroke();
+    ctx.restore();
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,255,255,0.85)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  }
+
+  /** A11Y cues drawn over enemies: "!" over anyone winding up, clear elite kanji, player outline. */
+  private drawA11yCues() {
+    const ctx = this.ctx;
+    const cb = this.a11y.colorblind > 0;
+    if (cb) {
+      ctx.save();
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      for (const e of this.enemies) {
+        if (e.state === "dead") continue;
+        if (e.attackTelegraph > 0) {
+          const y = e.pos.y - e.size - 30;
+          ctx.font = "900 22px system-ui, sans-serif";
+          ctx.lineWidth = 4; ctx.strokeStyle = "#000"; ctx.strokeText("!", e.pos.x, y);
+          ctx.fillStyle = "#fff"; ctx.fillText("!", e.pos.x, y);
+        }
+        if (e.affixes?.length && !e.isBoss) {
+          const k = e.affixes.map(a => AFFIXES[a].kanji).join("");
+          const y = e.pos.y + e.size + 16;
+          ctx.font = '700 16px "Noto Serif JP", "Yu Mincho", serif';
+          const w = ctx.measureText(k).width + 10;
+          ctx.fillStyle = "rgba(0,0,0,0.8)"; ctx.fillRect(e.pos.x - w / 2, y - 10, w, 20);
+          ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.strokeRect(e.pos.x - w / 2, y - 10, w, 20);
+          ctx.fillStyle = "#fff"; ctx.fillText(k, e.pos.x, y + 1);
+        }
+      }
+      for (const f of this.firePatches) this.hatchCircle(f.x, f.y, ELITE.fireRadius * 0.85, 0.3);
+      ctx.restore();
+    }
+    if (this.a11y.outline && this.player) {
+      const p = this.player.pos, r = BASE.PLAYER_RADIUS + 9;
+      ctx.save();
+      ctx.lineWidth = 5; ctx.strokeStyle = "rgba(0,0,0,0.75)";
+      ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.lineWidth = 2.5; ctx.strokeStyle = "#fff";
+      ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.stroke();
       ctx.restore();
     }
   }
@@ -9953,7 +10043,7 @@ export class GhostGame {
       color: opts.color ?? "hsl(42 95% 65%)",
       life: 0.95,
       maxLife: 0.95,
-      size: opts.size ?? 14,
+      size: (opts.size ?? 14) * (this.a11y.bigNumbers ? 1.45 : 1),   // A11Y bigger numbers
       jp: opts.jp,
     });
   }
@@ -10068,6 +10158,7 @@ export class GhostGame {
     if (this.devShowHitboxes) this.drawDevHitboxes();
 
     this.drawPlayer();
+    this.drawA11yCues();
     this.drawPhantomDance();
     this.drawClassEntities();
     this.drawSecondaries();
@@ -11553,7 +11644,7 @@ export class GhostGame {
       ctx.stroke();
       // Telegraph aim line during draw
       if (e.attackAnim > 0) {
-        ctx.strokeStyle = `hsla(355, 90%, 55%, ${0.25 + e.attackAnim * 0.55})`;
+        ctx.strokeStyle = `hsla(${this.a11y.colorblind ? this.dangerHue : 355}, 90%, 55%, ${0.25 + e.attackAnim * 0.55})`;
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(e.size + 4, 0);
@@ -14871,6 +14962,7 @@ export class GhostGame {
         endless: this.endless,
         meta: { ...this.meta },
         daily: this.daily || undefined,
+        assist: this.assistDR || undefined,
         vows: { ...this.vows },
         classId: this.lastClassId,
         difficulty: this.difficulty,
@@ -14915,6 +15007,7 @@ export class GhostGame {
     this.vows = { ...(s.vows ?? {}) };
     this.meta = { ...NO_META, ...(s.meta ?? {}) };
     this.daily = s.daily ?? "";
+    if (s.assist) this.assistDR = Math.max(this.assistDR, s.assist);
     this.start(s.classId, s.secondaryId);
     this.endless = s.endless ?? s.wave > 25;
     // Overlay numeric perks (captures shop-bought upgrades that aren't in

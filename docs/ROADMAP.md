@@ -239,7 +239,7 @@ The core systems are covered; these are what's still missing. Recommended order:
 | 12 ✅ | Shop lock | Brotato | Save up for an item across a reroll or wave | S |
 | 13 ✅ | Daily run (seeded by date) | Spelunky, Dead Cells | A shared daily challenge | M |
 | 14 ✅ | Controller support | Browser Gamepad API | Chromebook and PC players with controllers | M |
-| 15 | Accessibility round 2 | Dead Cells, Hades | Colorblind safety, UI scale, volume, assist mode | M |
+| 15 ✅ | Accessibility round 2 | Dead Cells, Hades | Colorblind safety, UI scale, volume, assist mode | M |
 | 16 | Between-wave choices (wave modifiers + shrines) | Slay the Spire map, Hades rooms | More variety and decisions between waves | M |
 | 17 | Run history + bestiary | Most roguelites | Long-term record and a sense of collection | S |
 | 18 | Polish: DPS meter, pickup radius, haptics | Halls of Torment | Small quality-of-life touches | S |
@@ -302,7 +302,7 @@ Research warns: unlocks that only add raw power make runs trivial, so keep power
 - Menus, cards and the shop are navigable with the D-pad and A/B.
 - Optional rumble (works in Chrome; skipped where unsupported).
 
-## Phase 15: Accessibility round 2
+## Phase 15: Accessibility round 2 ✅ done
 
 - **Colorblind-safe mode:** telegraphs and danger zones get patterns or outlines, not just red, and elite affixes show their kanji clearly. Alternative palettes too.
 - **UI scale** (90–150%) and a **bigger damage numbers** toggle.

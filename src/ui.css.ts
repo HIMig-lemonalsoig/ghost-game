@@ -406,6 +406,15 @@ kbd {
 .card.bought { opacity: .45; }
 .card.bought .price { color: var(--muted); }
 .shop-slot { position: relative; display: flex; }
+.a11y-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+@media (max-width: 720px) { .a11y-grid { grid-template-columns: 1fr; } }
+.a11y-slider { display: grid; grid-template-columns: 8.5em 1fr 3.2em; gap: 10px; align-items: center; margin: 10px 0; font-size: 13.5px; }
+.a11y-slider input { width: 100%; accent-color: var(--gold); min-height: 28px; }
+.a11y-slider b { text-align: right; font-size: 13px; }
+.a11y-seg > span { display: block; font-size: 13.5px; margin-bottom: 6px; }
+.a11y-seg > div { display: flex; gap: 6px; flex-wrap: wrap; }
+.a11y-sub { display: block; font-style: normal; font-size: 11.5px; color: var(--dim); margin-top: 2px; }
+.assist-tag { color: hsl(195 80% 70%); border: 1px solid currentColor; border-radius: 5px; padding: 0 5px; font-size: 11px; letter-spacing: 1px; }
 body.pad :is(button, [tabindex], input):focus { outline: 3px solid var(--gold); outline-offset: 3px; }
 body.pad.playing { cursor: none; }
 .lock-btn { position: absolute; top: 6px; right: 6px; z-index: 2; width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--line);
