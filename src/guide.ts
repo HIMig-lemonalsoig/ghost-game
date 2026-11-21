@@ -20,7 +20,7 @@ export const GUIDE_TABS: { id: GuideTab; label: string; kanji: string }[] = [
   { id: "evolutions", label: "Evolutions", kanji: "進" },
   { id: "ultperks", label: "Ultimate perks", kanji: "極" },
   { id: "elites", label: "Elites & chests", kanji: "精" },
-  { id: "enemies", label: "Enemies", kanji: "敵" },
+  { id: "enemies", label: "Bestiary", kanji: "敵" },
   { id: "vows", label: "Vows", kanji: "誓" },
   { id: "classes", label: "Signatures", kanji: "印" },
   { id: "choices", label: "Omens & altars", kanji: "兆" },
@@ -37,6 +37,7 @@ export interface GuideCtx {
   classId: ClassId | null;
   highestWave: number;
   mastery: Record<string, number>;
+  killsByKind: Record<string, number>;   // BESTIARY lifetime kills per enemy type
 }
 
 const perkName = (id: string) => PERK_POOL.find(p => p.id === id)?.name
@@ -151,21 +152,31 @@ function elites(): string {
   <h4 class="g-h">Affixes and how to beat them</h4><div class="g-list">${rows}</div>`;
 }
 
-function enemies(): string {
-  const list: [string, string, string][] = [
-    ["兵", "Ashigaru / Brute", "Basic melee. Watch the red wind-up, then dash or block."],
-    ["盾", "Shield-bearer", "Blocks weapon hits from the front. Hit it from the side or behind, or use abilities and ultimates (they go through)."],
-    ["弓", "Archer", "Keeps its distance and shoots. Dash through arrows, or deflect them."],
-    ["刺", "Assassin", "Dashes at you with a telegraph. Sidestep, then punish."],
-    ["魂", "Wisp", "Fast, weak swarms. Area attacks clear them."],
-    ["癒", "Healer Monk", "Hides behind allies and heals them. The green ring shows its range, so kill it first."],
-    ["爆", "Bomber", "Lobs bombs at your position. Keep moving out of the circles."],
-    ["灯", "Lantern Ghost", "Explodes after a fuse. Back off when it glows."],
-    ["怨", "Onryō", "Ink pools slow you, and its talisman roots you. Dash through the talisman, or dash to break free."],
-    ["鵺", "Nue", "Summons wisps after a purple charge. Kill it and its wisps vanish."],
-    ["鏡", "Mirror Monk", "Reflects shots that hit its front. Use melee or hit it from behind."],
-  ];
-  return `<div class="g-list">${list.map(([k, n, d]) => `<div class="g-row"><span class="g-k kanji">${k}</span><div class="g-t"><b>${n}</b><p>${d}</p></div></div>`).join("")}</div>
+export const BESTIARY: { id: string; k: string; n: string; tip: string; lore: string }[] = [
+  { id: "normal",   k: "兵", n: "Ashigaru",      tip: "Basic melee. Watch the red wind-up, then dash or block.", lore: "Conscripted farmers who died far from home. They still march, still waiting for an order that will never come." },
+  { id: "heavy",    k: "剛", n: "Brute",         tip: "Slow but hits hard. Stay out of its swing and punish after it.", lore: "Temple guardians who kept their post after the temple burned. They do not remember what they guard." },
+  { id: "shielded", k: "盾", n: "Shield-bearer", tip: "Blocks weapon hits from the front. Hit it from the side or behind, or use abilities and ultimates (they go through).", lore: "Their shields bear the crests of clans that no longer exist." },
+  { id: "archer",   k: "弓", n: "Archer",        tip: "Keeps its distance and shoots. Dash through arrows, or deflect them.", lore: "Hunters who never stopped hunting. Their arrows are carved from the bones of their last kill." },
+  { id: "assassin", k: "刺", n: "Assassin",      tip: "Dashes at you with a telegraph. Sidestep, then punish.", lore: "A contract outlives the one who signed it. These blades are still collecting." },
+  { id: "wisp",     k: "魂", n: "Wisp",          tip: "Fast, weak swarms. Area attacks clear them.", lore: "Stray souls too small to remember their names. They gather around anything warm." },
+  { id: "priest",   k: "癒", n: "Healer Monk",   tip: "Hides behind allies and heals them. The green ring shows its range, so kill it first.", lore: "It chants the sutra for the living backwards, stitching the dead back together." },
+  { id: "bomber",   k: "爆", n: "Bomber",        tip: "Lobs bombs at your position. Keep moving out of the circles.", lore: "Once a festival fireworks maker. The last show never ended." },
+  { id: "lantern",  k: "灯", n: "Lantern Ghost", tip: "Explodes after a fuse. Back off when it glows.", lore: "A paper lantern left burning for a hundred years grows a tongue, and then a temper." },
+  { id: "onryo",    k: "怨", n: "Onryō",         tip: "Ink pools slow you, and its talisman roots you. Dash through the talisman, or dash to break free.", lore: "A grudge so heavy it pools like ink. It writes your name and waits for it to dry." },
+  { id: "nue",      k: "鵺", n: "Nue",           tip: "Summons wisps after a purple charge. Kill it and its wisps vanish.", lore: "Monkey's face, tiger's legs, a serpent for a tail. Its cry at night means sickness is coming." },
+  { id: "mirror",   k: "鏡", n: "Mirror Monk",   tip: "Reflects shots that hit its front. Use melee or hit it from behind.", lore: "It polished its bronze mirror for forty years until the mirror began to look back." },
+];
+export const LORE_KILLS = 10;
+
+function enemies(c: GuideCtx): string {
+  const done = BESTIARY.filter(b => (c.killsByKind[b.id] ?? 0) >= LORE_KILLS).length;
+  return `<p class="g-note">Bestiary: <b>${done}/${BESTIARY.length}</b> entries complete. Slay ${LORE_KILLS} of a kind to read its story.</p>
+  <div class="g-list">${BESTIARY.map(b => {
+    const k = c.killsByKind[b.id] ?? 0;
+    const open = k >= LORE_KILLS;
+    return `<div class="g-row"><span class="g-k kanji">${b.k}</span><div class="g-t"><b>${b.n}</b> <span class="g-badge num">${k.toLocaleString()} slain</span><p>${b.tip}</p>
+      <p class="g-lore">${open ? `<i>“${b.lore}”</i>` : `<span class="dim">🔒 Lore unlocks at ${LORE_KILLS} kills (${Math.min(k, LORE_KILLS)}/${LORE_KILLS})</span>`}</p></div></div>`;
+  }).join("")}</div>
   <p class="g-note">New enemy types also show a tip the first time you meet them in a run.</p>`;
 }
 
@@ -230,7 +241,7 @@ function classes(c: GuideCtx): string {
 
 export function guideHTML(tab: GuideTab, c: GuideCtx): string {
   const body = tab === "basics" ? basics() : tab === "duos" ? duos(c) : tab === "evolutions" ? evolutions(c)
-    : tab === "ultperks" ? ultPerks(c) : tab === "elites" ? elites() : tab === "enemies" ? enemies()
+    : tab === "ultperks" ? ultPerks(c) : tab === "elites" ? elites() : tab === "enemies" ? enemies(c)
     : tab === "vows" ? vows(c) : tab === "unlocks" ? unlocks() : tab === "choices" ? choices() : classes(c);
   return `<div class="panel guide" style="text-align:left">
     <div class="panel-title" style="text-align:center">道 GUIDE</div>
@@ -259,6 +270,7 @@ export const GUIDE_CSS = `
 .g-step { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--gold); color: var(--ink); font-size: 12px; }
 .g-note { font-size: 13px; color: var(--dim); margin: 8px 0; }
 .g-row.dim { opacity: .6; }
+.g-lore { margin-top: 4px; font-size: 12.5px; color: var(--muted); }
 .g-h { font-size: 11px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--dim); margin: 16px 0 8px; }
 .g-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px; }
 .g-row { display: flex; gap: 12px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); }

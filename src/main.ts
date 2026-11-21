@@ -27,6 +27,7 @@ import { VOWS, VOW_BY_ID, vowScore, vowRank, MAX_VOW_SCORE, VOW_UNLOCK_WAVE, VOW
 import type { VowSet, VowId } from "./content/vows";
 import { trackGame, trackStartWeapons } from "./telemetry";
 import { recapHTML, summaryText } from "./recap";
+import { recordRun, historyHTML, HISTORY_CSS } from "./history";
 import { dailySetup, dailyHTML, DAILY_CSS, todayKey, startAttempt, recordAttempt, shareText, dailyDay } from "./daily";
 import { trackRun, commitRun, careerHTML, resetCareer, CAREER_CSS, getCareer, liveCareer, isFreshRun, recordWin, wonClasses } from "./career";
 import { ACHIEVEMENTS, checkAchievements, achievementsHTML, achToastHTML, unlockedCount, ACH_CSS } from "./achievements";
@@ -103,6 +104,7 @@ const vowsUnlocked = () => {
 const activeVows = (): VowSet => (vowsUnlocked() ? { ...vowSet } : {});
 let achOpen = false;
 let shrineOpen = false;
+let histOpenId: number | null = null;
 let dailyOpen = false;
 const dailyRecorded = new WeakMap<GhostGame, number>();   // last wave recorded for this daily attempt
 let runAchCount = 0;                       // achievements unlocked this run (for Spirit Embers)
@@ -356,6 +358,7 @@ function guideCtx(): GuideCtx {
     classId: g?.stats.classId ?? currentClass,
     highestWave: c.highestWave || 0,
     mastery: g ? { ...g.perks.weaponMastery } : {},
+    killsByKind: liveCareer(g && !g.devMode ? g : null).killsByKind ?? {},
   };
 }
 function showGuide(tab: GuideTab = guideTab) {
@@ -481,7 +484,7 @@ function runTipCheck() {
 function showCareerModal() {
   careerOpen = true;
   overlay.classList.add("show", "top");
-  overlay.innerHTML = careerHTML(careerArmed);
+  overlay.innerHTML = careerHTML(careerArmed, historyHTML(histOpenId));
 }
 function closeCareerModal() {
   careerOpen = false;
@@ -506,7 +509,7 @@ function refreshControls() {
 
 // ─── DOM scaffolding ──────────────────────────────────────────────────────────
 const style = document.createElement("style");
-style.textContent = UI_CSS + CAREER_CSS + ACH_CSS + GUIDE_CSS + DAILY_CSS;
+style.textContent = UI_CSS + CAREER_CSS + ACH_CSS + GUIDE_CSS + DAILY_CSS + HISTORY_CSS;
 document.head.appendChild(style);
 
 const canvas = document.getElementById("game-canvas") as HTMLCanvasElement;
@@ -1166,8 +1169,8 @@ function updateHud(s: GameStats) {
   // Career — fold progress in at each wave end and when the run ends.
   if (game && s.state !== careerSeenState) {
     if (s.state === "shop") commitRun(game);
-    else if (s.state === "defeat") { commitRun(game, true); awardEmbers(game); recordDaily(game); if (game.assistDR > 0) { a11y.assistDeaths++; writeJSON(A11Y_KEY, a11y); } }
-    else if (s.state === "victory") { commitRun(game); recordWin(game); awardEmbers(game); recordDaily(game); }   // run continues if they go Endless
+    else if (s.state === "defeat") { commitRun(game, true); awardEmbers(game); recordDaily(game); recordRun(game); if (game.assistDR > 0) { a11y.assistDeaths++; writeJSON(A11Y_KEY, a11y); } }
+    else if (s.state === "victory") { commitRun(game); recordWin(game); awardEmbers(game); recordDaily(game); recordRun(game); }   // run continues if they go Endless
     careerSeenState = s.state;
     runAchievementCheck(true);
   }
@@ -1442,6 +1445,8 @@ overlay.addEventListener("click", e => {
     showVowsModal();
     return;
   }
+  const hr = t.closest<HTMLElement>("[data-hist]");
+  if (hr && careerOpen) { const id = Number(hr.dataset.hist); histOpenId = histOpenId === id ? null : id; const y = overlay.scrollTop; showCareerModal(); overlay.scrollTop = y; return; }
   if (cact === "resetcareer") {
     if (careerArmed) { resetCareer(); careerArmed = false; } else careerArmed = true;
     showCareerModal();

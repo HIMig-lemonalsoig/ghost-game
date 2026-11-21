@@ -241,7 +241,7 @@ The core systems are covered; these are what's still missing. Recommended order:
 | 14 ✅ | Controller support | Browser Gamepad API | Chromebook and PC players with controllers | M |
 | 15 ✅ | Accessibility round 2 | Dead Cells, Hades | Colorblind safety, UI scale, volume, assist mode | M |
 | 16 ✅ | Between-wave choices (wave modifiers + shrines) | Slay the Spire map, Hades rooms | More variety and decisions between waves | M |
-| 17 | Run history + bestiary | Most roguelites | Long-term record and a sense of collection | S |
+| 17 ✅ | Run history + bestiary | Most roguelites | Long-term record and a sense of collection | S |
 | 18 | Polish: DPS meter, pickup radius, haptics | Halls of Torment | Small quality-of-life touches | S |
 
 ---
@@ -318,7 +318,7 @@ A lighter version of Slay the Spire's map, sized for a wave game:
 - Rare **shrines** in the arena: walk into one to accept a trade, e.g. "lose 20% max HP → a random legendary perk", "curse: +25% enemy damage this wave → an extra evolution chest".
 - Shrines get telegraphs and a Guide entry; balance tracking records which choices people make.
 
-## Phase 17: Run history + bestiary
+## Phase 17: Run history + bestiary ✅ done
 
 - **Run history** in Career: the last 30 runs (class, difficulty, Vows, wave, win/loss, killer, top damage source, date), each tappable for its Phase 10 summary.
 - **Bestiary:** the Guide's Enemies tab shows **kills per enemy type** and unlocks a short lore line after 10 kills. Achievement for filling it.

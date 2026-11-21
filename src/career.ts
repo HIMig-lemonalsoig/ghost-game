@@ -185,12 +185,12 @@ function bars(rows: [string, number, string?][], empty: string): string {
       <b class="num">${n(v)}</b></div>`).join("")}</div>`;
 }
 
-export function careerHTML(confirmReset: boolean): string {
+export function careerHTML(confirmReset: boolean, extra = ""): string {
   const c = career;
   if (!c.runs) {
     return `<div class="panel cr" style="max-width:560px">
       <div class="panel-title">CAREER</div>
-      <div class="pane" style="margin-top:18px"><p class="cr-empty">No runs recorded yet. Finish a wave and your stats will start showing up here.</p></div>
+      <div class="pane" style="margin-top:18px"><p class="cr-empty">No runs recorded yet. Finish a wave and your stats will start showing up here.</p></div>${extra}
       <div class="panel-actions"><button class="btn primary" data-act="closecareer">Close · Esc</button></div></div>`;
   }
   const fav = Object.entries(c.byClass).sort((a, b) => b[1].runs - a[1].runs)[0];
@@ -249,6 +249,7 @@ export function careerHTML(confirmReset: boolean): string {
       <div class="pane cr-wide"><h4>Classes</h4>
         <table class="cr-table"><thead><tr><th>Class</th><th>Runs</th><th>Kills</th><th>Best wave</th><th>Time</th></tr></thead>
         <tbody>${classRows}</tbody></table></div>
+      ${extra}
     </div>
 
     <div class="panel-actions">

@@ -4,6 +4,7 @@
 // Lifetime goals read career totals; run goals read the live run. Runs that
 // touched dev mode never unlock anything.
 import { CLASSES, SECONDARIES } from "./GhostGame";
+import { BESTIARY, LORE_KILLS } from "./guide";
 import { earnedClassCount, earnedWeaponCount, getShrine, SHRINE, nodeRank } from "./unlocks";
 import { wonClasses, totalWins } from "./career";
 const wonOn = (x: AchCtx, ...ds: string[]) => Object.keys(x.c.wins ?? {}).some(k => ds.includes(k.split("@")[1]));
@@ -146,6 +147,10 @@ export const ACHIEVEMENTS: Ach[] = [
     check: x => x.fresh && !!x.r && !!x.s && x.r.purchases === 0 && x.s.wave >= 20 },
   { id: "every_oath", tier: "mythic", kanji: "極", name: "Every Oath Sworn", desc: "Reach wave 25 with every vow at max rank (Vow score 30).",
     check: x => x.vow >= 30 && (x.s?.wave ?? 0) >= 25 },
+  // ── Bestiary (Phase 17) ──
+  { id: "bestiary", tier: "epic", kanji: "録", name: "Yokai Scholar", desc: `Complete the bestiary: slay ${LORE_KILLS} of every enemy type.`,
+    check: x => BESTIARY.every(b => (x.c.killsByKind[b.id] ?? 0) >= LORE_KILLS),
+    progress: x => [BESTIARY.filter(b => (x.c.killsByKind[b.id] ?? 0) >= LORE_KILLS).length, BESTIARY.length] },
   // ── Omens & altars (Phase 16) ──
   { id: "altar_1", tier: "uncommon", kanji: "契", name: "Devil's Bargain", desc: "Accept an arena altar's trade.", ...runMax("altars", 1) },
   { id: "omen_5", tier: "rare", kanji: "兆", name: "Omen Reader", desc: "Survive 5 omen waves in one run.", ...runMax("omens", 5) },
