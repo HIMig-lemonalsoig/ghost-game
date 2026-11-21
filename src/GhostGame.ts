@@ -3,7 +3,7 @@ import { Fx, hueOf } from "./fx";
 import { Arena } from "./arena";
 import { ULT_STYLES, poseFrame, drawMotif, STRIKE } from "./ultimates";
 import type { UltMotif } from "./ultimates";
-import { defenseReduction, dexAttackSpeed, critFromPoints, moveSpeedFromMul } from "./content/curves";
+import { defenseReduction, dexAttackSpeed, critFromPoints, moveSpeedFromMul, soft, softStat, SOFT_STATS, WEAPON_FLAT } from "./content/curves";
 import { AFFIXES, ELITE, ENEMY_LABEL, rollAffixes } from "./content/elites";
 import { hashStr, mulberry32 } from "./rng";
 import { OMENS, OMEN_BY_ID, omenBefore, ARENA_SHRINES, ARENA_SHRINE_BY_ID, ARENA_SHRINE_CHANCE, ARENA_SHRINE_HOLD, ARENA_SHRINE_R } from "./content/choices";
@@ -3913,12 +3913,12 @@ export const STAT_CAPS = {
   speedMulMax: 4,         // backstop (real speed comes from the curve)
   defenseMax: 200,        // backstop
   critPointsMax: 3,       // backstop
-  classDamageMul: 3.5,
-  secondaryDmgMul: 4,
+  classDamageMul: 6,      // backstop (real value comes from the curve)
+  secondaryDmgMul: 6,     // backstop
   hpRegen: 3,
   monMul: 2.2,
   ultChargeMul: 2,
-  abilityHaste: 2,          // cooldowns tick at most 2× speed (default 1)
+  abilityHaste: 2.5,        // backstop (curve keeps it under 2× for most classes)
   dashCdMul: 0.5,         // floor
   secondaryRegenMul: 0.4, // floor
   invulnBonus: 0.75,
@@ -4011,6 +4011,7 @@ interface Perks {
   banishes: number;         // level-up banishes left this run
   banished: string[];       // perk / ability ids removed from the pool this run
   shopLocks: ShopItem[];    // SHOPLOCK: up to 2 shop items held for later
+  softRaw: Record<string, { base: number; raw: number; eff: number }>;   // SOFTCAP raw totals behind curved stats
   weaponMastery: Record<string, number>;  // damage upgrades bought per weapon (evolutions)
   shopBought: string[];     // shop effects bought this run (evolution catalysts)
   evolved: string[];        // evolved weapon ids
@@ -4129,6 +4130,7 @@ const defaultPerks = (): Perks => ({
   banishes: 2,
   banished: [],
   shopLocks: [],
+  softRaw: {},
   weaponMastery: {},
   shopBought: [],
   evolved: [],
@@ -4930,6 +4932,7 @@ export class GhostGame {
     this.perks.damageTakenMul *= M.damageTakenMul; this.perks.speedMul *= M.speedMul;
     this.perks.dashCdMul *= M.dashCdMul; this.perks.ultChargeMul *= M.ultChargeMul;
     if (M.secondLife) this.perks.hasSecondWind = true;
+    this.initSoftStats();   // SOFTCAP: everything above is the run's starting point
     this.baseKatanaDamage = this.perks.damage;
     this.acquiredPerks = [];
     this.pendingLevelUps = 0;
@@ -5237,9 +5240,32 @@ export class GhostGame {
   }
 
   /** Clamp every stackable stat to STAT_CAPS (shop, perks, and loaded saves). */
+  /** SOFTCAP: remember each curved stat's starting value for this run. */
+  private initSoftStats() {
+    const P = this.perks as unknown as Record<string, number>;
+    this.perks.softRaw = {};
+    for (const key of Object.keys(SOFT_STATS)) {
+      const v = Number.isFinite(P[key]) ? P[key] : 0;
+      this.perks.softRaw[key] = { base: v, raw: v, eff: v };
+    }
+  }
+  /** SOFTCAP: fold any change since last time into the raw total, then apply the curve. */
+  private applySoftStats() {
+    const P = this.perks as unknown as Record<string, number>;
+    const S = (this.perks.softRaw ??= {});
+    for (const [key, cfg] of Object.entries(SOFT_STATS)) {
+      const cur = Number.isFinite(P[key]) ? P[key] : 0;
+      const st = (S[key] ??= { base: cur, raw: cur, eff: cur });
+      if (Math.abs(cur - st.eff) > 1e-9) st.raw += cur - st.eff;
+      st.eff = softStat(cfg.mode, st.base, st.raw, cfg.k, cfg.max);
+      P[key] = st.eff;
+    }
+  }
+
   enforceStatCaps() {
     const P = this.perks, C = STAT_CAPS;
     const fin = (v: number, d: number) => (Number.isFinite(v) ? v : d);
+    this.applySoftStats();   // SOFTCAP: curves first, hard caps below are only backstops
     P.damage = Math.min(MAX_KATANA_DAMAGE, fin(P.damage, 3));
     P.dexterity = Math.min(C.dexMaxRaw, fin(P.dexterity, 0));
     P.defense = Math.min(C.defenseMax, Math.max(0, fin(P.defense, 0)));
@@ -5318,10 +5344,12 @@ export class GhostGame {
   effectiveSecondaryDamage(id: SecondaryId): number {
     const def = SECONDARIES[id];
     const base = this.perks.damage;
-    const flat = this.perks.weaponDamageBonus[id] || 0;
+    const hit = base * def.damageMul * def.dmgScale;
+    // SOFTCAP: the per-weapon flat bonus follows a curve relative to the weapon's own hit.
+    const rawFlat = this.perks.weaponDamageBonus[id] || 0;
+    const flat = rawFlat <= 0 ? rawFlat : hit * soft(rawFlat / Math.max(0.01, hit), WEAPON_FLAT.k, WEAPON_FLAT.max);
     // classDamageMul is applied once, in dealDamage.
-    return ((base * def.damageMul * def.dmgScale) + flat)
-         * this.perks.secondaryDmgMul;
+    return (hit + flat) * this.perks.secondaryDmgMul;
   }
 
   // Effective fireCooldown after dexterity for the given weapon.
@@ -8014,7 +8042,7 @@ export class GhostGame {
       }
     }
     // Ultimate charge — kills give a small amount, more when low HP.
-    this.addUltCharge(this.lowHp() ? 8 : 4);
+    this.addUltCharge(this.lowHp() ? 5 : 2.5);   // slower ult (was 8 / 4)
 
     // ===== Phase 3: chance to drop an ammo pickup for the active secondary =====
     this.maybeDropAmmoPickup(e);
@@ -8350,7 +8378,7 @@ export class GhostGame {
       });
       audio.play("parry");
       audio.play("armorRing");
-      this.addUltCharge(4);
+      this.addUltCharge(3);   // was 4
       void e;
       return;
     }
@@ -8425,7 +8453,7 @@ export class GhostGame {
     if (this.stats.classId === "samurai") {
       this.stats.bushidoStacks = Math.min(5, this.stats.bushidoStacks + 1);
     }
-    this.addUltCharge(this.lowHp() ? 20 : 12);
+    this.addUltCharge(this.lowHp() ? 13 : 8);   // slower ult (was 20 / 12)
     this.player.invuln = 0.6 + this.perks.invulnBonus;
     this.player.hitFlash = 1;
     this.cameraShake = Math.max(this.cameraShake, 0.5);

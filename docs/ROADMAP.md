@@ -221,6 +221,8 @@ Re-run the headless power-curve bot (`scratchpad/sim.js` pattern) to check that 
 
 ## Also shipped (outside the original plan)
 
+- **Soft caps on every power stat** (`SOFT_STATS` in `src/content/curves.ts`): katana, weapon, class and ultimate damage, ult charge rate, coins, regen, heal on kill, proc chances, ability haste, i-frames and per-weapon flat damage all have diminishing returns now, like Dexterity. **Ultimate charges about 35–40% slower** (kills 4 → 2.5, hits taken 12 → 8).
+
 Liquid-glass 幽 intro · infinite-block fix · deflect and ultimate audit (no random deflect failures, deflect blocks everything, shields only block weapon hits, aim re-read after the cutscene, homing Dokkaebi ghosts, ultimate damage scaling) · Kunoichi Phantom Dance rework · Twin Sai and War Fan buff · ultimate perks (8 general + 25 class) · in-game Guide, card hints and one-time tips · mobile and touch support.
 
 ---

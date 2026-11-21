@@ -16,6 +16,42 @@ export const CURVES = {
   moveSpeed: { k: 0.4, max: 0.5 },  // +12% → +11.5% · +80% → +33%
 };
 
+/**
+ * Soft-capped perk stats. Gains go into a hidden "raw" total and the stat you
+ * actually get follows a curve: early upgrades count almost fully, later ones
+ * less and less, and the bonus can never pass `max`.
+ *   mul: bonus is a fraction of the run's starting value (1.0 = +100%)
+ *   add: bonus is a flat amount on top of the starting value
+ * With k = max the first upgrades count ~fully; at raw bonus = max you get half of max.
+ */
+export const SOFT_STATS: Record<string, { mode: "mul" | "add"; k: number; max: number; note: string }> = {
+  damage:          { mode: "mul", k: 4,   max: 4,   note: "Katana damage: +100% raw → +80% · +400% raw → +200% · never above +400%" },
+  classDamageMul:  { mode: "mul", k: 2.5, max: 2.5, note: "All damage: +100% raw → +71% · never above +250%" },
+  secondaryDmgMul: { mode: "mul", k: 3,   max: 3,   note: "Weapon damage: +100% raw → +75% · never above +300%" },
+  ultPowerMul:     { mode: "mul", k: 2,   max: 2,   note: "Ultimate damage: +60% raw → +46% · never above +200%" },
+  ultChargeMul:    { mode: "mul", k: 1,   max: 1,   note: "Ultimate charge rate: +50% raw → +33% · never above +100%" },
+  monMul:          { mode: "mul", k: 1.2, max: 1.2, note: "Coins: +60% raw → +40% · never above +120%" },
+  abilityHaste:    { mode: "mul", k: 1,   max: 1,   note: "Ability cooldown speed: never above 2×" },
+  hpRegen:         { mode: "add", k: 3,   max: 3,   note: "HP regen per second: never above 3" },
+  healOnKill:      { mode: "add", k: 6,   max: 6,   note: "Heal on kill: never above 6" },
+  fireChance:      { mode: "add", k: 0.5, max: 0.5, note: "Burn chance: never above 50%" },
+  lightningChance: { mode: "add", k: 0.4, max: 0.4, note: "Lightning chance: never above 40%" },
+  bleedChance:     { mode: "add", k: 0.5, max: 0.5, note: "Bleed chance: never above 50%" },
+  poisonChance:    { mode: "add", k: 0.5, max: 0.5, note: "Poison chance: never above 50%" },
+  eliteBounty:     { mode: "add", k: 16,  max: 16,  note: "Elite bounty coins: never above 16" },
+  invulnBonus:     { mode: "add", k: 0.75, max: 0.75, note: "Extra i-frames: never above 0.75s" },
+};
+/** Weapon flat damage bonus (per weapon) as a fraction of that weapon's base hit. */
+export const WEAPON_FLAT = { k: 3, max: 3 };
+
+/** The stat you get from a raw total, given the run's starting value. Penalties (raw below base) pass straight through. */
+export function softStat(mode: "mul" | "add", base: number, raw: number, k: number, max: number): number {
+  if (raw <= base) return raw;
+  if (mode === "add") return base + soft(raw - base, k, max);
+  const b = Math.max(1e-6, base);
+  return b * (1 + soft(raw / b - 1, k, max));
+}
+
 /** Fraction of each hit blocked by Defense (0..0.8). */
 export const defenseReduction = (def: number) => soft(def, CURVES.defense.k, CURVES.defense.max);
 
