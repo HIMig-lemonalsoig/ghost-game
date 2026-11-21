@@ -237,7 +237,7 @@ The core systems are covered; these are what's still missing. Recommended order:
 | 10 ✅ | Better end-of-run screen + death recap | Risk of Rain 2, LoL Death Recap | Players can't see *why* a run ended | S–M |
 | 11 ✅ | Unlocks across runs (sideways unlocks + small upgrade tree) | Hades Mirror of Night, Dead Cells | Runs don't feed into anything permanent | L |
 | 12 ✅ | Shop lock | Brotato | Save up for an item across a reroll or wave | S |
-| 13 | Daily run (seeded by date) | Spelunky, Dead Cells | A shared daily challenge | M |
+| 13 ✅ | Daily run (seeded by date) | Spelunky, Dead Cells | A shared daily challenge | M |
 | 14 | Controller support | Browser Gamepad API | Chromebook and PC players with controllers | M |
 | 15 | Accessibility round 2 | Dead Cells, Hades | Colorblind safety, UI scale, volume, assist mode | M |
 | 16 | Between-wave choices (wave modifiers + shrines) | Slay the Spire map, Hades rooms | More variety and decisions between waves | M |
@@ -288,7 +288,7 @@ Research warns: unlocks that only add raw power make runs trivial, so keep power
 - A 🔒 button on each shop card. Locked items **survive rerolls and carry to the next wave at their locked price**.
 - Max 2 locks, a touch-friendly button, and a keyboard shortcut (Shift + number).
 
-## Phase 13: Daily run
+## Phase 13: Daily run ✅ done
 
 - **Seeded by the date:** everyone gets the same class, weapons, Vows and RNG. Swap `Math.random` for a seeded PRNG during a daily run, so spawns, cards and shop all match.
 - **Dead Cells hybrid:** unlimited attempts with your **best score saved**, plus a separate **"first attempt"** record (Spelunky's one-shot tension).

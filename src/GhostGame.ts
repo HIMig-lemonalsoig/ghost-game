@@ -5,6 +5,7 @@ import { ULT_STYLES, poseFrame, drawMotif, STRIKE } from "./ultimates";
 import type { UltMotif } from "./ultimates";
 import { defenseReduction, dexAttackSpeed, critFromPoints, moveSpeedFromMul } from "./content/curves";
 import { AFFIXES, ELITE, ENEMY_LABEL, rollAffixes } from "./content/elites";
+import { hashStr, mulberry32 } from "./rng";
 import type { AffixId } from "./content/elites";
 import { EVOLUTIONS, EVO_MASTERY, EVO_DAMAGE_MUL } from "./content/evolutions";
 import { DUOS, DUO_BY_ID } from "./content/duos";
@@ -1194,6 +1195,7 @@ export const NO_META: MetaBonus = {
 
 export interface SavedRun {
   meta?: MetaBonus;
+  daily?: string;            // DAILY: date key of a daily run
   v: number;
   savedAt: number;
   atShop?: boolean;          // saved right after a wave cleared
@@ -4620,6 +4622,37 @@ export class GhostGame {
     if (!ctx) throw new Error("No canvas context");
     this.ctx = ctx;
     this.wrapDamageSources();
+    this.wrapSeededStreams();
+  }
+
+  // ===================== DAILY: seeded randomness =====================
+  /** Date key ("2026-11-20") when this is a Daily run, else "". */
+  daily = "";
+  private rngStreams: Record<string, () => number> = {};
+  /** During a Daily, the systems that decide the run (spawns, cards, shop,
+   *  chests) each draw from their own seeded stream, so everyone gets the same
+   *  run no matter their frame rate. Visual randomness stays unseeded. */
+  private wrapSeededStreams() {
+    const table: Record<string, (args: unknown[]) => string> = {
+      spawnWave: a => `wave:${a[0]}`,
+      spawnSingleEnemy: a => `wave:${a[0]}`,
+      rollPerkChoices: () => "perk",
+      rollOfferWithLocks: () => "shop",
+      openSpiritChest: () => "chest",
+    };
+    const self = this as unknown as Record<string, (...a: unknown[]) => unknown>;
+    for (const [name, keyOf] of Object.entries(table)) {
+      const fn = self[name];
+      if (typeof fn !== "function") continue;
+      self[name] = (...args: unknown[]) => {
+        if (!this.daily) return fn.apply(this, args);
+        const key = keyOf(args);
+        const stream = (this.rngStreams[key] ??= mulberry32(hashStr(`${this.daily}|${key}`)));
+        const prev = Math.random;
+        Math.random = stream;
+        try { return fn.apply(this, args); } finally { Math.random = prev; }
+      };
+    }
   }
 
   // ===================== RECAP: damage-by-source tracking =====================
@@ -4713,6 +4746,7 @@ export class GhostGame {
     if (startingSecondary !== undefined) this.lastSecondaryId = startingSecondary;
     const cid = this.lastClassId;
     this.perks = defaultPerks();
+    this.rngStreams = {};
     this.applyClassBonuses(cid);
     // SHRINE: small permanent bonuses.
     const M = this.meta;
@@ -14836,6 +14870,7 @@ export class GhostGame {
         atShop,
         endless: this.endless,
         meta: { ...this.meta },
+        daily: this.daily || undefined,
         vows: { ...this.vows },
         classId: this.lastClassId,
         difficulty: this.difficulty,
@@ -14879,6 +14914,7 @@ export class GhostGame {
     this.difficulty = s.difficulty ?? "normal";
     this.vows = { ...(s.vows ?? {}) };
     this.meta = { ...NO_META, ...(s.meta ?? {}) };
+    this.daily = s.daily ?? "";
     this.start(s.classId, s.secondaryId);
     this.endless = s.endless ?? s.wave > 25;
     // Overlay numeric perks (captures shop-bought upgrades that aren't in

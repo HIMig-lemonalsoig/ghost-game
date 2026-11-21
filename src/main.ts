@@ -24,6 +24,7 @@ import { VOWS, VOW_BY_ID, vowScore, vowRank, MAX_VOW_SCORE, VOW_UNLOCK_WAVE, VOW
 import type { VowSet, VowId } from "./content/vows";
 import { trackGame, trackStartWeapons } from "./telemetry";
 import { recapHTML, summaryText } from "./recap";
+import { dailySetup, dailyHTML, DAILY_CSS, todayKey, startAttempt, recordAttempt, shareText, dailyDay } from "./daily";
 import { trackRun, commitRun, careerHTML, resetCareer, CAREER_CSS, getCareer, liveCareer, isFreshRun, recordWin, wonClasses } from "./career";
 import { ACHIEVEMENTS, checkAchievements, achievementsHTML, achToastHTML, unlockedCount, ACH_CSS } from "./achievements";
 import type { AchCtx } from "./achievements";
@@ -99,6 +100,8 @@ const vowsUnlocked = () => {
 const activeVows = (): VowSet => (vowsUnlocked() ? { ...vowSet } : {});
 let achOpen = false;
 let shrineOpen = false;
+let dailyOpen = false;
+const dailyRecorded = new WeakMap<GhostGame, number>();   // last wave recorded for this daily attempt
 let runAchCount = 0;                       // achievements unlocked this run (for Spirit Embers)
 const embersGiven = new WeakMap<GhostGame, number>();
 let lastEmbers = 0;
@@ -240,6 +243,54 @@ function shrineHTML(): string {
     <div class="panel-actions"><button class="btn primary" data-act="closeshrine">Done · Esc</button><button class="btn ghost" data-act="refundshrine" ${sh.spent ? "" : "disabled"}>Refund all</button></div>
   </div>`;
 }
+// ─── Daily run (Phase 13) ────────────────────────────────────────────────────
+function showDailyModal() {
+  dailyOpen = true;
+  overlay.classList.add("show", "top");
+  overlay.innerHTML = dailyHTML();
+}
+function closeDailyModal(rerender = true) {
+  dailyOpen = false;
+  overlay.classList.remove("show", "top");
+  overlay.innerHTML = "";
+  if (rerender) renderMenu();
+}
+function startDaily() {
+  const d = dailySetup();
+  closeDailyModal(false);
+  clearSavedRun();
+  const g = bootGame();
+  g.difficulty = "normal";
+  g.vows = { ...d.vows };
+  g.meta = { ...NO_META };   // Shrine off: same run for everyone
+  g.daily = d.date;
+  runAchCount = 0;
+  g.start(d.classId, d.weapons[0]);
+  g.equipWeapons([d.weapons[0], d.weapons[1]]);
+  trackRun(g, true);
+  trackGame(g);
+  startAttempt(d.date, d.classId);
+  stats = { ...g.stats };
+  beginLoop();
+}
+/** Save this daily attempt's result (safe to call more than once). */
+function recordDaily(g: GhostGame | null) {
+  if (!g || !g.daily || g.devMode) return;
+  const wave = g.stats.wave;
+  if ((dailyRecorded.get(g) ?? -1) >= wave && g.stats.state !== "victory") return;
+  dailyRecorded.set(g, wave);
+  recordAttempt(g.daily, wave, g.run.kills, g.stats.state === "victory" || (g.run.bossByKind.final ?? 0) > 0);
+}
+async function copyText(text: string, btn?: HTMLElement | null) {
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; } catch {
+    const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select();
+    try { ok = document.execCommand("copy"); } catch { /* blocked */ }
+    ta.remove();
+  }
+  if (btn) btn.textContent = ok ? "Copied ✓" : "Copy blocked";
+}
+
 function showShrineModal() {
   shrineOpen = true;
   overlay.classList.add("show", "top");
@@ -396,7 +447,7 @@ function refreshControls() {
 
 // ─── DOM scaffolding ──────────────────────────────────────────────────────────
 const style = document.createElement("style");
-style.textContent = UI_CSS + CAREER_CSS + ACH_CSS + GUIDE_CSS;
+style.textContent = UI_CSS + CAREER_CSS + ACH_CSS + GUIDE_CSS + DAILY_CSS;
 document.head.appendChild(style);
 
 const canvas = document.getElementById("game-canvas") as HTMLCanvasElement;
@@ -534,7 +585,7 @@ function renderMenu() {
   <div class="menu-wrap">
     <div class="menu-top">
       <div class="logo"><span class="kanji">幽</span><div><h1>YŪKEN</h1><p>Survive the waves. Forge your legend.</p></div></div>
-      <div class="menu-actions">${continueBtn}<button class="btn ghost" data-act="guide"><span class="kanji" style="color:var(--gold)">道</span> Guide</button><button class="btn ghost" data-act="ach">Achievements <span class="num" style="opacity:.7">${unlockedCount()}/${ACHIEVEMENTS.length}</span></button><button class="btn ghost" data-act="career">Career</button><button class="btn ghost" data-act="shrine"><span class="kanji" style="color:var(--gold)">祖</span> Shrine <span class="num" style="opacity:.7">${getShrine().embers} 火</span></button><button class="btn ghost" data-act="controls">Controls</button><button class="btn ghost" data-act="random">Random class</button></div>
+      <div class="menu-actions">${continueBtn}<button class="btn ghost" data-act="guide"><span class="kanji" style="color:var(--gold)">道</span> Guide</button><button class="btn ghost" data-act="ach">Achievements <span class="num" style="opacity:.7">${unlockedCount()}/${ACHIEVEMENTS.length}</span></button><button class="btn ghost" data-act="career">Career</button><button class="btn ghost" data-act="daily"><span class="kanji" style="color:var(--gold)">日</span> Daily${dailyDay() ? "" : ` <span class="dl-new">NEW</span>`}</button><button class="btn ghost" data-act="shrine"><span class="kanji" style="color:var(--gold)">祖</span> Shrine <span class="num" style="opacity:.7">${getShrine().embers} 火</span></button><button class="btn ghost" data-act="controls">Controls</button><button class="btn ghost" data-act="random">Random class</button></div>
     </div>
     <div class="menu-body">
       <div class="class-grid" role="listbox" aria-label="Classes">${cards}</div>
@@ -642,6 +693,7 @@ menu.addEventListener("click", e => {
   else if (act === "guide") showGuide("basics");
   else if (act === "vows") showVowsModal();
   else if (act === "shrine") showShrineModal();
+  else if (act === "daily") showDailyModal();
   else if (act === "random") {
     const pool = CLASSES.filter(c => c.id !== currentClass && classUnlocked(c.id));
     selectClass(pool[Math.floor(Math.random() * pool.length)].id);
@@ -669,7 +721,7 @@ function menuKeys(e: KeyboardEvent) {
 function stopGame() {
   if (animId !== null) cancelAnimationFrame(animId);
   animId = null;
-  if (game) { commitRun(game); audio.stopMusic(); }
+  if (game) { commitRun(game); recordDaily(game); audio.stopMusic(); }
   touch.update(null);
   game = null;
   stats = null;
@@ -913,7 +965,7 @@ function updateHud(s: GameStats) {
     if (tag && cache.get("difftag") !== `${game.difficulty}${vs}${game.endless}`) {
       cache.set("difftag", `${game.difficulty}${vs}${game.endless}`);
       tag.style.setProperty("--c", D.color);
-      tag.innerHTML = `<span class="kanji">${D.kanji}</span> ${D.name.toUpperCase()}${vs ? ` · <span class="kanji">誓</span> ${vs}` : ""}${game.endless ? " · ∞ ENDLESS" : ""}`;
+      tag.innerHTML = `<span class="kanji">${D.kanji}</span> ${D.name.toUpperCase()}${vs ? ` · <span class="kanji">誓</span> ${vs}` : ""}${game.endless ? " · ∞ ENDLESS" : ""}${game.daily ? " · 日 DAILY" : ""}`;
     }
   }
 
@@ -1026,7 +1078,7 @@ function updateHud(s: GameStats) {
 
   // Records
   const bk = bestKey(s.classId, game?.difficulty ?? "normal") + (game?.endless ? "#endless" : "");
-  if (!game?.devMode && s.wave > (best[bk] ?? 0) && (s.state === "defeat" || s.state === "victory" || s.state === "shop")) {
+  if (!game?.devMode && !game?.daily && s.wave > (best[bk] ?? 0) && (s.state === "defeat" || s.state === "victory" || s.state === "shop")) {
     best[bk] = s.wave;
     writeJSON(BEST_KEY, best);
     if (s.state === "defeat" || s.state === "victory") recordSet = true;
@@ -1037,8 +1089,8 @@ function updateHud(s: GameStats) {
   // Career — fold progress in at each wave end and when the run ends.
   if (game && s.state !== careerSeenState) {
     if (s.state === "shop") commitRun(game);
-    else if (s.state === "defeat") { commitRun(game, true); awardEmbers(game); }
-    else if (s.state === "victory") { commitRun(game); recordWin(game); awardEmbers(game); }   // run continues if they go Endless
+    else if (s.state === "defeat") { commitRun(game, true); awardEmbers(game); recordDaily(game); }
+    else if (s.state === "victory") { commitRun(game); recordWin(game); awardEmbers(game); recordDaily(game); }   // run continues if they go Endless
     careerSeenState = s.state;
     runAchievementCheck(true);
   }
@@ -1217,6 +1269,7 @@ function renderEnd(s: GameStats) {
       <div class="end-stat"><b>${s.perks.length}</b><span>Blessings</span></div>
       <div class="end-stat"><b>${mins}m</b><span>Time</span></div>
     </div>
+    ${game?.daily && !game.devMode ? (recordDaily(game), `<div class="daily-end">日 Daily ${game.daily} · best wave ${dailyDay(game.daily)?.best ?? s.wave} · first try ${dailyDay(game.daily)?.first || "–"} <button class="btn ghost" data-act="copydailyend">Copy result</button></div>`) : ""}
     ${game && !game.devMode ? (awardEmbers(game), `<div class="embers-earned"><span class="kanji">火</span> +${lastEmbers} Spirit Embers <span class="dim">· spend them at the Shrine</span></div>`) : ""}
     ${game ? recapHTML(game, won) : ""}
     <div class="panel-actions">
@@ -1260,6 +1313,9 @@ overlay.addEventListener("click", e => {
   if (gt && guideOpen) { showGuide(gt.dataset.guide as GuideTab); overlay.scrollTop = 0; return; }
   if (cact === "closevows") { closeVowsModal(); return; }
   if (cact === "closeshrine") { closeShrineModal(); return; }
+  if (cact === "closedaily") { closeDailyModal(); return; }
+  if (cact === "startdaily") { startDaily(); return; }
+  if (cact === "copydaily") { void copyText(shareText(todayKey()), t.closest<HTMLElement>("[data-act]")); return; }
   if (cact === "refundshrine") { refundShrine(); showShrineModal(); return; }
   if (shrineOpen) {
     const sb = t.closest<HTMLElement>("[data-shbuy]");
@@ -1315,6 +1371,7 @@ function runAction(act: string) {
   switch (act) {
     case "keep": game.cancelSwap(); break;
     case "reroll": game.rerollShop(); break;
+    case "copydailyend": if (game.daily) void copyText(shareText(game.daily), document.querySelector<HTMLElement>('[data-act="copydailyend"]')); break;
     case "copyrun": void copyRunSummary(document.querySelector<HTMLElement>('[data-act="copyrun"]')); break;
     case "lvlreroll": banishMode = false; game.rerollLevelUp(); break;
     case "lvlbanish": banishMode = !banishMode; overlayKey = ""; syncOverlay({ ...game.stats }); break;
@@ -1398,6 +1455,7 @@ window.addEventListener("keydown", e => {
   if (achOpen) { if (e.code === "Escape") closeAchModal(); return; }
   if (vowsOpen) { if (e.code === "Escape") closeVowsModal(); return; }
   if (shrineOpen) { if (e.code === "Escape") closeShrineModal(); return; }
+  if (dailyOpen) { if (e.code === "Escape") closeDailyModal(); else if (e.code === "Enter") { e.preventDefault(); startDaily(); } return; }
   if (guideOpen) { if (e.code === "Escape") closeGuide(); return; }
   if (menu.style.display !== "none") { menuKeys(e); return; }
   if (!game) return;
