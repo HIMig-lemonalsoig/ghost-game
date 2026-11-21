@@ -245,6 +245,30 @@ kbd {
 .vow-btn .vow-score { margin-left: auto; font-size: 22px; font-weight: 700; color: var(--gold); }
 .vow-locked .kanji { color: var(--dim); }
 .vow-panel { max-width: 760px; }
+.class-card.locked { filter: grayscale(.85) brightness(.7); }
+.class-card.locked.sel { filter: grayscale(.5) brightness(.85); }
+.class-card .best.lock { background: rgba(0,0,0,.45); }
+.weapon-chip.locked { opacity: .55; cursor: not-allowed; }
+.weapon-chip.locked .kanji { font-size: 18px; }
+.lock-req { color: var(--gold); font-weight: 600; }
+.lock-banner { margin: 10px 0 4px; padding: 9px 12px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--gold) 45%, transparent); background: rgba(232,183,90,.08); font-size: 13px; }
+.embers-earned { margin-top: 14px; font-size: 14px; color: var(--gold); }
+.embers-earned .kanji { font-size: 18px; }
+.sh-off { display: flex; align-items: center; gap: 8px; justify-content: center; font-size: 13px; color: var(--muted); margin: 6px 0 10px; cursor: pointer; }
+.sh-off input { width: 18px; height: 18px; accent-color: var(--gold); }
+.sh-disabled { opacity: .45; }
+.sh-row { display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: center; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); }
+.sh-row.on { border-color: color-mix(in srgb, var(--gold) 45%, transparent); }
+.sh-row > .kanji { font-size: 26px; color: var(--gold); text-align: center; }
+.sh-name { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.sh-vers { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.sh-ver { text-align: left; padding: 7px 9px; border-radius: 9px; border: 1px solid var(--line); background: rgba(0,0,0,.18); color: var(--muted); cursor: pointer; font: inherit; }
+.sh-ver b { display: block; font-size: 12.5px; color: var(--bone); }
+.sh-ver span { font-size: 11.5px; }
+.sh-ver.on { border-color: var(--gold); background: rgba(232,183,90,.1); color: var(--bone); cursor: default; }
+.sh-ver:not(.on):hover { border-color: var(--line-strong); }
+.sh-buy { white-space: nowrap; min-height: 44px; }
+@media (max-width: 640px) { .sh-row { grid-template-columns: 1fr; } .sh-row > .kanji { display: none; } .sh-vers { grid-template-columns: 1fr; } }
 .vow-total { display: flex; align-items: baseline; gap: 8px; justify-content: center; margin: 14px 0 6px; flex-wrap: wrap; }
 .vow-total b { font-size: 34px; color: var(--crimson); font-family: var(--font-display); }
 .vow-total .dim, .vow-row .dim { color: var(--dim); }

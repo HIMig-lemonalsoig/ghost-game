@@ -1,7 +1,12 @@
 import {
   GhostGame, CLASSES, CLASS_WEAPON_OPTIONS, SECONDARIES, ABILITY_POOL, CONSUMABLES, PERK_POOL,
-  audio, loadRun, hasSavedRun, STAT_CAPS, clearSavedRun, getClass, ABILITY_FX_HUE, SLASH_HUE, BOSS_INFO, DIFFICULTIES,
+  audio, loadRun, hasSavedRun, STAT_CAPS, clearSavedRun, getClass, ABILITY_FX_HUE, SLASH_HUE, BOSS_INFO, DIFFICULTIES, NO_META,
 } from "./GhostGame";
+import {
+  classUnlocked, weaponUsable, CLASS_REQS, WEAPON_REQS, reqText, checkUnlocks, unlockToastHTML, unlockedClassCount,
+  SHRINE, getShrine, nodeRank, nodeCost, buyNode, toggleAlt, setShrineOff, refundShrine, addEmbers, shrineBonus, embersFor,
+} from "./unlocks";
+import type { NodeId } from "./unlocks";
 import { hueOf } from "./fx";
 import type { ClassId, GameStats, SecondaryId, Difficulty } from "./GhostGame";
 import { UI_CSS } from "./ui.css";
@@ -93,6 +98,10 @@ const vowsUnlocked = () => {
 };
 const activeVows = (): VowSet => (vowsUnlocked() ? { ...vowSet } : {});
 let achOpen = false;
+let shrineOpen = false;
+let runAchCount = 0;                       // achievements unlocked this run (for Spirit Embers)
+const embersGiven = new WeakMap<GhostGame, number>();
+let lastEmbers = 0;
 let careerArmed = false;
 
 // Left/right modifier keys count as the same key.
@@ -167,7 +176,9 @@ function runAchievementCheck(force = false) {
   const now = performance.now();
   if (!force && now - achCheckAt < 250) return;
   achCheckAt = now;
+  showUnlockToasts();
   for (const a of checkAchievements(achCtx())) {
+    runAchCount++;
     const wrap = document.createElement("div");
     wrap.innerHTML = achToastHTML(a);
     const el = wrap.firstElementChild as HTMLElement;
@@ -201,6 +212,64 @@ function vowsHTML(): string {
     <div class="panel-actions"><button class="btn primary" data-act="closevows">Done · Esc</button><button class="btn ghost" data-act="clearvows" ${score ? "" : "disabled"}>Clear all</button></div>
   </div>`;
 }
+// ─── Shrine of Ancestors (Phase 11) ──────────────────────────────────────────
+function shrineHTML(): string {
+  const sh = getShrine();
+  const rows = SHRINE.map(n => {
+    const r = nodeRank(n.id), alt = !!sh.alt[n.id], cost = nodeCost(n.id);
+    const pips = Array.from({ length: n.max }, (_, i) => `<i class="${i < r ? "on" : ""}"></i>`).join("");
+    const v = (side: "a" | "b") => {
+      const on = (side === "b") === alt;
+      return `<button class="sh-ver${on ? " on" : ""}" data-shalt="${n.id}" ${on ? "disabled" : ""} aria-pressed="${on}">
+        <b>${n[side].name}</b><span>${n[side].desc(Math.max(1, r))}</span></button>`;
+    };
+    return `<div class="sh-row${r ? " on" : ""}">
+      <span class="kanji">${n.kanji}</span>
+      <div class="sh-t"><div class="sh-name"><b>${n.name}</b><span class="vow-pips" aria-label="Rank ${r} of ${n.max}">${pips}</span></div>
+        <div class="sh-vers">${v("a")}${v("b")}</div></div>
+      <button class="btn sh-buy" data-shbuy="${n.id}" ${cost && sh.embers >= cost ? "" : "disabled"}>${cost ? `Kindle · <span class="num">${cost}</span> 火` : "Max"}</button>
+    </div>`;
+  }).join("");
+  return `<div class="panel vow-panel" style="text-align:left">
+    <div class="panel-title" style="text-align:center">祖 SHRINE OF ANCESTORS</div>
+    <div class="panel-sub" style="text-align:center">Spend Spirit Embers on small permanent blessings. Each one has an alternate version: tap it to switch for free.</div>
+    <div class="vow-total"><span>Spirit Embers</span><b class="num">${sh.embers}</b><span class="dim">· earned ${sh.earned}</span></div>
+    <label class="sh-off"><input type="checkbox" data-shoff ${sh.off ? "checked" : ""}> Switch all shrine blessings off (purist runs)</label>
+    <div class="vow-list${sh.off ? " sh-disabled" : ""}">${rows}</div>
+    <p class="hint" style="text-align:center">Earn embers every run: 1 per wave reached, 3 per boss, 5 per achievement, 15 for a win.</p>
+    <div class="panel-actions"><button class="btn primary" data-act="closeshrine">Done · Esc</button><button class="btn ghost" data-act="refundshrine" ${sh.spent ? "" : "disabled"}>Refund all</button></div>
+  </div>`;
+}
+function showShrineModal() {
+  shrineOpen = true;
+  overlay.classList.add("show", "top");
+  overlay.innerHTML = shrineHTML();
+}
+function closeShrineModal() {
+  shrineOpen = false;
+  overlay.classList.remove("show", "top");
+  overlay.innerHTML = "";
+  renderMenu();
+}
+/** Give this run's Spirit Embers (only the part not given yet: Endless keeps adding). */
+function awardEmbers(g: GhostGame | null) {
+  if (!g || g.devMode) return;
+  const total = embersFor(g.stats.wave, g.run.bossKills, runAchCount, g.stats.state === "victory" || g.run.bossByKind.final > 0);
+  const given = embersGiven.get(g) ?? 0;
+  if (total > given) { addEmbers(total - given); embersGiven.set(g, total); }
+  lastEmbers = total;
+}
+function showUnlockToasts() {
+  for (const u of checkUnlocks(game && !game.devMode ? liveCareer(game) : getCareer())) {
+    const wrap = document.createElement("div");
+    wrap.innerHTML = unlockToastHTML(u);
+    const el = wrap.firstElementChild as HTMLElement;
+    achToasts.append(el);
+    try { audio.play("levelUp"); } catch { /* audio off */ }
+    setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 220); }, 5500);
+  }
+}
+
 function showVowsModal() {
   vowsOpen = true;
   overlay.classList.add("show", "top");
@@ -419,12 +488,14 @@ function defaultWeapons(id: ClassId): SecondaryId[] {
   if (lastPick && lastPick.classId === id && lastPick.weapons.length === 2) return [...lastPick.weapons];
   return CLASS_WEAPON_OPTIONS[id].slice(0, 2);
 }
+const canStart = () => currentWeapons.length === 2 && classUnlocked(currentClass) && currentWeapons.every(w => weaponUsable(currentClass, w));
 
 function showMenu() {
   stopGame();
   hud.classList.remove("show");
   hideOverlay();
   if (!currentWeapons.length) currentWeapons = defaultWeapons(currentClass);
+  showUnlockToasts();
   renderMenu();
   menu.style.display = "block";
   requestAnimationFrame(() => $<HTMLElement>(".class-card.sel", menu)?.focus({ preventScroll: true }));
@@ -436,8 +507,9 @@ function renderMenu() {
     const b = best[bestKey(c.id, settings.difficulty)];
     const won = wonClasses().has(c.id);
     const badge = (b ? `<span class="best num">${won ? "✓ " : ""}Best W${b}</span>` : won ? `<span class="best num">✓ Won</span>` : "");
-    return `<button class="class-card glow${c.id === currentClass ? " sel" : ""}" data-class="${c.id}" style="--accent:${c.accent}" aria-pressed="${c.id === currentClass}">
-      <span class="watermark" aria-hidden="true">${c.ultKanji}</span>${badge}<div class="kanji">${c.kanji}</div><div class="name">${c.name}</div><div class="role">${c.role}</div>
+    const locked = !classUnlocked(c.id);
+    return `<button class="class-card glow${c.id === currentClass ? " sel" : ""}${locked ? " locked" : ""}" data-class="${c.id}" style="--accent:${c.accent}" aria-pressed="${c.id === currentClass}"${locked ? ` title="Locked: ${reqText(CLASS_REQS[c.id])}"` : ""}>
+      <span class="watermark" aria-hidden="true">${c.ultKanji}</span>${locked ? `<span class="best lock">🔒</span>` : badge}<div class="kanji">${c.kanji}</div><div class="name">${c.name}</div><div class="role">${locked ? "Locked" : c.role}</div>
     </button>`;
   }).join("");
 
@@ -446,9 +518,10 @@ function renderMenu() {
     const w = SECONDARIES[id];
     const idx = currentWeapons.indexOf(id);
     const on = idx >= 0;
-    return `<button class="weapon-chip glow${on ? " on" : ""}" data-weapon="${id}" aria-pressed="${on}">
-      <span class="kanji">${w.kanji}</span>
-      <span><div class="wn">${w.name}</div><div class="wd">${w.desc}</div></span>
+    const wl = !weaponUsable(currentClass, id);
+    return `<button class="weapon-chip glow${on ? " on" : ""}${wl ? " locked" : ""}" data-weapon="${id}" aria-pressed="${on}" ${wl ? "aria-disabled=\"true\"" : ""}>
+      <span class="kanji">${wl ? "🔒" : w.kanji}</span>
+      <span><div class="wn">${w.name}</div><div class="wd">${wl ? `<b class="lock-req">Locked:</b> ${reqText(WEAPON_REQS[id])}` : w.desc}</div></span>
       ${on ? `<span class="wbadge">${idx === 0 ? "MAIN" : "ALT"}</span>` : ""}
     </button>`;
   }).join("");
@@ -461,13 +534,14 @@ function renderMenu() {
   <div class="menu-wrap">
     <div class="menu-top">
       <div class="logo"><span class="kanji">幽</span><div><h1>GHOST GAME</h1><p>Survive the waves. Forge your legend.</p></div></div>
-      <div class="menu-actions">${continueBtn}<button class="btn ghost" data-act="guide"><span class="kanji" style="color:var(--gold)">道</span> Guide</button><button class="btn ghost" data-act="ach">Achievements <span class="num" style="opacity:.7">${unlockedCount()}/${ACHIEVEMENTS.length}</span></button><button class="btn ghost" data-act="career">Career</button><button class="btn ghost" data-act="controls">Controls</button><button class="btn ghost" data-act="random">Random class</button></div>
+      <div class="menu-actions">${continueBtn}<button class="btn ghost" data-act="guide"><span class="kanji" style="color:var(--gold)">道</span> Guide</button><button class="btn ghost" data-act="ach">Achievements <span class="num" style="opacity:.7">${unlockedCount()}/${ACHIEVEMENTS.length}</span></button><button class="btn ghost" data-act="career">Career</button><button class="btn ghost" data-act="shrine"><span class="kanji" style="color:var(--gold)">祖</span> Shrine <span class="num" style="opacity:.7">${getShrine().embers} 火</span></button><button class="btn ghost" data-act="controls">Controls</button><button class="btn ghost" data-act="random">Random class</button></div>
     </div>
     <div class="menu-body">
       <div class="class-grid" role="listbox" aria-label="Classes">${cards}</div>
       <aside class="detail" style="--accent:${cls.accent}">
         <span class="bigmark" aria-hidden="true">${cls.kanji}</span>
         <div class="detail-head"><span class="kanji">${cls.kanji}</span><div><h2>${cls.name}</h2><div class="role">${cls.role}</div></div></div>
+        ${classUnlocked(cls.id) ? "" : `<div class="lock-banner">🔒 <b>Locked.</b> ${reqText(CLASS_REQS[cls.id])}</div>`}
         <div class="sig-box"><span class="kanji">${SIGNATURES[cls.id].kanji}</span><div><b>Signature · ${SIGNATURES[cls.id].name}</b><p>${SIGNATURES[cls.id].desc}</p></div></div>
         <h3>Passives</h3>
         <ul>${cls.bonuses.filter(b => !/secondary|Starts with/i.test(b) && !sameAsSignature(b, cls.id)).map(b => `<li>${b}</li>`).join("") || "<li>No stat bonuses. The signature is the whole kit</li>"}</ul>
@@ -486,7 +560,7 @@ function renderMenu() {
           ? `<button class="vow-btn${vowScore(vowSet) ? " on" : ""}" data-act="vows"><span class="kanji">誓</span><span><b>Vows</b><i>${vowScore(vowSet) ? `Score ${vowScore(vowSet)} · +${Math.round(vowScore(vowSet) * VOW_COIN_BONUS * 100)}% coins` : "Swear optional challenges for a higher score"}</i></span><span class="num vow-score">${vowScore(vowSet)}</span></button>`
           : `<p class="hint vow-locked"><span class="kanji">誓</span> Vows unlock when you reach wave ${VOW_UNLOCK_WAVE} (your best: ${getCareer().highestWave || 0}).</p>`}
         <div class="start-row">
-          <button class="btn primary" data-act="start" ${currentWeapons.length === 2 ? "" : "disabled"}>Begin · ${DIFFICULTIES[settings.difficulty].name}${vowsUnlocked() && vowScore(vowSet) ? ` · 誓 ${vowScore(vowSet)}` : ""} · Enter</button>
+          <button class="btn primary" data-act="start" ${canStart() ? "" : "disabled"}>${classUnlocked(cls.id) ? "" : "🔒 "}Begin · ${DIFFICULTIES[settings.difficulty].name}${vowsUnlocked() && vowScore(vowSet) ? ` · 誓 ${vowScore(vowSet)}` : ""} · Enter</button>
         </div>
         ${saved ? `<p class="hint">Starting a new run replaces your saved run.</p>` : ""}
       </aside>
@@ -543,6 +617,7 @@ menu.addEventListener("click", e => {
   const chip = t.closest<HTMLElement>("[data-weapon]");
   if (chip) {
     const id = chip.dataset.weapon as SecondaryId;
+    if (!weaponUsable(currentClass, id)) return;
     const i = currentWeapons.indexOf(id);
     if (i >= 0) currentWeapons.splice(i, 1);
     else {
@@ -559,22 +634,23 @@ menu.addEventListener("click", e => {
     if (logoTaps >= 7) { logoTaps = 0; for (const ch of "ghostdev") window.dispatchEvent(new KeyboardEvent("keydown", { key: ch })); }
   }
   const act = t.closest<HTMLElement>("[data-act]")?.dataset.act;
-  if (act === "start") startGame(currentClass, currentWeapons);
+  if (act === "start") { if (canStart()) startGame(currentClass, currentWeapons); }
   else if (act === "continue") continueRun();
   else if (act === "controls") showControlsModal();
   else if (act === "career") showCareerModal();
   else if (act === "ach") showAchModal();
   else if (act === "guide") showGuide("basics");
   else if (act === "vows") showVowsModal();
+  else if (act === "shrine") showShrineModal();
   else if (act === "random") {
-    const pool = CLASSES.filter(c => c.id !== currentClass);
+    const pool = CLASSES.filter(c => c.id !== currentClass && classUnlocked(c.id));
     selectClass(pool[Math.floor(Math.random() * pool.length)].id);
   }
 });
 
 function menuKeys(e: KeyboardEvent) {
   if (e.key === "Enter" && !(e.target as HTMLElement).closest?.("[data-weapon],[data-act]")) {
-    if (currentWeapons.length === 2) startGame(currentClass, currentWeapons);
+    if (canStart()) startGame(currentClass, currentWeapons);
     e.preventDefault();
     return;
   }
@@ -632,6 +708,8 @@ function startGame(classId: ClassId, weapons: SecondaryId[]) {
   const g = bootGame();
   g.difficulty = settings.difficulty;
   g.vows = activeVows();
+  g.meta = shrineBonus() ?? { ...NO_META };   // SHRINE
+  runAchCount = 0;
   g.start(classId, pick[0]);
   g.equipWeapons([pick[0], pick[1]]);
   trackRun(g, true);
@@ -645,6 +723,7 @@ function continueRun() {
   const saved = loadRun();
   if (!saved) { renderMenu(); return; }
   const g = bootGame();
+  runAchCount = 0;
   g.resumeFromSave(saved);
   trackRun(g, false);
   trackGame(g);
@@ -958,8 +1037,8 @@ function updateHud(s: GameStats) {
   // Career — fold progress in at each wave end and when the run ends.
   if (game && s.state !== careerSeenState) {
     if (s.state === "shop") commitRun(game);
-    else if (s.state === "defeat") commitRun(game, true);
-    else if (s.state === "victory") { commitRun(game); recordWin(game); }   // run continues if they go Endless
+    else if (s.state === "defeat") { commitRun(game, true); awardEmbers(game); }
+    else if (s.state === "victory") { commitRun(game); recordWin(game); awardEmbers(game); }   // run continues if they go Endless
     careerSeenState = s.state;
     runAchievementCheck(true);
   }
@@ -1135,6 +1214,7 @@ function renderEnd(s: GameStats) {
       <div class="end-stat"><b>${s.perks.length}</b><span>Blessings</span></div>
       <div class="end-stat"><b>${mins}m</b><span>Time</span></div>
     </div>
+    ${game && !game.devMode ? (awardEmbers(game), `<div class="embers-earned"><span class="kanji">火</span> +${lastEmbers} Spirit Embers <span class="dim">· spend them at the Shrine</span></div>`) : ""}
     ${game ? recapHTML(game, won) : ""}
     <div class="panel-actions">
       ${won ? `<button class="btn primary" data-act="endless">∞ Continue (Endless) · <kbd>Enter</kbd></button>
@@ -1176,6 +1256,16 @@ overlay.addEventListener("click", e => {
   const gt = t.closest<HTMLElement>("[data-guide]");
   if (gt && guideOpen) { showGuide(gt.dataset.guide as GuideTab); overlay.scrollTop = 0; return; }
   if (cact === "closevows") { closeVowsModal(); return; }
+  if (cact === "closeshrine") { closeShrineModal(); return; }
+  if (cact === "refundshrine") { refundShrine(); showShrineModal(); return; }
+  if (shrineOpen) {
+    const sb = t.closest<HTMLElement>("[data-shbuy]");
+    if (sb) { if (buyNode(sb.dataset.shbuy as NodeId)) { try { audio.play("monPing"); } catch { /* audio off */ } } showShrineModal(); return; }
+    const sa = t.closest<HTMLElement>("[data-shalt]");
+    if (sa) { toggleAlt(sa.dataset.shalt as NodeId); showShrineModal(); return; }
+    const so = t.closest<HTMLInputElement>("[data-shoff]");
+    if (so) { setShrineOff(so.checked); showShrineModal(); return; }
+  }
   if (cact === "clearvows") { for (const k of Object.keys(vowSet)) delete vowSet[k as VowId]; writeJSON(VOWS_KEY, vowSet); showVowsModal(); return; }
   const vb = t.closest<HTMLElement>("[data-vow]");
   if (vb && vowsOpen) {
@@ -1301,6 +1391,7 @@ window.addEventListener("keydown", e => {
   if (careerOpen) { if (e.code === "Escape") closeCareerModal(); return; }
   if (achOpen) { if (e.code === "Escape") closeAchModal(); return; }
   if (vowsOpen) { if (e.code === "Escape") closeVowsModal(); return; }
+  if (shrineOpen) { if (e.code === "Escape") closeShrineModal(); return; }
   if (guideOpen) { if (e.code === "Escape") closeGuide(); return; }
   if (menu.style.display !== "none") { menuKeys(e); return; }
   if (!game) return;

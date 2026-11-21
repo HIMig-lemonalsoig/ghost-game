@@ -235,7 +235,7 @@ The core systems are covered; these are what's still missing. Recommended order:
 | 8 ✅ | Victory + Endless mode | Brotato, Vampire Survivors | The game never says "you won" | S–M |
 | 9 ✅ | Level-up control: Reroll / Banish / Skip | Halls of Torment, Brotato | A bad set of cards can't be fixed | S |
 | 10 ✅ | Better end-of-run screen + death recap | Risk of Rain 2, LoL Death Recap | Players can't see *why* a run ended | S–M |
-| 11 | Unlocks across runs (sideways unlocks + small upgrade tree) | Hades Mirror of Night, Dead Cells | Runs don't feed into anything permanent | L |
+| 11 ✅ | Unlocks across runs (sideways unlocks + small upgrade tree) | Hades Mirror of Night, Dead Cells | Runs don't feed into anything permanent | L |
 | 12 | Shop lock | Brotato | Save up for an item across a reroll or wave | S |
 | 13 | Daily run (seeded by date) | Spelunky, Dead Cells | A shared daily challenge | M |
 | 14 | Controller support | Browser Gamepad API | Chromebook and PC players with controllers | M |
@@ -274,7 +274,7 @@ Changes from the plan: no separate Endless-wave-40 achievement was added, becaus
 - **"Why you lost" line:** e.g. "Most damage came from Archers on wave 14. Try deflect or a shield." Simple rules only.
 - **Share:** a "Copy run summary" button that copies plain text to share with friends.
 
-## Phase 11: Unlocks across runs
+## Phase 11: Unlocks across runs ✅ done
 
 Research warns: unlocks that only add raw power make runs trivial, so keep power growth small and favour **sideways** unlocks.
 

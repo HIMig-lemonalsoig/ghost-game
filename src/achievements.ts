@@ -3,7 +3,8 @@
 // almost nobody will ever pull off (Mythic). Unlocks are saved per browser.
 // Lifetime goals read career totals; run goals read the live run. Runs that
 // touched dev mode never unlock anything.
-import { CLASSES } from "./GhostGame";
+import { CLASSES, SECONDARIES } from "./GhostGame";
+import { earnedClassCount, earnedWeaponCount, getShrine, SHRINE, nodeRank } from "./unlocks";
 import { wonClasses, totalWins } from "./career";
 const wonOn = (x: AchCtx, ...ds: string[]) => Object.keys(x.c.wins ?? {}).some(k => ds.includes(k.split("@")[1]));
 import { AFFIX_IDS } from "./content/elites";
@@ -145,6 +146,16 @@ export const ACHIEVEMENTS: Ach[] = [
     check: x => x.fresh && !!x.r && !!x.s && x.r.purchases === 0 && x.s.wave >= 20 },
   { id: "every_oath", tier: "mythic", kanji: "極", name: "Every Oath Sworn", desc: "Reach wave 25 with every vow at max rank (Vow score 30).",
     check: x => x.vow >= 30 && (x.s?.wave ?? 0) >= 25 },
+  // ── Unlocks & Shrine (Phase 11) ──
+  { id: "shrine_first", tier: "common", kanji: "祖", name: "Offering", desc: "Kindle a blessing at the Shrine of Ancestors.", check: () => getShrine().spent > 0 },
+  { id: "unlock_5", tier: "uncommon", kanji: "開", name: "New Blood", desc: "Unlock 5 new classes.",
+    check: () => earnedClassCount() >= 13, progress: (): [number, number] => [Math.min(5, earnedClassCount() - 8), 5] },
+  { id: "unlock_wpn", tier: "rare", kanji: "器", name: "Armory", desc: "Unlock every weapon.",
+    check: () => earnedWeaponCount() >= Object.keys(SECONDARIES).length, progress: (): [number, number] => [earnedWeaponCount(), Object.keys(SECONDARIES).length] },
+  { id: "unlock_cls", tier: "epic", kanji: "衆", name: "Full Roster", desc: `Unlock every class (${CLASSES.length}).`,
+    check: () => earnedClassCount() >= CLASSES.length, progress: (): [number, number] => [earnedClassCount(), CLASSES.length] },
+  { id: "shrine_max", tier: "epic", kanji: "灯", name: "Eternal Flame", desc: "Max out every blessing at the Shrine.",
+    check: () => SHRINE.every(n => nodeRank(n.id) >= n.max), progress: (): [number, number] => [SHRINE.filter(n => nodeRank(n.id) >= n.max).length, SHRINE.length] },
   { id: "win_all", tier: "mythic", kanji: "覇", name: "Shogun of All", desc: `Win with every class (${CLASSES.length}).`,
     check: x => wonClasses(x.c).size >= CLASSES.length, progress: x => [wonClasses(x.c).size, CLASSES.length] },
   { id: "beyond_death", tier: "mythic", kanji: "超", name: "Beyond Death", desc: "Reach wave 30 on Death difficulty.",

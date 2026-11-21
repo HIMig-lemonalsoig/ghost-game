@@ -10,8 +10,9 @@ import { AFFIXES } from "./content/elites";
 import { GENERAL_ULT_PERKS, CLASS_ULT_PERKS } from "./content/ultperks";
 import { VOWS, VOW_UNLOCK_WAVE, MAX_VOW_SCORE, VOW_COIN_BONUS } from "./content/vows";
 import { SIGNATURES } from "./content/signatures";
+import { CLASS_REQS, WEAPON_REQS, reqText, classUnlocked, weaponUnlocked } from "./unlocks";
 
-export type GuideTab = "basics" | "duos" | "evolutions" | "ultperks" | "elites" | "enemies" | "vows" | "classes";
+export type GuideTab = "basics" | "duos" | "evolutions" | "ultperks" | "elites" | "enemies" | "vows" | "classes" | "unlocks";
 export const GUIDE_TABS: { id: GuideTab; label: string; kanji: string }[] = [
   { id: "basics", label: "Basics", kanji: "基" },
   { id: "duos", label: "Duo perks", kanji: "双" },
@@ -21,6 +22,7 @@ export const GUIDE_TABS: { id: GuideTab; label: string; kanji: string }[] = [
   { id: "enemies", label: "Enemies", kanji: "敵" },
   { id: "vows", label: "Vows", kanji: "誓" },
   { id: "classes", label: "Signatures", kanji: "印" },
+  { id: "unlocks", label: "Unlocks & Shrine", kanji: "祖" },
 ];
 
 export interface GuideCtx {
@@ -177,6 +179,30 @@ function vows(c: GuideCtx): string {
   <div class="g-list">${rows}</div>`;
 }
 
+function unlocks(): string {
+  const cls = (Object.entries(CLASS_REQS) as [ClassId, NonNullable<(typeof CLASS_REQS)[ClassId]>][]).map(([id, r]) => {
+    const k = getClass(id), open = classUnlocked(id);
+    return `<div class="g-row${open ? "" : " dim"}"><span class="g-k kanji" style="color:${k.accent}">${open ? k.kanji : "🔒"}</span><div class="g-t"><b>${k.name}</b> ${open ? `<span class="g-badge">Unlocked</span>` : ""}<p>${reqText(r)}</p></div></div>`;
+  }).join("");
+  const wpn = (Object.entries(WEAPON_REQS) as [SecondaryId, NonNullable<(typeof WEAPON_REQS)[SecondaryId]>][]).map(([id, r]) => {
+    const w = SECONDARIES[id], open = weaponUnlocked(id);
+    return `<div class="g-row${open ? "" : " dim"}"><span class="g-k kanji">${open ? w.kanji : "🔒"}</span><div class="g-t"><b>${w.name}</b> ${open ? `<span class="g-badge">Unlocked</span>` : ""}<p>${reqText(r)}</p></div></div>`;
+  }).join("");
+  return `
+  <div class="g-card g-how"><h5>How unlocks work</h5><ol class="g-steps">
+    ${step(1, `You start with <b>8 classes</b> and <b>8 weapons</b>. The rest unlock from milestones you'll hit just by playing. Anything you'd already played before stays unlocked.`)}
+    ${step(2, "Every class can always use its first two weapons. Locked weapons show their requirement on the class screen.")}
+    ${step(3, "Unlocks are <b>sideways</b>: new options, not more power.")}
+  </ol></div>
+  <div class="g-card g-how"><h5>Shrine of Ancestors 祖</h5><ol class="g-steps">
+    ${step(1, "Every run earns <b>Spirit Embers</b> 火: 1 per wave reached, 3 per boss, 5 per achievement and 15 for a win.")}
+    ${step(2, "Spend them on the <b>Shrine</b> (main menu) for small, capped blessings like an extra reroll or a few more HP.")}
+    ${step(3, "Every blessing has an <b>alternate version</b>. Tap it to switch for free. You can also refund everything or switch the whole shrine off for purist runs.")}
+  </ol></div>
+  <h5 class="g-h">Classes</h5><div class="g-list">${cls}</div>
+  <h5 class="g-h">Weapons</h5><div class="g-list">${wpn}</div>`;
+}
+
 function classes(c: GuideCtx): string {
   return `<p class="g-note">Every class has one signature passive that changes how it plays. Its ultimate perk is on the Ultimate perks tab.</p>
   <div class="g-list">${CLASSES.map(k => {
@@ -188,7 +214,7 @@ function classes(c: GuideCtx): string {
 export function guideHTML(tab: GuideTab, c: GuideCtx): string {
   const body = tab === "basics" ? basics() : tab === "duos" ? duos(c) : tab === "evolutions" ? evolutions(c)
     : tab === "ultperks" ? ultPerks(c) : tab === "elites" ? elites() : tab === "enemies" ? enemies()
-    : tab === "vows" ? vows(c) : classes(c);
+    : tab === "vows" ? vows(c) : tab === "unlocks" ? unlocks() : classes(c);
   return `<div class="panel guide" style="text-align:left">
     <div class="panel-title" style="text-align:center">道 GUIDE</div>
     <div class="g-tabs" role="tablist">${GUIDE_TABS.map(t => `<button class="g-tab${t.id === tab ? " on" : ""}" role="tab" aria-selected="${t.id === tab}" data-guide="${t.id}"><span class="kanji">${t.kanji}</span>${t.label}</button>`).join("")}</div>
@@ -215,6 +241,7 @@ export const GUIDE_CSS = `
 .g-steps li { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; color: var(--muted); line-height: 1.5; }
 .g-step { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--gold); color: var(--ink); font-size: 12px; }
 .g-note { font-size: 13px; color: var(--dim); margin: 8px 0; }
+.g-row.dim { opacity: .6; }
 .g-h { font-size: 11px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--dim); margin: 16px 0 8px; }
 .g-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px; }
 .g-row { display: flex; gap: 12px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); }

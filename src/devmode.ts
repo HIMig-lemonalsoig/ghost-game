@@ -6,6 +6,7 @@ import {
   PERK_POOL, CONSUMABLES, SECONDARIES, ABILITY_POOL, BOSS_INFO,
 } from "./GhostGame";
 import type { GhostGame, SecondaryId, ConsumableId, EnemyArchetype, BossKind } from "./GhostGame";
+import { setUnlockAll, unlockAllOn, addEmbers } from "./unlocks";
 import { reportHTML, getTelemetry, resetTelemetry } from "./telemetry";
 import { AFFIXES } from "./content/elites";
 import { DUOS } from "./content/duos";
@@ -140,7 +141,8 @@ export function initDevMode(getGame: () => GhostGame | null) {
     <section>
       <h4>Balance data</h4>
       <div class="row"><button data-dev="report">Balance report</button><button data-dev="copyjson">Copy JSON</button></div>
-      <div class="row"><button data-dev="vowsunlock">Toggle Vows unlock</button></div>
+      <div class="row"><button data-dev="vowsunlock">Toggle Vows unlock</button><button data-dev="unlockall">Toggle unlock all</button></div>
+      <div class="row"><button data-dev="embers">+100 Spirit Embers</button></div>
     </section>
     <section>
       <h4>Toggles</h4>
@@ -262,6 +264,8 @@ export function initDevMode(getGame: () => GhostGame | null) {
       notify(on ? "Vows unlocked (dev) — reopen the menu" : "Vows dev unlock off");
       return;
     }
+    if (act === "unlockall") { setUnlockAll(!unlockAllOn()); notify(unlockAllOn() ? "All classes & weapons unlocked (dev) — reopen the menu" : "Unlock-all off"); return; }
+    if (act === "embers") { addEmbers(100); notify("+100 Spirit Embers"); return; }
     const g = getGame();
     if (!g) { notify("Start a run first"); return; }
     g.devMode = true; // dev run — no records

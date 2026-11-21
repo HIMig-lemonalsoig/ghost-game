@@ -1177,7 +1177,22 @@ export const DIFFICULTIES: Record<Difficulty, {
   death:  { name: "Death",  kanji: "死", color: "hsl(358 80% 58%)", desc: "Brutal. Huge, fast, deadly hordes and barely any warning.",       hp: 1.75, dmg: 1.8,  speed: 1.12, density: 1.3,  coins: 0.9,  tele: 0.8 },
 };
 
+/** Shrine of Ancestors bonuses for a run (see src/unlocks.ts). */
+export interface MetaBonus {
+  rerolls: number; banishes: number; startMon: number; monMul: number;
+  chestHeal: number; chestCoinMul: number; startItem: boolean; startRiceBalls: number;
+  maxHp: number; damageTakenMul: number; speedMul: number; dashCdMul: number;
+  startUlt: number; ultChargeMul: number; xpMul: number; skipMul: number;
+  shopMul: number; rerollMul: number; secondLife: boolean; bossHeal: number;
+}
+export const NO_META: MetaBonus = {
+  rerolls: 0, banishes: 0, startMon: 0, monMul: 1, chestHeal: 0, chestCoinMul: 1, startItem: false, startRiceBalls: 0,
+  maxHp: 0, damageTakenMul: 1, speedMul: 1, dashCdMul: 1, startUlt: 0, ultChargeMul: 1, xpMul: 1, skipMul: 1,
+  shopMul: 1, rerollMul: 1, secondLife: false, bossHeal: 0,
+};
+
 export interface SavedRun {
+  meta?: MetaBonus;
   v: number;
   savedAt: number;
   atShop?: boolean;          // saved right after a wave cleared
@@ -4558,6 +4573,8 @@ export class GhostGame {
   private victoryPending = false;
   vr(id: VowId) { return vowRank(this.vows, id); }
   get vowScore() { return vowScore(this.vows); }
+  /** SHRINE bonuses for this run (set by the menu before start; NO_META when the shrine is off). */
+  meta: MetaBonus = { ...NO_META };
   bagFullWarnAt = -99;
   reaperCount = 0;
   foxTimer = 4;
@@ -4694,6 +4711,13 @@ export class GhostGame {
     const cid = this.lastClassId;
     this.perks = defaultPerks();
     this.applyClassBonuses(cid);
+    // SHRINE: small permanent bonuses.
+    const M = this.meta;
+    this.perks.rerolls += M.rerolls; this.perks.banishes += M.banishes;
+    this.perks.monMul *= M.monMul; this.perks.maxHpBonus += M.maxHp;
+    this.perks.damageTakenMul *= M.damageTakenMul; this.perks.speedMul *= M.speedMul;
+    this.perks.dashCdMul *= M.dashCdMul; this.perks.ultChargeMul *= M.ultChargeMul;
+    if (M.secondLife) this.perks.hasSecondWind = true;
     this.baseKatanaDamage = this.perks.damage;
     this.acquiredPerks = [];
     this.pendingLevelUps = 0;
@@ -4784,6 +4808,11 @@ export class GhostGame {
     this.onActiveSecondaryChanged();
     this.stats.maxHp = baseHp;
     this.stats.hp = baseHp;
+    // SHRINE: starting coins, ultimate charge and items.
+    this.stats.mon += M.startMon;
+    this.stats.ultCharge = Math.max(this.stats.ultCharge, this.stats.ultMax * M.startUlt);
+    if (M.startItem) { const slot = this.stats.consumables.findIndex(c => c === null); if (slot !== -1) this.stats.consumables[slot] = rollConsumable(); }
+    for (let i = 0; i < M.startRiceBalls; i++) { const slot = this.stats.consumables.findIndex(c => c === null); if (slot !== -1) this.stats.consumables[slot] = "rice_ball"; }
     // Initialize block pool to the class base + (heavy weapon bonus is added
     // automatically each frame via updateSecondaries refresh).
     this.stats.blockHpMax = Math.max(0, Math.round(this.perks.blockHpBase));
@@ -5867,7 +5896,7 @@ export class GhostGame {
     const ready = this.evoReadyWeapon();
     if (ready) { this.evolveWeapon(ready, x, y); return; }
     const D = DIFFICULTIES[this.difficulty];
-    const coins = Math.round((12 + this.stats.wave * 4) * D.coins);
+    const coins = Math.round((12 + this.stats.wave * 4) * D.coins * this.meta.chestCoinMul);   // SHRINE Gilded
     this.stats.mon += coins;
     this.run.monEarned += coins;
     const parts = [`+${coins} 文`];
@@ -5877,7 +5906,7 @@ export class GhostGame {
       this.stats.consumables[slot] = id;
       parts.push(CONSUMABLES[id].name);
     }
-    const heal = Math.round(this.player.maxHp * 0.15);
+    const heal = Math.round(this.player.maxHp * (0.15 + this.meta.chestHeal));   // SHRINE Blessed
     this.healPlayer(heal);
     parts.push(`+${heal} HP`);
     this.fx.shockwave(x, y, 80, { hue: 45, light: 70, life: 0.45, width: 6 });
@@ -6754,7 +6783,7 @@ export class GhostGame {
 
   /** Coins you get for skipping a level-up card. */
   skipReward(): number {
-    return Math.round(15 * Math.max(1, this.stats.wave) * DIFFICULTIES[this.difficulty].coins);
+    return Math.round(15 * Math.max(1, this.stats.wave) * DIFFICULTIES[this.difficulty].coins * this.meta.skipMul);   // SHRINE Ascetic
   }
 
   /** Take coins instead of a card. */
@@ -7001,6 +7030,7 @@ export class GhostGame {
   }
 
   gainXp(amount: number) {
+    amount *= this.meta.xpMul;   // SHRINE Scholar
     this.stats.xp += amount;
     let gained = false;
     while (this.stats.xp >= this.stats.xpToNext) {
@@ -7572,6 +7602,7 @@ export class GhostGame {
     this.run.killsByKind[e.archetype] = (this.run.killsByKind[e.archetype] ?? 0) + 1;
     if (e.isBoss) {
       this.run.bossKills++;
+      if (this.meta.bossHeal > 0 && this.player) this.healPlayer(Math.round(this.player.maxHp * this.meta.bossHeal));   // SHRINE Trophy
       const bk = e.archetype === "final" ? "final" : (e.bossKind ?? "oni");
       this.run.bossByKind[bk] = (this.run.bossByKind[bk] ?? 0) + 1;
     }
@@ -14801,6 +14832,7 @@ export class GhostGame {
       saveRun({
         atShop,
         endless: this.endless,
+        meta: { ...this.meta },
         vows: { ...this.vows },
         classId: this.lastClassId,
         difficulty: this.difficulty,
@@ -14843,6 +14875,7 @@ export class GhostGame {
     // class-conditional spawns (Kagebushi clone, Miko barrier) initialize.
     this.difficulty = s.difficulty ?? "normal";
     this.vows = { ...(s.vows ?? {}) };
+    this.meta = { ...NO_META, ...(s.meta ?? {}) };
     this.start(s.classId, s.secondaryId);
     this.endless = s.endless ?? s.wave > 25;
     // Overlay numeric perks (captures shop-bought upgrades that aren't in
@@ -15276,10 +15309,10 @@ export class GhostGame {
     // runs after a wave ends and we never run two intermissions back-to-back.
     if (this.stats.state !== "playing") return;
     const equipped = this.stats.secondaryIds.filter((s): s is SecondaryId => !!s);
-    const infl = shopInflation(this.stats.wave) * (1 + 0.2 * this.vr("stingy"));   // VOW Stingy Merchant
+    const infl = shopInflation(this.stats.wave) * (1 + 0.2 * this.vr("stingy")) * this.meta.shopMul;   // VOW Stingy Merchant, SHRINE Haggler
     this.stats.shopOffer = this.dedupeOffer(rollShopOffer(this.shopSlots(), equipped, this.maxedShopEffects())).map(it => ({ ...it, price: Math.round(it.price * infl) }));
     this.emitEvent({ t: "offer", kind: "shop", ids: this.stats.shopOffer.map(it => it.effect) });
-    this.stats.shopRerollCost = Math.round(SHOP_REROLL_COST * infl);
+    this.stats.shopRerollCost = Math.round(SHOP_REROLL_COST * infl * this.meta.rerollMul);   // SHRINE Browser
     this.roninFreeReroll = this.isClass("ronin");   // SIGNATURE Masterless: first reroll free
     if (this.roninFreeReroll) this.stats.shopRerollCost = 0;
     this.stats.shopPurchasedIds = [];
@@ -15300,11 +15333,11 @@ export class GhostGame {
     if (this.stats.mon < this.stats.shopRerollCost) return;
     this.stats.mon -= this.stats.shopRerollCost;
     const equipped = this.stats.secondaryIds.filter((s): s is SecondaryId => !!s);
-    const infl = shopInflation(this.stats.wave) * (1 + 0.2 * this.vr("stingy"));   // VOW Stingy Merchant
+    const infl = shopInflation(this.stats.wave) * (1 + 0.2 * this.vr("stingy")) * this.meta.shopMul;   // VOW Stingy Merchant, SHRINE Haggler
     this.stats.shopOffer = this.dedupeOffer(rollShopOffer(this.shopSlots(), equipped, this.maxedShopEffects())).map(it => ({ ...it, price: Math.round(it.price * infl) }));
     this.emitEvent({ t: "offer", kind: "shop", ids: this.stats.shopOffer.map(it => it.effect) });
     // Slight escalation so reroll spam isn't free.
-    if (this.roninFreeReroll) { this.roninFreeReroll = false; this.stats.shopRerollCost = Math.round(SHOP_REROLL_COST * infl); }
+    if (this.roninFreeReroll) { this.roninFreeReroll = false; this.stats.shopRerollCost = Math.round(SHOP_REROLL_COST * infl * this.meta.rerollMul); }
     else this.stats.shopRerollCost = Math.round(this.stats.shopRerollCost * 1.5);
     this.stats.shopPurchasedIds = [];
     audio.play("slash");
