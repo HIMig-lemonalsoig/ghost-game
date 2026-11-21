@@ -18,6 +18,7 @@ import { DUOS } from "./content/duos";
 import { VOWS, VOW_BY_ID, vowScore, vowRank, MAX_VOW_SCORE, VOW_UNLOCK_WAVE, VOW_COIN_BONUS } from "./content/vows";
 import type { VowSet, VowId } from "./content/vows";
 import { trackGame, trackStartWeapons } from "./telemetry";
+import { recapHTML, summaryText } from "./recap";
 import { trackRun, commitRun, careerHTML, resetCareer, CAREER_CSS, getCareer, liveCareer, isFreshRun, recordWin, wonClasses } from "./career";
 import { ACHIEVEMENTS, checkAchievements, achievementsHTML, achToastHTML, unlockedCount, ACH_CSS } from "./achievements";
 import type { AchCtx } from "./achievements";
@@ -1134,12 +1135,27 @@ function renderEnd(s: GameStats) {
       <div class="end-stat"><b>${s.perks.length}</b><span>Blessings</span></div>
       <div class="end-stat"><b>${mins}m</b><span>Time</span></div>
     </div>
+    ${game ? recapHTML(game, won) : ""}
     <div class="panel-actions">
       ${won ? `<button class="btn primary" data-act="endless">∞ Continue (Endless) · <kbd>Enter</kbd></button>
       <button class="btn" data-act="retry">New run</button>`
       : `<button class="btn primary" data-act="retry">Try again · <kbd>Enter</kbd></button>`}
       <button class="btn" data-act="quit">Change class · <kbd>Esc</kbd></button>
+      <button class="btn ghost" data-act="copyrun">Copy run summary</button>
     </div></div>`);
+}
+
+async function copyRunSummary(btn?: HTMLElement | null) {
+  if (!game) return;
+  const s = game.stats;
+  const text = summaryText(game, s, s.state === "victory", Math.floor((performance.now() - runStartedAt) / 60000));
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; } catch {
+    const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select();
+    try { ok = document.execCommand("copy"); } catch { /* blocked */ }
+    ta.remove();
+  }
+  if (btn) btn.textContent = ok ? "Copied ✓" : "Copy blocked";
 }
 
 const mx = (on: boolean) => (on ? ` <i class="maxed">MAX</i>` : "");
@@ -1204,6 +1220,7 @@ function runAction(act: string) {
   switch (act) {
     case "keep": game.cancelSwap(); break;
     case "reroll": game.rerollShop(); break;
+    case "copyrun": void copyRunSummary(document.querySelector<HTMLElement>('[data-act="copyrun"]')); break;
     case "lvlreroll": banishMode = false; game.rerollLevelUp(); break;
     case "lvlbanish": banishMode = !banishMode; overlayKey = ""; syncOverlay({ ...game.stats }); break;
     case "lvlskip": banishMode = false; game.skipLevelUp(); break;

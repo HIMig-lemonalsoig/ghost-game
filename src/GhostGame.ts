@@ -3476,6 +3476,9 @@ export interface RunCounters {
   evolutions: string[];
   duos: string[];
   nueFirstStrike: number;     // Nue killed before it ever summoned
+  dmgBy: Record<string, number>;     // RECAP damage dealt per source label
+  takenBy: Record<string, number>;   // RECAP damage taken per attacker
+  takenWave: Record<string, Record<string, number>>;   // RECAP damage taken per wave per attacker
 }
 export const newRunCounters = (): RunCounters => ({
   kills: 0, stealthKills: 0, bossKills: 0, bossByKind: {}, killsByKind: {}, wavesCleared: 0,
@@ -3483,6 +3486,7 @@ export const newRunCounters = (): RunCounters => ({
   purchases: 0, flawlessWaves: 0, flawlessStreak: 0, bestFlawlessStreak: 0, flawlessBossWaves: 0,
   bestMultiKill: 0, bestUltKills: 0, maxMon: 0, clutchWaves: 0,
   eliteKills: 0, eliteByAffix: {}, doubleEliteKills: 0, chests: 0, evolutions: [], duos: [], nueFirstStrike: 0,
+  dmgBy: {}, takenBy: {}, takenWave: {},
 });
 
 export const BOSS_INFO: Record<BossKind, { name: string; kanji: string }> = {
@@ -4595,6 +4599,64 @@ export class GhostGame {
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("No canvas context");
     this.ctx = ctx;
+    this.wrapDamageSources();
+  }
+
+  // ===================== RECAP: damage-by-source tracking =====================
+  /** Label for damage dealt right now when the hit itself doesn't say (set by the system that's running). */
+  dmgSrc: string | null = null;
+  /** Hits taken in the last few seconds, for the death recap. */
+  recentHits: { t: number; by: string; dmg: number }[] = [];
+
+  /** Tag every damage-dealing system with a label so dealDamage knows who hit. */
+  private wrapDamageSources() {
+    const ult = "Ultimate";
+    const table: Record<string, string> = {
+      executeUltimate: ult, updatePhantomDance: ult, updatePhaseCUltimates: ult, castIaiChain: ult,
+      updateIaiChain: ult, iaiChainStep: ult, ultAftershock: ult, resolveStandoff: ult,
+      castBarrage: "Barrage", barrageSwing: "Barrage", castFlashStep: "Flash Step", castWhirlwind: "Whirlwind",
+      whirlwindSwing: "Whirlwind", castBladeStorm: "Blade Storm", bladeStormSwing: "Blade Storm",
+      castPhantomSlash: "Phantom Slash", castSoulRend: "Soul Rend", castExecution: "Execution",
+      castFireball: "Fireball", castLightning: "Lightning", chainZap: "Lightning", updateAbilities: "Abilities",
+      updateClassPassives: "Class powers", updatePhaseCPassives: "Class powers", updateClassEntities: "Class powers",
+      updateSecondaries: "Weapons", updateSecProjectiles: "Weapons", swingMeleeSecondary: "Weapons", updateArcBombs: "Arc bombs",
+      updateEvo: "Evolutions & duos", onEvoHit: "Evolutions & duos", updateInk: "Evolutions & duos",
+      updateSignatures: "Signature", useConsumable: "Items", killEnemy: "On-kill effects",
+    };
+    const self = this as unknown as Record<string, (...a: unknown[]) => unknown>;
+    for (const [name, label] of Object.entries(table)) {
+      const fn = self[name];
+      if (typeof fn !== "function") continue;
+      self[name] = (...args: unknown[]) => {
+        const prev = this.dmgSrc;
+        this.dmgSrc = label;
+        try { return fn.apply(this, args); } finally { this.dmgSrc = prev; }
+      };
+    }
+  }
+
+  /** Record damage taken from an attacker (run total, per wave, and the last 10 s). */
+  trackTaken(by: string, amt: number) {
+    if (!(amt > 0)) return;
+    if (by === "arrow") by = "archer";
+    this.run.takenBy[by] = (this.run.takenBy[by] ?? 0) + amt;
+    const w = (this.run.takenWave[this.stats.wave] ??= {});
+    w[by] = (w[by] ?? 0) + amt;
+    this.recentHits.push({ t: this.run.time, by, dmg: amt });
+    while (this.recentHits.length && this.run.time - this.recentHits[0].t > 10) this.recentHits.shift();
+  }
+
+  /** Damage taken in the 10 seconds before now (or before death), grouped by attacker. */
+  recentTaken(): Record<string, number> {
+    const out: Record<string, number> = {};
+    for (const h of this.recentHits) if (this.run.time - h.t <= 10) out[h.by] = (out[h.by] ?? 0) + h.dmg;
+    return out;
+  }
+
+  /** Record damage dealt under a source label. */
+  trackDealt(label: string, amt: number) {
+    if (!(amt > 0)) return;
+    this.run.dmgBy[label] = (this.run.dmgBy[label] ?? 0) + amt;
   }
 
   resize(w: number, h: number, dpr: number) {
@@ -7271,6 +7333,7 @@ export class GhostGame {
             continue;
           }
           e.hp -= dmg;
+          this.trackDealt("Dash", dmg);
           this.spawnFloatText(e.pos, fmtNum(dmg), {
             color: "hsl(36 90% 75%)",
             size: 12,
@@ -7845,6 +7908,7 @@ export class GhostGame {
     }
     e.hp -= dmg;
     this.run.damageDealt += dmg;
+    this.trackDealt(this.evoNested ? "Evolutions & duos" : weaponSource ? (SECONDARIES[weaponSource]?.name ?? weaponSource) : this.dmgSrc ?? "Other", dmg);
     if (dmg > this.run.biggestHit) this.run.biggestHit = dmg;
     if (!this.evoNested && !this.raijinZapping) this.onEvoHit(e, weaponSource, dmg, isCrit);
     // Floating damage number above the enemy.
@@ -7946,11 +8010,13 @@ export class GhostGame {
       // Apply a small instant bleed tick so it feels punchy.
       const bleed = Math.max(1, Math.round(2 * this.perks.bleedDmgMul));
       e.hp -= bleed;
+      this.trackDealt("Bleed", bleed);
       this.spawnFloatText(e.pos, `${bleed}`, { color: "hsl(0 95% 60%)", size: 11 });
     }
     if (this.perks.lightningChance > 0 && Math.random() < this.perks.lightningChance) {
       const ld = Math.max(1, Math.round(4 + this.perks.lightningDmgBonus));
       e.hp -= ld;
+      this.trackDealt("Lightning perk", ld);
       e.stunTimer = Math.max(e.stunTimer, 0.25 + this.perks.lightningStunBonus);
       e.hitFlash = 1;
       this.spawnFloatText(e.pos, `⚡${ld}`, { color: "hsl(55 100% 75%)", size: 13 });
@@ -7985,6 +8051,7 @@ export class GhostGame {
     if (this.player.deflectTimer > 0) {
       if (e && e.state !== "dead") {
         e.hp -= e.damage + this.perks.parryDamage;
+        this.trackDealt("Deflect", e.damage + this.perks.parryDamage);
         e.hitFlash = 1;
         e.stunTimer = Math.max(e.stunTimer, e.isBoss ? 0.4 : 0.8);
         if (e.hp <= 0) this.killEnemy(e, "honor");
@@ -8072,6 +8139,7 @@ export class GhostGame {
     this.player.hp -= baseDamage;
     this.run.damageTaken += baseDamage;
     this.lastHitBy = source ?? (e ? (e.archetype === "final" ? "final boss" : e.isBoss ? `${e.bossKind ?? "oni"} boss` : e.affixes ? `elite ${e.archetype}` : e.archetype) : "unknown");
+    this.trackTaken(this.lastHitBy, baseDamage);
     if (e && e.state !== "dead" && e.affixes && e.affixes.includes("vampiric") && e.hp < e.maxHp) {
       const heal = e.maxHp * ELITE.vampHeal;
       e.hp = Math.min(e.maxHp, e.hp + heal);
@@ -8080,6 +8148,7 @@ export class GhostGame {
     if (this.stats.classId === "sohei" && e && e.state !== "dead") {
       const thorns = Math.max(1, Math.round(baseDamage * 0.6));
       e.hp -= thorns;
+      this.trackDealt("Thorns", thorns);
       e.hitFlash = 1;
       this.spawnFloatText(e.pos, `${thorns}`, { color: "hsl(28 80% 65%)", size: 13 });
       if (e.hp <= 0) this.killEnemy(e, "honor");
@@ -9592,6 +9661,7 @@ export class GhostGame {
               // Counter Strike perk adds bonus reflect damage on top.
               const counterBonus = this.perks.parryDamage;
               e.hp -= e.damage + counterBonus;
+              this.trackDealt("Deflect", e.damage + counterBonus);
               e.hitFlash = 1;
               e.stunTimer = Math.max(e.stunTimer, e.isBoss ? 0.4 : 0.8);
               this.spawnSpark(this.player.pos);
@@ -11940,7 +12010,7 @@ export class GhostGame {
         if (e.poisonTickAccum >= 1) {
           const tick = Math.floor(e.poisonTickAccum);
           e.poisonTickAccum -= tick;
-          e.hp -= tick;
+          e.hp -= tick; this.trackDealt("Poison", tick);
           this.spawnFloatText(e.pos, `${tick}`, {
             color: "hsl(95 80% 60%)",
             size: 11,
@@ -11970,7 +12040,7 @@ export class GhostGame {
         if (e.bleedTickAccum >= 1) {
           const tick = Math.floor(e.bleedTickAccum);
           e.bleedTickAccum -= tick;
-          e.hp -= tick;
+          e.hp -= tick; this.trackDealt("Bleed", tick);
           this.spawnFloatText(e.pos, `${tick}`, { color: "hsl(0 95% 55%)", size: 11 });
           if (e.hp <= 0) { this.killEnemy(e, "ghost"); continue; }
         }
@@ -11987,7 +12057,7 @@ export class GhostGame {
         if (e.burnTickAccum >= 1) {
           const tick = Math.floor(e.burnTickAccum);
           e.burnTickAccum -= tick;
-          e.hp -= tick;
+          e.hp -= tick; this.trackDealt("Burn", tick);
           this.spawnFloatText(e.pos, `${tick}`, {
             color: "hsl(20 95% 60%)",
             size: 11,
@@ -14404,7 +14474,7 @@ export class GhostGame {
           const d = Math.hypot(e.pos.x - c.pos.x, e.pos.y - c.pos.y);
           if (d <= c.radius) {
             if (c.venom) { e.poisonRemaining = Math.min(8, e.poisonRemaining + 0.5); if (this.perks.poisonDps <= 0) this.perks.poisonDps = 4; }
-            e.hp -= tick;
+            e.hp -= tick; this.trackDealt("Caltrops", tick);
             e.hitFlash = Math.max(e.hitFlash, 0.3);
             if (e.hp <= 0) this.killEnemy(e, "ghost");
           }

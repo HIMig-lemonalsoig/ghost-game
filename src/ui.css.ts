@@ -415,6 +415,25 @@ kbd {
 .end-stat { min-width: 120px; padding: 12px 16px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); }
 .end-stat b { display: block; font-size: 26px; color: var(--bone); }
 .end-stat span { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--dim); }
+.recap { margin: 18px auto 0; max-width: 860px; text-align: left; }
+.rc-why { padding: 10px 14px; border-radius: 10px; border: 1px solid hsl(355 60% 45% / .5); background: hsl(355 60% 30% / .18); font-size: 13.5px; line-height: 1.5; color: var(--bone); }
+.rc-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; justify-content: center; }
+.rc-chip { font-size: 12px; padding: 5px 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); color: var(--dim); }
+.rc-chip b { color: var(--bone); font-weight: 600; margin-left: 3px; }
+.rc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+@media (max-width: 720px) { .rc-grid { grid-template-columns: 1fr; } }
+.rc-box { padding: 12px 14px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); min-width: 0; }
+.rc-box h4 { margin: 0 0 8px; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--dim); display: flex; justify-content: space-between; gap: 8px; }
+.rc-box h4 .num { color: var(--bone); letter-spacing: 0; }
+.rc-sub { font-size: 11px; color: var(--dim); margin: 8px 0 4px; }
+.rc-bars { display: grid; gap: 5px; }
+.rc-row { display: grid; grid-template-columns: minmax(0, 9.5em) 1fr auto; align-items: center; gap: 8px; font-size: 12.5px; }
+.rc-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--bone); }
+.rc-track { height: 8px; border-radius: 4px; background: hsl(0 0% 100% / .06); overflow: hidden; }
+.rc-track i { display: block; height: 100%; border-radius: 4px; }
+.rc-val { color: var(--bone); font-size: 12px; white-space: nowrap; }
+.rc-val em { color: var(--dim); font-style: normal; margin-left: 4px; }
+.rc-empty { font-size: 12px; color: var(--dim); margin: 4px 0; }
 .record { display: inline-block; margin-top: 14px; padding: 5px 12px; border-radius: 999px; background: var(--gold); color: var(--ink); font-weight: 800; font-size: 12px; letter-spacing: 1.5px; }
 @media (max-width: 760px) { .pause-grid { grid-template-columns: 1fr; } }
 /* ---------- Magic-inspired effects: pointer glow, tilt, shine, animated border ---------- */

@@ -234,7 +234,7 @@ The core systems are covered; these are what's still missing. Recommended order:
 |---|-------|-------------|-----|------|
 | 8 ✅ | Victory + Endless mode | Brotato, Vampire Survivors | The game never says "you won" | S–M |
 | 9 ✅ | Level-up control: Reroll / Banish / Skip | Halls of Torment, Brotato | A bad set of cards can't be fixed | S |
-| 10 | Better end-of-run screen + death recap | Risk of Rain 2, LoL Death Recap | Players can't see *why* a run ended | S–M |
+| 10 ✅ | Better end-of-run screen + death recap | Risk of Rain 2, LoL Death Recap | Players can't see *why* a run ended | S–M |
 | 11 | Unlocks across runs (sideways unlocks + small upgrade tree) | Hades Mirror of Night, Dead Cells | Runs don't feed into anything permanent | L |
 | 12 | Shop lock | Brotato | Save up for an item across a reroll or wave | S |
 | 13 | Daily run (seeded by date) | Spelunky, Dead Cells | A shared daily challenge | M |
@@ -266,7 +266,7 @@ Changes from the plan: no separate Endless-wave-40 achievement was added, becaus
 - Buttons go under the cards with counts shown, plus keys (R reroll, B banish then pick a card, S skip) and touch-friendly sizes.
 - **Balance tracking:** record rerolls, banishes and skips, since banish rates are a strong "this perk is a trap" signal for Phase 7.
 
-## Phase 10: Better end-of-run screen + death recap
+## Phase 10: Better end-of-run screen + death recap ✅ done
 
 - **Damage dealt by source:** katana, each weapon, each ability, ultimate, DoTs (burn / bleed / poison), and evolution or duo effects, shown as sorted bars with percentages. This needs `dealDamage` callers to pass a source label.
 - **Death recap:** what killed you (already tracked as `lastHitBy`), plus damage taken by source over the last 10 seconds and over the whole run (LoL-style).
