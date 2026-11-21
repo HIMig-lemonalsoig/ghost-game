@@ -20,7 +20,7 @@ interface Settings {
   background: string; plateColor: string; logoColor: string;
 }
 
-// The component's "dark" look, recoloured for GhostGame (ink backdrop, crimson mark).
+// The component's "dark" look, recoloured for Yūken (ink backdrop, crimson mark).
 const LOOK: Settings = {
   tileSize: 256, logoScale: 0.72, finalScale: 1, logoOffset: [0, 0], iconPlate: true, keepPlate: false, originalColors: false,
   opticalDepth: 0.75, dispersion: 0.9, colorBleed: 0.45, doubleBevel: 1, bevelWidth: 0.22, corner: 5,
@@ -613,12 +613,12 @@ export function playIntro(): Promise<void> {
     const root = document.createElement("div");
     root.id = "intro";
     root.setAttribute("role", "img");
-    root.setAttribute("aria-label", "Ghost Game");
+    root.setAttribute("aria-label", "Yūken");
     const canvas = document.createElement("canvas");
     canvas.setAttribute("aria-hidden", "true");
     const title = document.createElement("div");
     title.className = "intro-title";
-    title.innerHTML = `<h1>GHOST GAME</h1><p>Survive the waves. Forge your legend.</p>`;
+    title.innerHTML = `<h1>YŪKEN</h1><p>Survive the waves. Forge your legend.</p>`;
     const skip = document.createElement("div");
     skip.className = "intro-skip";
     skip.textContent = window.matchMedia?.("(pointer: coarse)").matches ? "Tap to skip" : "Click or press any key to skip";

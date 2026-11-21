@@ -163,7 +163,7 @@ export const ACHIEVEMENTS: Ach[] = [
 ];
 // The capstone: everything else.
 ACHIEVEMENTS.push({
-  id: "master", tier: "mythic", kanji: "極", name: "Ghost Game Master", desc: "Unlock every other achievement.",
+  id: "master", tier: "mythic", kanji: "極", name: "Master of Yūken", desc: "Unlock every other achievement.",
   check: () => ACHIEVEMENTS.every(a => a.id === "master" || !!unlocked[a.id]),
   progress: () => [ACHIEVEMENTS.filter(a => a.id !== "master" && unlocked[a.id]).length, ACHIEVEMENTS.length - 1],
 });

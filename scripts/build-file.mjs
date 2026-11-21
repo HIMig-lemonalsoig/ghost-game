@@ -18,5 +18,5 @@ const html = readFileSync("index.html", "utf8").replace(
 );
 
 mkdirSync("offline", { recursive: true });
-writeFileSync("offline/GhostGame.html", html);
-console.log(`offline/GhostGame.html (${(html.length / 1024).toFixed(0)} KB)`);
+writeFileSync("offline/Yuken.html", html);
+console.log(`offline/Yuken.html (${(html.length / 1024).toFixed(0)} KB)`);

@@ -1,11 +1,11 @@
-# GhostGame Roadmap: lessons from the roguelite research
+# Yūken Roadmap (formerly Ghost Game): lessons from the roguelite research
 
 This plan is built from what Hades, Vampire Survivors, Brotato, Risk of Rain 2, Slay the Spire, Dead Cells and Halls of Torment do well.
 There are 7 phases, in the order they depend on each other. Each phase is roughly one session of work. Every phase ends with the same release steps:
 - update the dev panel so the new feature can be tested
 - add achievements for it
 - check it in the browser
-- rebuild `offline/GhostGame.html`
+- rebuild `offline/Yuken.html`
 - deploy
 
 | # | Phase | Why it matters | Size |
