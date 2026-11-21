@@ -829,7 +829,7 @@ export type ShopEffectId =
   | "perk_drifting_leaves"
   | "perk_soul_collector"
   | "shop_lucky_coin" | "shop_bounty" | "shop_spirit_bell" | "shop_battle_drum" | "shop_dash_talisman"
-  | "shop_gamble" | "shop_oni_mask" | "shop_fire_charm" | "shop_thunder_charm" | "shop_reaper_bell"
+  | "shop_gamble" | "shop_oni_mask" | "shop_fire_charm" | "shop_thunder_charm" | "shop_reaper_bell" | "shop_fortune"
   // ===== Secondary weapon scrolls (equip into open slot, or replace slot 2) =====
   | `secondary_${SecondaryId}`;
 
@@ -910,6 +910,7 @@ export const SHOP_POOL: PoolEntry[] = [
   { effect: "shop_oni_mask",      kanji: "面", name: "Oni Mask",        desc: "Below 30% HP: +50% damage and −20% damage taken.",           priceMin: 90, priceMax: 120, rarity: "legendary" },
   { effect: "shop_fire_charm",    kanji: "火", name: "Fire Charm",      desc: "+10% chance to ignite on hit.",                              priceMin: 30, priceMax: 42, rarity: "common"    },
   { effect: "shop_thunder_charm", kanji: "雷", name: "Thunder Charm",   desc: "+8% chance to call lightning on hit.",                       priceMin: 42, priceMax: 58, rarity: "rare"      },
+  { effect: "shop_fortune",       kanji: "籤", name: "Fortune Stick",   desc: "+2 level-up rerolls and +1 banish.",                          priceMin: 26, priceMax: 38, rarity: "common"    },
   { effect: "shop_reaper_bell",   kanji: "冥", name: "Reaper's Bell",   desc: "Every 10th kill releases a soul shockwave (stacks faster).", priceMin: 95, priceMax: 125, rarity: "legendary" },
   // ===== Secondary weapon scrolls — equip into 2nd slot, swap with Tab =====
   // Pulled dynamically from SECONDARIES so we never drift out of sync.
@@ -3439,7 +3440,8 @@ export type BossKind = "oni" | "kitsune" | "gasha" | "raijin";
 export type GameEvent =
   | { t: "offer"; kind: "perk" | "shop"; ids: string[] }
   | { t: "pick"; kind: "perk" | "shop"; id: string }
-  | { t: "death"; by: string; wave: number };
+  | { t: "death"; by: string; wave: number }
+  | { t: "reroll" } | { t: "banish"; id: string } | { t: "skip" };
 
 /** Per-run counters the menu folds into lifetime career stats. */
 export interface RunCounters {
@@ -3951,6 +3953,9 @@ interface Perks {
   dashCdMul: number;        // multiplies dash cooldown
   dashDmgMul: number;       // multiplies dash contact damage
   ultPowerMul: number;      // ULTPERK Honed/Fierce Spirit
+  rerolls: number;          // level-up rerolls left this run
+  banishes: number;         // level-up banishes left this run
+  banished: string[];       // perk / ability ids removed from the pool this run
   weaponMastery: Record<string, number>;  // damage upgrades bought per weapon (evolutions)
   shopBought: string[];     // shop effects bought this run (evolution catalysts)
   evolved: string[];        // evolved weapon ids
@@ -4065,6 +4070,9 @@ const defaultPerks = (): Perks => ({
   dashCdMul: 1,
   dashDmgMul: 1,
   ultPowerMul: 1,
+  rerolls: 2,
+  banishes: 2,
+  banished: [],
   weaponMastery: {},
   shopBought: [],
   evolved: [],
@@ -6650,6 +6658,56 @@ export class GhostGame {
   }
 
   // Shared bookkeeping after a level-up choice resolves.
+  // ===================== Level-up control: Reroll / Banish / Skip =====================
+  /** Redraw every card. */
+  rerollLevelUp(): boolean {
+    if (this.stats.state !== "levelup" || this.perks.rerolls <= 0) return false;
+    this.perks.rerolls--;
+    this.stats.pendingChoices = this.rollPerkChoices();
+    this.emitEvent({ t: "reroll" });
+    audio.play("slash");
+    this.emitStats();
+    return true;
+  }
+
+  /** Remove a card's perk from the pool for the rest of the run and replace the card. */
+  banishPerk(id: string): boolean {
+    if (this.stats.state !== "levelup" || this.perks.banishes <= 0) return false;
+    const i = this.stats.pendingChoices.findIndex(c => c.id === id);
+    if (i < 0) return false;
+    this.perks.banishes--;
+    this.perks.banished.push(id);
+    this.emitEvent({ t: "banish", id });
+    const taken = new Set(this.stats.pendingChoices.map(c => c.id));
+    let replacement: PerkChoice | undefined;
+    for (let tries = 0; tries < 8 && !replacement; tries++) replacement = this.rollPerkChoices().find(c => !taken.has(c.id));
+    const next = [...this.stats.pendingChoices];
+    if (replacement) next[i] = replacement; else next.splice(i, 1);
+    this.stats.pendingChoices = next;
+    audio.play("armorRing");
+    if (!next.length) { this.afterPerkSelected(); return true; }
+    this.emitStats();
+    return true;
+  }
+
+  /** Coins you get for skipping a level-up card. */
+  skipReward(): number {
+    return Math.round(15 * Math.max(1, this.stats.wave) * DIFFICULTIES[this.difficulty].coins);
+  }
+
+  /** Take coins instead of a card. */
+  skipLevelUp(): boolean {
+    if (this.stats.state !== "levelup") return false;
+    const coins = this.skipReward();
+    this.stats.mon += coins;
+    this.run.monEarned += coins;
+    this.emitEvent({ t: "skip" });
+    this.spawnFloatText(this.player.pos, `+${coins} 文`, { color: "hsl(45 95% 65%)", size: 15, vy: -60 });
+    audio.play("monPing");
+    this.afterPerkSelected();
+    return true;
+  }
+
   private afterPerkSelected() {
     this.pendingLevelUps--;
     if (this.pendingLevelUps > 0) {
@@ -6796,13 +6854,15 @@ export class GhostGame {
   rollPerkChoices(): PerkChoice[] {
     let out = this.rollPerkChoicesInner();
     if (this.isClass("ronin")) out = out.slice(0, SIG.roninCards);   // SIGNATURE Masterless
+    // Banished abilities never come back this run.
+    out = out.filter(c => !this.perks.banished.includes(c.id));
     // ULTPERK: your class's ultimate upgrade gets a 1-in-5 slot until you take it.
     const mine = ULT_PERKS.find(u => u.cls === this.stats.classId);
-    if (mine && !this.acquiredPerks.includes(mine.id) && !out.some(c => c.id === mine.id) && out.length && Math.random() < 0.2) {
+    if (mine && !this.perks.banished.includes(mine.id) && !this.acquiredPerks.includes(mine.id) && !out.some(c => c.id === mine.id) && out.length && Math.random() < 0.2) {
       out[Math.floor(Math.random() * out.length)] = { id: mine.id, name: mine.name, kanji: mine.kanji, desc: mine.desc, rarity: mine.rarity, kind: "passive" };
     }
     // DUO: 1 in 4 level-ups swaps the last card for an available duo perk.
-    const duos = this.availableDuos();
+    const duos = this.availableDuos().filter(d => !this.perks.banished.includes(d.id));
     if (duos.length && out.length && Math.random() < 0.25) {
       const d = duos[Math.floor(Math.random() * duos.length)];
       out[out.length - 1] = { id: d.id, name: d.name, kanji: d.kanji, desc: `${d.desc} (${d.needsLabel})`, rarity: "legendary", kind: "passive", duo: true };
@@ -6822,6 +6882,7 @@ export class GhostGame {
     };
     const passivesAvailable = PERK_POOL.filter(p => {
       if (perkMaxed[p.id] && maxed.has(perkMaxed[p.id])) return false;
+      if (this.perks.banished.includes(p.id)) return false;   // banished this run
       if (p.id === "wave_clear" && this.vr("no_rest")) return false;
       const up = ULT_PERK_BY_ID[p.id];
       if (up && up.cls && up.cls !== this.stats.classId) return false;     // class ult perks: own class only
@@ -15366,6 +15427,7 @@ export class GhostGame {
         break;
       case "shop_thunder_charm": this.perks.lightningChance += 0.08; break;
       case "shop_reaper_bell": this.perks.reaperEvery = this.perks.reaperEvery ? Math.max(5, this.perks.reaperEvery - 3) : 10; break;
+      case "shop_fortune": this.perks.rerolls += 2; this.perks.banishes += 1; break;
       // ===== Shop perks (perk_*) — implemented as safe stat boosts so
       // none of them can ever crash the game or silently no-op. The
       // descriptions in shop.ts hint at richer mechanics; these

@@ -993,7 +993,7 @@ function showOverlay(html: string) {
 function syncOverlay(s: GameStats) {
   if (guideOpen) return;
   let key = s.state;
-  if (s.state === "levelup") key += s.pendingChoices.map(c => c.id).join(",");
+  if (s.state === "levelup") key += s.pendingChoices.map(c => c.id).join(",") + `|${banishMode}|${game?.perks.rerolls}|${game?.perks.banishes}`;
   if (s.state === "swap") key += s.pendingAbilityId;
   if (s.state === "shop") key += s.shopOffer.map(i => i.id).join(",") + "|" + s.shopPurchasedIds.join(",") + "|" + s.mon;
   if (s.state === "paused") key += "|" + JSON.stringify(settings) + JSON.stringify(keys) + capturing;
@@ -1009,18 +1009,27 @@ function syncOverlay(s: GameStats) {
 
 function rarityClass(r: string) { return `r-${r}`; }
 
+let banishMode = false;
 function renderLevelUp(s: GameStats) {
+  const rr = game?.perks.rerolls ?? 0, bn = game?.perks.banishes ?? 0;
+  if (bn <= 0) banishMode = false;
+  showTip("lvl_control", "籤", "Don't like the cards? <b>Reroll</b> (R) draws new ones, <b>Banish</b> (B) removes a perk for the whole run, <b>Skip</b> (S) takes coins instead.");
   if (s.pendingChoices.some(c => ULT_PERK_BY_ID[c.id])) showTip("ultperk", "極", "Cards tagged <b>ULTIMATE</b> upgrade your ultimate. Each class also has its own ultimate perk.");
   if (s.pendingChoices.some(c => c.duo)) showTip("duo_card", "双", "A <b>DUO</b> perk! It combines two perks you own into something much stronger.");
   const cards = s.pendingChoices.map((c, i) => `
-    <button class="card glow tilt ${rarityClass(c.rarity)}${c.duo ? " duo" : ""}" data-perk="${c.id}">
+    <button class="card glow tilt ${rarityClass(c.rarity)}${c.duo ? " duo" : ""}${banishMode ? " banishing" : ""}" data-perk="${c.id}">
       <kbd class="key">${i + 1}</kbd>${c.kind === "ability" ? `<span class="tag">ABILITY</span>` : ""}${c.duo ? `<span class="tag duo-tag">DUO</span>` : ""}${ULT_PERK_BY_ID[c.id] ? `<span class="tag ult-tag">${ULT_PERK_BY_ID[c.id].cls ? `ULTIMATE · ${getClass(ULT_PERK_BY_ID[c.id].cls!).name.toUpperCase()}` : "ULTIMATE"}</span>` : ""}
       <div class="kanji">${c.kanji}</div><div class="cn">${c.name}</div><div class="rar">${c.rarity}</div><div class="cd">${c.desc}</div>${cardHints(c.id)}
     </button>`).join("");
   showOverlay(`<div class="panel">
     <div class="panel-title">LEVEL ${s.level}</div>
-    <div class="panel-sub">Choose a blessing · press 1–${s.pendingChoices.length}</div>
-    <div class="cards">${cards}</div></div>`);
+    <div class="panel-sub">${banishMode ? `<span style="color:hsl(0 80% 65%)">Pick a card to <b>banish</b> for the rest of the run · B to cancel</span>` : `Choose a blessing · press 1–${s.pendingChoices.length}`}</div>
+    <div class="cards">${cards}</div>
+    <div class="panel-actions lvl-actions">
+      <button class="btn" data-act="lvlreroll" ${rr > 0 ? "" : "disabled"}>Reroll · ${rr} · <kbd>R</kbd></button>
+      <button class="btn${banishMode ? " danger" : ""}" data-act="lvlbanish" ${bn > 0 ? "" : "disabled"}>${banishMode ? "Cancel banish" : "Banish"} · ${bn} · <kbd>B</kbd></button>
+      <button class="btn ghost" data-act="lvlskip">Skip · +${game?.skipReward() ?? 0} 文 · <kbd>S</kbd></button>
+    </div></div>`);
 }
 
 function renderSwap(s: GameStats) {
@@ -1168,7 +1177,11 @@ overlay.addEventListener("click", e => {
   }
   if (!game) return;
   const perk = t.closest<HTMLElement>("[data-perk]");
-  if (perk) { game.selectPerk(perk.dataset.perk!); return; }
+  if (perk) {
+    if (banishMode) { banishMode = false; game.banishPerk(perk.dataset.perk!); overlayKey = ""; syncOverlay({ ...game.stats }); }
+    else game.selectPerk(perk.dataset.perk!);
+    return;
+  }
   const sw = t.closest<HTMLElement>("[data-swap]");
   if (sw) { game.swapAbility(sw.dataset.swap!); return; }
   const buy = t.closest<HTMLButtonElement>("[data-buy]");
@@ -1191,6 +1204,9 @@ function runAction(act: string) {
   switch (act) {
     case "keep": game.cancelSwap(); break;
     case "reroll": game.rerollShop(); break;
+    case "lvlreroll": banishMode = false; game.rerollLevelUp(); break;
+    case "lvlbanish": banishMode = !banishMode; overlayKey = ""; syncOverlay({ ...game.stats }); break;
+    case "lvlskip": banishMode = false; game.skipLevelUp(); break;
     case "leave": game.closeShop(); break;
     case "resume": resumeGame(); break;
     case "restart":
@@ -1222,7 +1238,14 @@ function overlayKeys(e: KeyboardEvent, s: GameStats): boolean {
   const n = /^Digit[1-9]$/.test(e.code) ? Number(e.code.slice(5)) - 1 : -1;
   switch (s.state) {
     case "levelup":
-      if (n >= 0 && s.pendingChoices[n]) game.selectPerk(s.pendingChoices[n].id);
+      if (n >= 0 && s.pendingChoices[n]) {
+        if (banishMode) { banishMode = false; game.banishPerk(s.pendingChoices[n].id); overlayKey = ""; syncOverlay({ ...game.stats }); }
+        else game.selectPerk(s.pendingChoices[n].id);
+      }
+      if (e.code === "KeyR") runAction("lvlreroll");
+      if (e.code === "KeyB") runAction("lvlbanish");
+      if (e.code === "KeyS") runAction("lvlskip");
+      if (e.code === "Escape" && banishMode) runAction("lvlbanish");
       return true;
     case "swap":
       if (n >= 0 && s.equippedAbilities[n]) game.swapAbility(s.equippedAbilities[n]);

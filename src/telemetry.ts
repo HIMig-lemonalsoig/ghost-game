@@ -19,8 +19,11 @@ export interface Telemetry {
   startWeapons: Record<string, number>;
   classes: Record<string, ClassRow>;        // "classId@difficulty"
   deaths: Record<string, { count: number; waveSum: number }>;
+  banished: Record<string, number>;
+  rerolls: number;
+  skips: number;
 }
-const fresh = (): Telemetry => ({ v: 1, since: Date.now(), perks: {}, shop: {}, startWeapons: {}, classes: {}, deaths: {} });
+const fresh = (): Telemetry => ({ v: 1, since: Date.now(), perks: {}, shop: {}, startWeapons: {}, classes: {}, deaths: {}, banished: {}, rerolls: 0, skips: 0 });
 
 let data: Telemetry = fresh();
 try {
@@ -47,6 +50,9 @@ export function trackGame(g: GhostGame) {
     if (g.devMode) return;
     if (ev.t === "offer") for (const id of new Set(ev.ids)) bump(ev.kind === "perk" ? data.perks : data.shop, id, "offered");
     else if (ev.t === "pick") bump(ev.kind === "perk" ? data.perks : data.shop, ev.id, "picked");
+    else if (ev.t === "reroll") data.rerolls++;
+    else if (ev.t === "skip") data.skips++;
+    else if (ev.t === "banish") data.banished[ev.id] = (data.banished[ev.id] ?? 0) + 1;
     else if (ev.t === "death") {
       const d = (data.deaths[ev.by] ??= { count: 0, waveSum: 0 });
       d.count++; d.waveSum += ev.wave;
@@ -100,6 +106,10 @@ export function reportHTML(): string {
     ${deaths.length ? `<table class="dr-t"><tr><th>Killer</th><th>Deaths</th><th>Share</th><th>Avg wave</th></tr>${deaths.map(([by, d]) =>
       `<tr><td>${by}</td><td>${d.count}</td><td>${Math.round((d.count / totalDeaths) * 100)}%${d.count / totalDeaths > 0.3 && totalDeaths >= 5 ? ` <span class="dr-hot">check</span>` : ""}</td><td>${(d.waveSum / d.count).toFixed(1)}</td></tr>`).join("")}</table>` : `<p class="dr-empty">No deaths recorded yet.</p>`}
     <h4>Level-up picks</h4>${rateTable(data.perks, perkName, 5)}
+    <h4>Level-up control</h4>
+    <p class="dr-sub">${data.rerolls} rerolls · ${data.skips} skips · ${Object.values(data.banished).reduce((a, b) => a + b, 0)} banishes</p>
+    ${Object.keys(data.banished).length ? `<table class="dr-t"><tr><th>Most banished</th><th>Times</th></tr>${Object.entries(data.banished).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([id, n]) =>
+      `<tr><td>${perkName(id)}</td><td>${n}</td></tr>`).join("")}</table>` : ""}
     <h4>Shop picks</h4>${rateTable(data.shop, shopName, 5)}
     <h4>Starting weapons</h4>
     ${weapons.length ? `<table class="dr-t"><tr><th>Weapon</th><th>Runs</th></tr>${weapons.map(([w, n]) => `<tr><td>${w}</td><td>${n}</td></tr>`).join("")}</table>` : `<p class="dr-empty">No runs yet.</p>`}

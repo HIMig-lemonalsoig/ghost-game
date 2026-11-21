@@ -233,7 +233,7 @@ The core systems are covered; these are what's still missing. Recommended order:
 | # | Phase | Inspired by | Why | Size |
 |---|-------|-------------|-----|------|
 | 8 ✅ | Victory + Endless mode | Brotato, Vampire Survivors | The game never says "you won" | S–M |
-| 9 | Level-up control: Reroll / Banish / Skip | Halls of Torment, Brotato | A bad set of cards can't be fixed | S |
+| 9 ✅ | Level-up control: Reroll / Banish / Skip | Halls of Torment, Brotato | A bad set of cards can't be fixed | S |
 | 10 | Better end-of-run screen + death recap | Risk of Rain 2, LoL Death Recap | Players can't see *why* a run ended | S–M |
 | 11 | Unlocks across runs (sideways unlocks + small upgrade tree) | Hades Mirror of Night, Dead Cells | Runs don't feed into anything permanent | L |
 | 12 | Shop lock | Brotato | Save up for an item across a reroll or wave | S |
@@ -258,7 +258,7 @@ Changes from the plan: no separate Endless-wave-40 achievement was added, becaus
 - **Achievements:** First Victory (Rare), win on Hard (Epic), win on Death (Legendary), win with 10 / all 25 classes (Epic / Mythic), Endless wave 40 (Legendary).
 - **Dev panel:** "Win now".
 
-## Phase 9: Level-up control: Reroll / Banish / Skip
+## Phase 9: Level-up control: Reroll / Banish / Skip ✅ done
 
 - **Reroll:** each run starts with **2 rerolls** that redraw all cards. More come from a rare perk or shop item ("Fortune Stick").
 - **Banish:** each run starts with **2 banishes**. Banishing a card removes that perk from the pool for the rest of the run (Halls of Torment style).

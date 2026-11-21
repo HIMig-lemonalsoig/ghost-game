@@ -384,6 +384,11 @@ kbd {
 .card[disabled] .price { color: var(--crimson); }
 .r-common { --rc: var(--common); } .r-rare { --rc: var(--rare); } .r-legendary { --rc: var(--legendary); }
 .panel-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 24px; }
+.lvl-actions { margin-top: 16px; }
+.lvl-actions .btn { min-height: 44px; }
+.btn.danger { border-color: hsl(0 75% 55%); color: hsl(0 85% 72%); box-shadow: 0 0 18px hsl(0 80% 50% / .35); }
+.card.banishing { outline: 2px dashed hsl(0 80% 58%); outline-offset: 3px; }
+.card.banishing:hover { box-shadow: 0 0 28px hsl(0 85% 50% / .55); filter: saturate(.6); }
 .pause-grid { display: grid; grid-template-columns: 260px 1fr; gap: 18px; margin-top: 20px; text-align: left; }
 .pause-menu { display: grid; gap: 8px; align-content: start; }
 .pause-menu .btn { justify-content: flex-start; }
