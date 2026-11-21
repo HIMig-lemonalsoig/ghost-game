@@ -10,9 +10,10 @@ import { AFFIXES } from "./content/elites";
 import { GENERAL_ULT_PERKS, CLASS_ULT_PERKS } from "./content/ultperks";
 import { VOWS, VOW_UNLOCK_WAVE, MAX_VOW_SCORE, VOW_COIN_BONUS } from "./content/vows";
 import { SIGNATURES } from "./content/signatures";
+import { OMENS, ARENA_SHRINES } from "./content/choices";
 import { CLASS_REQS, WEAPON_REQS, reqText, classUnlocked, weaponUnlocked } from "./unlocks";
 
-export type GuideTab = "basics" | "duos" | "evolutions" | "ultperks" | "elites" | "enemies" | "vows" | "classes" | "unlocks";
+export type GuideTab = "basics" | "duos" | "evolutions" | "ultperks" | "elites" | "enemies" | "vows" | "classes" | "unlocks" | "choices";
 export const GUIDE_TABS: { id: GuideTab; label: string; kanji: string }[] = [
   { id: "basics", label: "Basics", kanji: "基" },
   { id: "duos", label: "Duo perks", kanji: "双" },
@@ -22,6 +23,7 @@ export const GUIDE_TABS: { id: GuideTab; label: string; kanji: string }[] = [
   { id: "enemies", label: "Enemies", kanji: "敵" },
   { id: "vows", label: "Vows", kanji: "誓" },
   { id: "classes", label: "Signatures", kanji: "印" },
+  { id: "choices", label: "Omens & altars", kanji: "兆" },
   { id: "unlocks", label: "Unlocks & Shrine", kanji: "祖" },
 ];
 
@@ -179,6 +181,21 @@ function vows(c: GuideCtx): string {
   <div class="g-list">${rows}</div>`;
 }
 
+function choices(): string {
+  return `
+  <div class="g-card g-how"><h5>Omens</h5><ol class="g-steps">
+    ${step(1, "Before some waves (3, 7, 9, 11, 13…, never a boss wave) the merchant shows <b>two omens</b>. You must pick one: it changes only the next wave.")}
+    ${step(2, "Risky omens pay more: more enemies or tougher ones usually means more coins or XP.")}
+  </ol></div>
+  <div class="g-list">${OMENS.map(o => `<div class="g-row"><span class="g-k kanji" style="color:hsl(${o.hue} 85% 70%)">${o.kanji}</span><div class="g-t"><b>${o.name}</b><p>${o.desc}</p></div></div>`).join("")}</div>
+  <div class="g-card g-how" style="margin-top:14px"><h5>Arena altars</h5><ol class="g-steps">
+    ${step(1, "From wave 4, a glowing altar sometimes appears mid-wave (about 1 wave in 3). Its trade is written above it.")}
+    ${step(2, "<b>Stand inside it for about a second</b> to accept. A gold ring fills up. Walk out to cancel.")}
+    ${step(3, "Altars vanish when the wave ends.")}
+  </ol></div>
+  <div class="g-list">${ARENA_SHRINES.map(a => `<div class="g-row"><span class="g-k kanji" style="color:hsl(${a.hue} 85% 70%)">${a.kanji}</span><div class="g-t"><b>${a.name}</b><p>${a.cost} → ${a.reward}.</p></div></div>`).join("")}</div>`;
+}
+
 function unlocks(): string {
   const cls = (Object.entries(CLASS_REQS) as [ClassId, NonNullable<(typeof CLASS_REQS)[ClassId]>][]).map(([id, r]) => {
     const k = getClass(id), open = classUnlocked(id);
@@ -214,7 +231,7 @@ function classes(c: GuideCtx): string {
 export function guideHTML(tab: GuideTab, c: GuideCtx): string {
   const body = tab === "basics" ? basics() : tab === "duos" ? duos(c) : tab === "evolutions" ? evolutions(c)
     : tab === "ultperks" ? ultPerks(c) : tab === "elites" ? elites() : tab === "enemies" ? enemies()
-    : tab === "vows" ? vows(c) : tab === "unlocks" ? unlocks() : classes(c);
+    : tab === "vows" ? vows(c) : tab === "unlocks" ? unlocks() : tab === "choices" ? choices() : classes(c);
   return `<div class="panel guide" style="text-align:left">
     <div class="panel-title" style="text-align:center">道 GUIDE</div>
     <div class="g-tabs" role="tablist">${GUIDE_TABS.map(t => `<button class="g-tab${t.id === tab ? " on" : ""}" role="tab" aria-selected="${t.id === tab}" data-guide="${t.id}"><span class="kanji">${t.kanji}</span>${t.label}</button>`).join("")}</div>

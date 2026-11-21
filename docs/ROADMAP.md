@@ -240,7 +240,7 @@ The core systems are covered; these are what's still missing. Recommended order:
 | 13 ✅ | Daily run (seeded by date) | Spelunky, Dead Cells | A shared daily challenge | M |
 | 14 ✅ | Controller support | Browser Gamepad API | Chromebook and PC players with controllers | M |
 | 15 ✅ | Accessibility round 2 | Dead Cells, Hades | Colorblind safety, UI scale, volume, assist mode | M |
-| 16 | Between-wave choices (wave modifiers + shrines) | Slay the Spire map, Hades rooms | More variety and decisions between waves | M |
+| 16 ✅ | Between-wave choices (wave modifiers + shrines) | Slay the Spire map, Hades rooms | More variety and decisions between waves | M |
 | 17 | Run history + bestiary | Most roguelites | Long-term record and a sense of collection | S |
 | 18 | Polish: DPS meter, pickup radius, haptics | Halls of Torment | Small quality-of-life touches | S |
 
@@ -310,7 +310,7 @@ Research warns: unlocks that only add raw power make runs trivial, so keep power
 - **Assist mode** (Hades god mode style): starts at 20% damage reduction and rises 2% per death, up to 80%. Clearly labelled; runs still count but show an "Assist" tag.
 - An option to highlight the player outline (for busy fights).
 
-## Phase 16: Between-wave choices
+## Phase 16: Between-wave choices ✅ done
 
 A lighter version of Slay the Spire's map, sized for a wave game:
 

@@ -406,6 +406,15 @@ kbd {
 .card.bought { opacity: .45; }
 .card.bought .price { color: var(--muted); }
 .shop-slot { position: relative; display: flex; }
+.omen-pick { margin-top: 18px; }
+.omen-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
+.omen { display: flex; align-items: center; gap: 12px; text-align: left; width: 300px; padding: 12px 14px; border-radius: 12px; cursor: pointer; font: inherit; color: var(--bone);
+  background: linear-gradient(135deg, hsla(var(--oh), 60%, 30%, .25), rgba(0,0,0,.25)); border: 1px solid hsla(var(--oh), 70%, 60%, .6); }
+.omen:hover, .omen:focus-visible { border-color: hsl(var(--oh), 80%, 70%); transform: translateY(-2px); }
+.omen .kanji { font-size: 30px; color: hsl(var(--oh), 85%, 70%); }
+.omen b { display: block; font-size: 15px; }
+.omen i { font-style: normal; font-size: 12.5px; color: var(--muted); }
+.omen kbd { margin-left: auto; font-size: 10px; white-space: nowrap; }
 .a11y-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
 @media (max-width: 720px) { .a11y-grid { grid-template-columns: 1fr; } }
 .a11y-slider { display: grid; grid-template-columns: 8.5em 1fr 3.2em; gap: 10px; align-items: center; margin: 10px 0; font-size: 13.5px; }

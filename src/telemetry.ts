@@ -22,8 +22,9 @@ export interface Telemetry {
   banished: Record<string, number>;
   rerolls: number;
   skips: number;
+  choices: Record<string, number>;   // OMEN / ARENA SHRINE picks
 }
-const fresh = (): Telemetry => ({ v: 1, since: Date.now(), perks: {}, shop: {}, startWeapons: {}, classes: {}, deaths: {}, banished: {}, rerolls: 0, skips: 0 });
+const fresh = (): Telemetry => ({ v: 1, since: Date.now(), perks: {}, shop: {}, startWeapons: {}, classes: {}, deaths: {}, banished: {}, rerolls: 0, skips: 0, choices: {} });
 
 let data: Telemetry = fresh();
 try {
@@ -52,6 +53,7 @@ export function trackGame(g: GhostGame) {
     else if (ev.t === "pick") bump(ev.kind === "perk" ? data.perks : data.shop, ev.id, "picked");
     else if (ev.t === "reroll") data.rerolls++;
     else if (ev.t === "skip") data.skips++;
+    else if (ev.t === "choice") data.choices[ev.id] = (data.choices[ev.id] ?? 0) + 1;
     else if (ev.t === "banish") data.banished[ev.id] = (data.banished[ev.id] ?? 0) + 1;
     else if (ev.t === "death") {
       const d = (data.deaths[ev.by] ??= { count: 0, waveSum: 0 });
@@ -110,6 +112,9 @@ export function reportHTML(): string {
     <p class="dr-sub">${data.rerolls} rerolls · ${data.skips} skips · ${Object.values(data.banished).reduce((a, b) => a + b, 0)} banishes</p>
     ${Object.keys(data.banished).length ? `<table class="dr-t"><tr><th>Most banished</th><th>Times</th></tr>${Object.entries(data.banished).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([id, n]) =>
       `<tr><td>${perkName(id)}</td><td>${n}</td></tr>`).join("")}</table>` : ""}
+    <h4>Omens & arena shrines</h4>
+    ${Object.keys(data.choices).length ? `<table class="dr-t"><tr><th>Choice</th><th>Times</th></tr>${Object.entries(data.choices).sort((a, b) => b[1] - a[1]).map(([id, n]) =>
+      `<tr><td>${id.replace(/^(omen|shrine):/, (_, k) => k === "omen" ? "Omen · " : "Shrine · ").replace(/_/g, " ")}</td><td>${n}</td></tr>`).join("")}</table>` : `<p class="dr-empty">No choices recorded yet.</p>`}
     <h4>Shop picks</h4>${rateTable(data.shop, shopName, 5)}
     <h4>Starting weapons</h4>
     ${weapons.length ? `<table class="dr-t"><tr><th>Weapon</th><th>Runs</th></tr>${weapons.map(([w, n]) => `<tr><td>${w}</td><td>${n}</td></tr>`).join("")}</table>` : `<p class="dr-empty">No runs yet.</p>`}

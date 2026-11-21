@@ -6,6 +6,8 @@ import type { UltMotif } from "./ultimates";
 import { defenseReduction, dexAttackSpeed, critFromPoints, moveSpeedFromMul } from "./content/curves";
 import { AFFIXES, ELITE, ENEMY_LABEL, rollAffixes } from "./content/elites";
 import { hashStr, mulberry32 } from "./rng";
+import { OMENS, OMEN_BY_ID, omenBefore, ARENA_SHRINES, ARENA_SHRINE_BY_ID, ARENA_SHRINE_CHANCE, ARENA_SHRINE_HOLD, ARENA_SHRINE_R } from "./content/choices";
+import type { OmenId, OmenDef, ArenaShrineId } from "./content/choices";
 import type { AffixId } from "./content/elites";
 import { EVOLUTIONS, EVO_MASTERY, EVO_DAMAGE_MUL } from "./content/evolutions";
 import { DUOS, DUO_BY_ID } from "./content/duos";
@@ -3486,7 +3488,8 @@ export type GameEvent =
   | { t: "offer"; kind: "perk" | "shop"; ids: string[] }
   | { t: "pick"; kind: "perk" | "shop"; id: string }
   | { t: "death"; by: string; wave: number }
-  | { t: "reroll" } | { t: "banish"; id: string } | { t: "skip" };
+  | { t: "reroll" } | { t: "banish"; id: string } | { t: "skip" }
+  | { t: "choice"; id: string };   // OMEN / ARENA SHRINE picks
 
 /** Per-run counters the menu folds into lifetime career stats. */
 export interface RunCounters {
@@ -3524,6 +3527,8 @@ export interface RunCounters {
   dmgBy: Record<string, number>;     // RECAP damage dealt per source label
   takenBy: Record<string, number>;   // RECAP damage taken per attacker
   takenWave: Record<string, Record<string, number>>;   // RECAP damage taken per wave per attacker
+  altars: number;       // ARENA SHRINE trades accepted
+  omens: number;        // OMEN waves survived
 }
 export const newRunCounters = (): RunCounters => ({
   kills: 0, stealthKills: 0, bossKills: 0, bossByKind: {}, killsByKind: {}, wavesCleared: 0,
@@ -3531,7 +3536,7 @@ export const newRunCounters = (): RunCounters => ({
   purchases: 0, flawlessWaves: 0, flawlessStreak: 0, bestFlawlessStreak: 0, flawlessBossWaves: 0,
   bestMultiKill: 0, bestUltKills: 0, maxMon: 0, clutchWaves: 0,
   eliteKills: 0, eliteByAffix: {}, doubleEliteKills: 0, chests: 0, evolutions: [], duos: [], nueFirstStrike: 0,
-  dmgBy: {}, takenBy: {}, takenWave: {},
+  dmgBy: {}, takenBy: {}, takenWave: {}, altars: 0, omens: 0,
 });
 
 export const BOSS_INFO: Record<BossKind, { name: string; kanji: string }> = {
@@ -4605,6 +4610,122 @@ export class GhostGame {
   private victoryPending = false;
   vr(id: VowId) { return vowRank(this.vows, id); }
   get vowScore() { return vowScore(this.vows); }
+  // ===================== OMEN + ARENA SHRINE (Phase 16) =====================
+  /** Omen active for the current wave. */
+  omen: OmenId | null = null;
+  /** Two omens offered in the shop for the next wave (empty = none offered). */
+  omenOffer: OmenId[] = [];
+  /** Extra enemy damage from a Cursed Offering this wave. */
+  curseDmgIn = 1;
+  arenaShrine: { id: ArenaShrineId; x: number; y: number; hold: number; t: number } | null = null;
+  get omenDef(): OmenDef | null { return this.omen ? OMEN_BY_ID[this.omen] : null; }
+  private rollOmens(): OmenId[] {
+    const pool = OMENS.map(o => o.id);
+    const a = pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
+    const b = pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
+    return [a, b];
+  }
+  /** Maybe place an arena shrine at the start of a wave. */
+  private maybeSpawnArenaShrine(wave: number) {
+    this.arenaShrine = null;
+    if (wave < 4 || wave % 5 === 0 || Math.random() >= ARENA_SHRINE_CHANCE) return;
+    const id = ARENA_SHRINES[Math.floor(Math.random() * ARENA_SHRINES.length)].id;
+    const at = this.pickSpawnAwayFromPlayer(220);
+    this.arenaShrine = { id, x: at.x, y: at.y, hold: 0, t: 0 };
+    const d = ARENA_SHRINE_BY_ID[id];
+    this.flash(`${d.kanji} A ${d.name} has appeared. Stand in it to trade.`);
+  }
+  private updateArenaShrine(dt: number) {
+    const sh = this.arenaShrine;
+    if (!sh || !this.player) return;
+    sh.t += dt;
+    const inside = Math.hypot(this.player.pos.x - sh.x, this.player.pos.y - sh.y) < ARENA_SHRINE_R;
+    sh.hold = inside ? sh.hold + dt : Math.max(0, sh.hold - dt * 2);
+    if (sh.hold >= ARENA_SHRINE_HOLD) this.acceptArenaShrine();
+  }
+  /** Grant a random passive perk of at least this rarity (falls back to anything). */
+  private grantRandomPerk(minRarity: "rare" | "legendary") {
+    const ok = (r: string) => minRarity === "legendary" ? r === "legendary" : r === "rare" || r === "legendary";
+    let pick: PerkChoice | undefined, any: PerkChoice | undefined;
+    for (let i = 0; i < 12 && !pick; i++) {
+      for (const c of this.rollPerkChoicesInner()) {
+        if (c.kind === "ability" || c.duo || ABILITY_POOL.some(a => a.id === c.id)) continue;
+        any ??= c;
+        if (ok(c.rarity)) { pick = c; break; }
+      }
+    }
+    const c = pick ?? any;
+    if (!c) return;
+    this.applyPerk(c.id);
+    this.enforceStatCaps();
+    this.acquiredPerks.push(c.id);
+    this.stats.perks = [...this.acquiredPerks];
+    this.spawnFloatText(this.player.pos, `+ ${c.name}`, { color: "hsl(48 90% 70%)", size: 15, vy: -60 });
+  }
+  private acceptArenaShrine() {
+    const sh = this.arenaShrine;
+    if (!sh) return;
+    this.arenaShrine = null;
+    this.run.altars++;
+    const p = this.player;
+    switch (sh.id) {
+      case "blood_pact": {
+        const loss = Math.round(p.maxHp * 0.2);
+        p.maxHp = Math.max(10, p.maxHp - loss); this.stats.maxHp = p.maxHp;
+        p.hp = Math.min(p.hp, p.maxHp); this.stats.hp = p.hp;
+        this.grantRandomPerk("legendary");
+        break;
+      }
+      case "cursed_offering":
+        this.curseDmgIn = 1.25;
+        this.spiritChests.push({ x: sh.x, y: sh.y, life: ELITE.chestLife, t: 0 });
+        break;
+      case "gamblers_altar":
+        this.stats.mon = Math.floor(this.stats.mon * 0.6);
+        this.grantRandomPerk("rare");
+        break;
+      case "spirit_well":
+        p.hp = Math.max(1, Math.round(p.hp * 0.7)); this.stats.hp = p.hp;
+        this.stats.ultCharge = this.stats.ultMax;
+        this.perks.rerolls += 1;
+        break;
+    }
+    const d = ARENA_SHRINE_BY_ID[sh.id];
+    this.flash(`${d.kanji} ${d.name}: ${d.reward}`);
+    this.emitEvent({ t: "choice", id: `shrine:${sh.id}` });
+    this.fx.shockwave(sh.x, sh.y, 110, { hue: d.hue, light: 65, life: 0.5, width: 6 });
+    audio.play("levelUp");
+    this.emitStats();
+  }
+  private drawArenaShrine() {
+    const sh = this.arenaShrine;
+    if (!sh) return;
+    const ctx = this.ctx, d = ARENA_SHRINE_BY_ID[sh.id], R = ARENA_SHRINE_R;
+    const pulse = 0.5 + Math.sin(sh.t * 3) * 0.5;
+    ctx.save();
+    ctx.fillStyle = `hsla(${d.hue}, 70%, 45%, ${0.12 + pulse * 0.08})`;
+    ctx.beginPath(); ctx.arc(sh.x, sh.y, R, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = `hsla(${d.hue}, 90%, 70%, 0.9)`; ctx.lineWidth = 2;
+    ctx.setLineDash([6, 5]); ctx.lineDashOffset = -sh.t * 20;
+    ctx.beginPath(); ctx.arc(sh.x, sh.y, R, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]);
+    if (sh.hold > 0) {
+      ctx.strokeStyle = "hsl(45, 100%, 70%)"; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.arc(sh.x, sh.y, R + 6, -Math.PI / 2, -Math.PI / 2 + (sh.hold / ARENA_SHRINE_HOLD) * Math.PI * 2); ctx.stroke();
+    }
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.font = '700 30px "Noto Serif JP", "Yu Mincho", serif';
+    ctx.fillStyle = `hsl(${d.hue}, 90%, 78%)`;
+    ctx.fillText(d.kanji, sh.x, sh.y + 1);
+    ctx.font = "bold 12px system-ui, sans-serif";
+    const l1 = d.name, l2 = `${d.cost} → ${d.reward}`;
+    const w = Math.max(ctx.measureText(l1).width, ctx.measureText(l2).width) + 14;
+    ctx.fillStyle = "rgba(0,0,0,0.75)"; ctx.fillRect(sh.x - w / 2, sh.y - R - 42, w, 34);
+    ctx.fillStyle = `hsl(${d.hue}, 90%, 75%)`; ctx.fillText(l1, sh.x, sh.y - R - 32);
+    ctx.font = "11px system-ui, sans-serif"; ctx.fillStyle = "#eee"; ctx.fillText(l2, sh.x, sh.y - R - 17);
+    ctx.restore();
+  }
+
   /** A11Y options (set by the UI). colorblind: 0 off, 1 red-green safe, 2 blue-yellow safe. */
   a11y = { colorblind: 0 as 0 | 1 | 2, bigNumbers: false, outline: false };
   /** A11Y Assist mode: fraction of enemy damage removed (0 = off). Runs show an "Assist" tag. */
@@ -4672,6 +4793,8 @@ export class GhostGame {
       rollPerkChoices: () => "perk",
       rollOfferWithLocks: () => "shop",
       openSpiritChest: () => "chest",
+      rollOmens: () => "omen",
+      maybeSpawnArenaShrine: a => `shrine:${a[0]}`,
     };
     const self = this as unknown as Record<string, (...a: unknown[]) => unknown>;
     for (const [name, keyOf] of Object.entries(table)) {
@@ -5208,7 +5331,7 @@ export class GhostGame {
     const defMul = Math.max(MIN_DAMAGE_TAKEN_MUL, this.perks.damageTakenMul) * (1 + 0.15 * this.vr("sharp_steel"));   // VOW Sharp Steel
     // Defense: a % of every hit, on a diminishing curve (max 80%).
     const armor = 1 - defenseReduction(Math.max(0, this.perks.defense));
-    return Math.max(1, Math.round(raw * hpScale * defMul * armor * (1 - this.assistDR)));   // A11Y Assist
+    return Math.max(1, Math.round(raw * hpScale * defMul * armor * (1 - this.assistDR) * (this.omenDef?.dmgIn ?? 1) * this.curseDmgIn));   // A11Y Assist, OMEN, ARENA SHRINE
   }
 
   spawnPetals(n: number) {
@@ -5269,7 +5392,7 @@ export class GhostGame {
   // Used by maybeSpawnEnemies() to continuously replenish.
   computeTargetDensity(wave: number): number {
     const isBoss = wave % 5 === 0;
-    const dens = DIFFICULTIES[this.difficulty].density * (1 + 0.15 * this.vr("swarm"));   // VOW Swarm
+    const dens = DIFFICULTIES[this.difficulty].density * (1 + 0.15 * this.vr("swarm")) * (this.omenDef?.density ?? 1);   // VOW Swarm, OMEN
     if (isBoss) return Math.round(Math.min(14, 6 + Math.floor(wave / 5) * 2) * dens);
     return Math.round(Math.min(28, 5 + Math.floor(wave * 1.6) + Math.floor(wave / 2)) * dens);
   }
@@ -5323,6 +5446,9 @@ export class GhostGame {
       // VOW Iron Hide
       const hide = this.vr("iron_hide");
       if (hide) e.hp = e.maxHp = e.maxHp * (1 + 0.2 * hide);
+      const om = this.omenDef;   // OMEN
+      if (om?.hp && !e.isBoss) e.hp = e.maxHp = e.maxHp * om.hp;
+      if (om?.speed) e.speed *= om.speed;
       const tip = NEW_ENEMY_TIPS[e.archetype];
       if (tip && !this.seenAffixes.has(`enemy:${e.archetype}`)) { this.seenAffixes.add(`enemy:${e.archetype}`); this.flash(tip); }
       if (e.isBoss) {
@@ -5330,7 +5456,7 @@ export class GhostGame {
         // Hard/Death bosses carry one affix; VOW Boss Fury adds up to two on any difficulty.
         const n = Math.max(this.difficulty === "hard" || this.difficulty === "death" ? 1 : 0, this.vr("boss_fury"));
         if (n) this.makeElite(e, rollAffixes(n, true), true);
-      } else if (e.archetype !== "wisp" && Math.random() < ELITE.chanceAt(wave) * Math.pow(1.5, this.vr("elite_blood"))) {
+      } else if (e.archetype !== "wisp" && Math.random() < ELITE.chanceAt(wave) * Math.pow(1.5, this.vr("elite_blood")) * (this.omenDef?.elite ?? 1)) {
         const count = wave >= ELITE.doubleFromWave && Math.random() < ELITE.doubleChance ? 2 : 1;
         this.makeElite(e, rollAffixes(count));
       }
@@ -6281,6 +6407,13 @@ export class GhostGame {
       this.healPlayer(this.perks.healBetweenWaves);
     }
     if (this.perks.secondWindAvailable) this.perks.hasSecondWind = true;
+    // OMEN: announce it (and Elite Hunt's chest); ARENA SHRINE: maybe place one.
+    const om = this.omenDef;
+    if (om) {
+      this.flash(`${om.kanji} ${om.name} · ${om.desc}`);
+      if (om.chest && this.player) this.spiritChests.push({ x: this.player.pos.x - 110, y: this.player.pos.y, life: ELITE.chestLife, t: 0 });
+    }
+    this.maybeSpawnArenaShrine(wave);
   }
 
   makeEnemy(opts: {
@@ -6557,6 +6690,12 @@ export class GhostGame {
     this.player.hp = this.player.maxHp;
     this.stats.hp = this.player.maxHp;
     this.emitStats();
+  }
+
+  /** Dev: place an arena altar near the player. */
+  devSpawnAltar() {
+    const id = ARENA_SHRINES[Math.floor(Math.random() * ARENA_SHRINES.length)].id;
+    this.arenaShrine = { id, x: this.player.pos.x + 140, y: this.player.pos.y, hold: 0, t: 0 };
   }
 
   devAddMon(amount: number) {
@@ -7100,7 +7239,7 @@ export class GhostGame {
   }
 
   gainXp(amount: number) {
-    amount *= this.meta.xpMul;   // SHRINE Scholar
+    amount *= this.meta.xpMul * (this.omenDef?.xp ?? 1);   // SHRINE Scholar, OMEN
     this.stats.xp += amount;
     let gained = false;
     while (this.stats.xp >= this.stats.xpToNext) {
@@ -7128,6 +7267,8 @@ export class GhostGame {
   // Wave over: spend banked level-ups first, then visit the shop.
   private finishWave() {
     this.run.wavesCleared++;
+    if (this.omen) this.run.omens++;
+    this.omen = null; this.curseDmgIn = 1; this.arenaShrine = null;   // OMEN / ARENA SHRINE last one wave
     if (this.hasDuo("duo_flow")) {   // DUO Endless Flow
       for (const id of Object.keys(this.stats.abilityCd)) this.stats.abilityCd[id] = 0;
       this.addUltCharge(this.stats.ultMax * 0.25);
@@ -7236,6 +7377,7 @@ export class GhostGame {
     this.updateEnemyProjectiles(dt);
     this.updateHazards(dt);
     this.updateElites(dt);
+    this.updateArenaShrine(dt);
     this.updateEvo(dt);
     this.updateInk(dt);
     this.updateParticles(dt);
@@ -7761,7 +7903,7 @@ export class GhostGame {
     if (type === "honor") this.stats.honor++;
     else this.stats.ghost++;
     // Mon coin drop — stealth kills (ghost) earn a 50% bonus.
-    const monGain = Math.max(0, Math.round(e.monReward * 0.75 * this.perks.monMul * DIFFICULTIES[this.difficulty].coins * (type === "ghost" ? 1.5 : 1) * (1 + VOW_COIN_BONUS * this.vowScore)));
+    const monGain = Math.max(0, Math.round(e.monReward * 0.75 * this.perks.monMul * DIFFICULTIES[this.difficulty].coins * (type === "ghost" ? 1.5 : 1) * (1 + VOW_COIN_BONUS * this.vowScore) * (this.omenDef?.coins ?? 1)));
     if (this.perks.eliteBounty > 0 && e.archetype !== "normal" && e.archetype !== "wisp") {
       this.stats.mon += this.perks.eliteBounty;
       this.healPlayer(2);
@@ -7954,7 +8096,7 @@ export class GhostGame {
         return;
       }
     }
-    let dmg = baseDmg;
+    let dmg = baseDmg * (this.omenDef?.dmgOut ?? 1);   // OMEN Glass Night
     // Class global damage scalar (Kensei +20%, Ronin +10%, etc)
     dmg *= this.perks.classDamageMul;
     // Sake consumable: +30% damage while active.
@@ -10150,6 +10292,7 @@ export class GhostGame {
     for (const p of this.particles) if (p.kind === "blood") this.drawParticle(p);
     this.drawInk();
     this.drawEliteGround();
+    this.drawArenaShrine();
     this.drawEvo();
     for (const e of this.enemies) if (e.state !== "dead") this.drawEnemy(e, false);
     this.drawEliteTags();
@@ -15448,6 +15591,7 @@ export class GhostGame {
     this.roninFreeReroll = this.isClass("ronin");   // SIGNATURE Masterless: first reroll free
     if (this.roninFreeReroll) this.stats.shopRerollCost = 0;
     this.stats.shopPurchasedIds = [];
+    this.omenOffer = omenBefore(this.stats.wave + 1) ? this.rollOmens() : [];   // OMEN
     this.stats.state = "shop";
     audio.play("levelUp");
     this.emitStats();
@@ -15583,8 +15727,13 @@ export class GhostGame {
     }
   }
 
-  closeShop() {
+  closeShop(omen?: OmenId) {
     if (this.stats.state !== "shop") return;
+    if (this.omenOffer.length) {
+      this.omen = omen && this.omenOffer.includes(omen) ? omen : this.omenOffer[0];
+      this.emitEvent({ t: "choice", id: `omen:${this.omen}` });
+      this.omenOffer = [];
+    }
     this.stats.state = "playing";
     this.stats.shopOffer = [];
     this.stats.shopPurchasedIds = [];

@@ -146,6 +146,9 @@ export const ACHIEVEMENTS: Ach[] = [
     check: x => x.fresh && !!x.r && !!x.s && x.r.purchases === 0 && x.s.wave >= 20 },
   { id: "every_oath", tier: "mythic", kanji: "極", name: "Every Oath Sworn", desc: "Reach wave 25 with every vow at max rank (Vow score 30).",
     check: x => x.vow >= 30 && (x.s?.wave ?? 0) >= 25 },
+  // ── Omens & altars (Phase 16) ──
+  { id: "altar_1", tier: "uncommon", kanji: "契", name: "Devil's Bargain", desc: "Accept an arena altar's trade.", ...runMax("altars", 1) },
+  { id: "omen_5", tier: "rare", kanji: "兆", name: "Omen Reader", desc: "Survive 5 omen waves in one run.", ...runMax("omens", 5) },
   // ── Unlocks & Shrine (Phase 11) ──
   { id: "shrine_first", tier: "common", kanji: "祖", name: "Offering", desc: "Kindle a blessing at the Shrine of Ancestors.", check: () => getShrine().spent > 0 },
   { id: "unlock_5", tier: "uncommon", kanji: "開", name: "New Blood", desc: "Unlock 5 new classes.",

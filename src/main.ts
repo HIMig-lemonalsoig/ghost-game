@@ -22,6 +22,7 @@ import { ULT_PERK_BY_ID } from "./content/ultperks";
 import { guideHTML, GUIDE_CSS } from "./guide";
 import type { GuideTab, GuideCtx } from "./guide";
 import { DUOS } from "./content/duos";
+import { OMEN_BY_ID } from "./content/choices";
 import { VOWS, VOW_BY_ID, vowScore, vowRank, MAX_VOW_SCORE, VOW_UNLOCK_WAVE, VOW_COIN_BONUS } from "./content/vows";
 import type { VowSet, VowId } from "./content/vows";
 import { trackGame, trackStartWeapons } from "./telemetry";
@@ -1041,7 +1042,7 @@ function updateHud(s: GameStats) {
     if (tag && cache.get("difftag") !== `${game.difficulty}${vs}${game.endless}`) {
       cache.set("difftag", `${game.difficulty}${vs}${game.endless}`);
       tag.style.setProperty("--c", D.color);
-      tag.innerHTML = `<span class="kanji">${D.kanji}</span> ${D.name.toUpperCase()}${vs ? ` · <span class="kanji">誓</span> ${vs}` : ""}${game.endless ? " · ∞ ENDLESS" : ""}${game.daily ? " · 日 DAILY" : ""}${game.assistDR ? ` · ASSIST ${Math.round(game.assistDR * 100)}%` : ""}`;
+      tag.innerHTML = `<span class="kanji">${D.kanji}</span> ${D.name.toUpperCase()}${vs ? ` · <span class="kanji">誓</span> ${vs}` : ""}${game.endless ? " · ∞ ENDLESS" : ""}${game.daily ? " · 日 DAILY" : ""}${game.omen ? ` · <span class="kanji">${OMEN_BY_ID[game.omen].kanji}</span> ${OMEN_BY_ID[game.omen].name.toUpperCase()}` : ""}${game.assistDR ? ` · ASSIST ${Math.round(game.assistDR * 100)}%` : ""}`;
     }
   }
 
@@ -1274,8 +1275,13 @@ function renderShop(s: GameStats) {
     <div class="panel-sub shop-lock-hint">🔒 Lock up to 2 items (${nLocked}/2) · <kbd>Shift</kbd>+<kbd>1–${s.shopOffer.length}</kbd> · locked items survive rerolls and wait for you next wave at the same price</div>
     <div class="panel-actions">
       <button class="btn" data-act="reroll" ${s.mon < s.shopRerollCost ? "disabled" : ""}>Reroll · 文 ${s.shopRerollCost} · <kbd>R</kbd></button>
-      <button class="btn primary" data-act="leave">Next wave · <kbd>Enter</kbd></button>
-    </div></div>`);
+      ${game?.omenOffer.length ? "" : `<button class="btn primary" data-act="leave">Next wave · <kbd>Enter</kbd></button>`}
+    </div>
+    ${game?.omenOffer.length ? `<div class="omen-pick"><div class="panel-sub">Choose tonight's omen for wave ${s.wave + 1}</div><div class="omen-row">${game.omenOffer.map((id, i) => {
+      const o = OMEN_BY_ID[id];
+      return `<button class="omen glow" style="--oh:${o.hue}" data-omen="${id}"><span class="kanji">${o.kanji}</span><span><b>${o.name}</b><i>${o.desc}</i></span><kbd>${i === 0 ? "Enter" : "Shift+Enter"}</kbd></button>`;
+    }).join("")}</div></div>` : ""}
+    </div>`);
 }
 
 function evoRows(s: GameStats): string {
@@ -1450,6 +1456,8 @@ overlay.addEventListener("click", e => {
   }
   const sw = t.closest<HTMLElement>("[data-swap]");
   if (sw) { game.swapAbility(sw.dataset.swap!); return; }
+  const om = t.closest<HTMLElement>("[data-omen]");
+  if (om) { game.closeShop(om.dataset.omen as never); return; }
   const lk = t.closest<HTMLElement>("[data-lock]");
   if (lk) { game.toggleShopLock(lk.dataset.lock!); return; }
   const buy = t.closest<HTMLButtonElement>("[data-buy]");
@@ -1525,7 +1533,7 @@ function overlayKeys(e: KeyboardEvent, s: GameStats): boolean {
       if (n >= 0 && s.shopOffer[n] && e.shiftKey) game.toggleShopLock(s.shopOffer[n].id);   // SHOPLOCK
       else if (n >= 0 && s.shopOffer[n] && !s.shopPurchasedIds.includes(s.shopOffer[n].id)) game.buyShopItem(s.shopOffer[n].id);
       if (e.code === "KeyR") game.rerollShop();
-      if (e.code === "Enter") { e.preventDefault(); game.closeShop(); }
+      if (e.code === "Enter") { e.preventDefault(); game.closeShop(game.omenOffer[e.shiftKey ? 1 : 0]); }
       return true;
     case "paused":
       if (e.code === "Escape" || normKey(e.code) === keys.pause) resumeGame();
