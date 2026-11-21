@@ -16,7 +16,7 @@ There are 7 phases, in the order they depend on each other. Each phase is roughl
 | 4 ✅ | New enemy roles: controller + summoner | Fills the two roles that are missing | M |
 | 5 ✅ | Class signature passives | Makes the 25 classes play differently instead of just having different numbers | M–L |
 | 6 ✅ | Vows (Hades-style "Heat") | A long-term goal for players who've beaten Death | M |
-| 7 | Data-driven balance pass | Tune using real pick rates and wave numbers instead of guesses | S |
+| 7 | Data-driven balance pass (best after Round 2 phases 8–10) | Tune using real pick rates and wave numbers instead of guesses | S |
 
 ---
 
@@ -216,6 +216,114 @@ Use the tracking from Phase 1 after some real play (yours and your friends'):
 **Targets:** a decent player on Normal reaches wave 12–18, and boss waves are the most common place to die.
 
 Re-run the headless power-curve bot (`scratchpad/sim.js` pattern) to check that no build is immortal by wave 20.
+
+---
+
+## Also shipped (outside the original plan)
+
+Liquid-glass 幽 intro · infinite-block fix · deflect and ultimate audit (no random deflect failures, deflect blocks everything, shields only block weapon hits, aim re-read after the cutscene, homing Dokkaebi ghosts, ultimate damage scaling) · Kunoichi Phantom Dance rework · Twin Sai and War Fan buff · ultimate perks (8 general + 25 class) · in-game Guide, card hints and one-time tips · mobile and touch support.
+
+---
+
+# Round 2: gaps found in the second research pass
+
+The second pass compared GhostGame with Hades, Dead Cells, Brotato, Vampire Survivors, Halls of Torment, Risk of Rain 2, Slay the Spire and Spelunky.
+The core systems are covered; these are what's still missing. Recommended order: **8 → 9 → 10**, then 11, then the rest. Phase 7 (balance) works best after 8–10, because the new end screen also gives better data.
+
+| # | Phase | Inspired by | Why | Size |
+|---|-------|-------------|-----|------|
+| 8 | Victory + Endless mode | Brotato, Vampire Survivors | The game never says "you won" | S–M |
+| 9 | Level-up control: Reroll / Banish / Skip | Halls of Torment, Brotato | A bad set of cards can't be fixed | S |
+| 10 | Better end-of-run screen + death recap | Risk of Rain 2, LoL Death Recap | Players can't see *why* a run ended | S–M |
+| 11 | Unlocks across runs (sideways unlocks + small upgrade tree) | Hades Mirror of Night, Dead Cells | Runs don't feed into anything permanent | L |
+| 12 | Shop lock | Brotato | Save up for an item across a reroll or wave | S |
+| 13 | Daily run (seeded by date) | Spelunky, Dead Cells | A shared daily challenge | M |
+| 14 | Controller support | Browser Gamepad API | Chromebook and PC players with controllers | M |
+| 15 | Accessibility round 2 | Dead Cells, Hades | Colorblind safety, UI scale, volume, assist mode | M |
+| 16 | Between-wave choices (wave modifiers + shrines) | Slay the Spire map, Hades rooms | More variety and decisions between waves | M |
+| 17 | Run history + bestiary | Most roguelites | Long-term record and a sense of collection | S |
+| 18 | Polish: DPS meter, pickup radius, haptics | Halls of Torment | Small quality-of-life touches | S |
+
+---
+
+## Phase 8: Victory + Endless mode
+
+- **Win condition:** beating the **wave-25 Final Boss** gives a **Victory** screen with a summary and a gold "勝" seal. (`stats.state = "victory"` already exists and is handled by the end screen, but nothing triggers it yet.)
+- **Endless option:** the victory screen offers **"Continue (Endless)"**. Waves keep scaling, an "∞ Endless" badge shows in the HUD, and wave records are kept separately (e.g. "Endless best: 34").
+- **Records:** a win is stored per class and difficulty, and the class card on the menu shows a ✓ for classes you've beaten.
+- **Achievements:** First Victory (Rare), win on Hard (Epic), win on Death (Legendary), win with 10 / all 25 classes (Epic / Mythic), Endless wave 40 (Legendary).
+- **Dev panel:** "Win now".
+
+## Phase 9: Level-up control: Reroll / Banish / Skip
+
+- **Reroll:** each run starts with **2 rerolls** that redraw all cards. More come from a rare perk or shop item ("Fortune Stick").
+- **Banish:** each run starts with **2 banishes**. Banishing a card removes that perk from the pool for the rest of the run (Halls of Torment style).
+- **Skip:** take **+15 coins × wave** (scaled) instead of a card. Always available.
+- Buttons go under the cards with counts shown, plus keys (R reroll, B banish then pick a card, S skip) and touch-friendly sizes.
+- **Balance tracking:** record rerolls, banishes and skips, since banish rates are a strong "this perk is a trap" signal for Phase 7.
+
+## Phase 10: Better end-of-run screen + death recap
+
+- **Damage dealt by source:** katana, each weapon, each ability, ultimate, DoTs (burn / bleed / poison), and evolution or duo effects, shown as sorted bars with percentages. This needs `dealDamage` callers to pass a source label.
+- **Death recap:** what killed you (already tracked as `lastHitBy`), plus damage taken by source over the last 10 seconds and over the whole run (LoL-style).
+- **Highlights:** biggest hit, best multi-kill, elites slain, chests opened, evolutions and duos this run.
+- **"Why you lost" line:** e.g. "Most damage came from Archers on wave 14. Try deflect or a shield." Simple rules only.
+- **Share:** a "Copy run summary" button that copies plain text to share with friends.
+
+## Phase 11: Unlocks across runs
+
+Research warns: unlocks that only add raw power make runs trivial, so keep power growth small and favour **sideways** unlocks.
+
+- **Sideways unlocks (most of it):** new players start with about 8 classes and about 8 weapons. The rest unlock from milestones you'd hit anyway ("reach wave 10 with Samurai", "kill 50 elites", "evolve a weapon"). Locked cards show the requirement. Existing players' saves count toward unlocks automatically, so nothing they have gets taken away.
+- **Small upgrade tree ("Shrine of Ancestors"):** a soft currency, **Spirit Embers**, earned per run (wave reached + bosses + achievements) and spent on about 10 nodes with low caps. Examples: +1 starting reroll, +5% starting coins, Spirit Chests also heal 5%, start with a random common item. Each node has an **alternate version** you can switch to (Mirror of Night style) for build variety rather than just more power.
+- A **toggle to switch all upgrades off** for purists and for the Daily (Phase 13).
+- Guide tab and achievements to match.
+
+## Phase 12: Shop lock
+
+- A 🔒 button on each shop card. Locked items **survive rerolls and carry to the next wave at their locked price**.
+- Max 2 locks, a touch-friendly button, and a keyboard shortcut (Shift + number).
+
+## Phase 13: Daily run
+
+- **Seeded by the date:** everyone gets the same class, weapons, Vows and RNG. Swap `Math.random` for a seeded PRNG during a daily run, so spawns, cards and shop all match.
+- **Dead Cells hybrid:** unlimited attempts with your **best score saved**, plus a separate **"first attempt"** record (Spelunky's one-shot tension).
+- There's no server on GitHub Pages, so it stays local: a daily history calendar, a streak counter, and a "Copy result" share code.
+- Phase 11 upgrades are switched off in the Daily so it's fair.
+
+## Phase 14: Controller support
+
+- Gamepad API polling in the game loop, with dead zones (about 0.2) and a "press any button to use controller" prompt.
+- **Layout:** left stick moves, right stick aims (aim assist when the stick is idle), RT attack, LT block, A dash, X/Y abilities, RB ultimate, LB swap, D-pad items, Start pause. Remappable in Controls.
+- Menus, cards and the shop are navigable with the D-pad and A/B.
+- Optional rumble (works in Chrome; skipped where unsupported).
+
+## Phase 15: Accessibility round 2
+
+- **Colorblind-safe mode:** telegraphs and danger zones get patterns or outlines, not just red, and elite affixes show their kanji clearly. Alternative palettes too.
+- **UI scale** (90–150%) and a **bigger damage numbers** toggle.
+- **Separate volume sliders:** music, sound effects, UI.
+- **Assist mode** (Hades god mode style): starts at 20% damage reduction and rises 2% per death, up to 80%. Clearly labelled; runs still count but show an "Assist" tag.
+- An option to highlight the player outline (for busy fights).
+
+## Phase 16: Between-wave choices
+
+A lighter version of Slay the Spire's map, sized for a wave game:
+
+- After some waves, choose **one of two modifiers for the next wave**, e.g. "Blood Moon: +40% enemies, ×2 coins", "Elite Hunt: elites ×3, extra Spirit Chest", "Calm Night: fewer enemies, no shop discount".
+- Rare **shrines** in the arena: walk into one to accept a trade, e.g. "lose 20% max HP → a random legendary perk", "curse: +25% enemy damage this wave → an extra evolution chest".
+- Shrines get telegraphs and a Guide entry; balance tracking records which choices people make.
+
+## Phase 17: Run history + bestiary
+
+- **Run history** in Career: the last 30 runs (class, difficulty, Vows, wave, win/loss, killer, top damage source, date), each tappable for its Phase 10 summary.
+- **Bestiary:** the Guide's Enemies tab shows **kills per enemy type** and unlocks a short lore line after 10 kills. Achievement for filling it.
+
+## Phase 18: Polish
+
+- An optional **DPS meter** (top-right, toggle in settings).
+- A **pickup radius** ring while collecting orbs (toggle).
+- **Haptics** on phones (`navigator.vibrate`) for hits taken, perfect deflects and ultimates (toggle, off with reduced motion).
 
 ---
 
