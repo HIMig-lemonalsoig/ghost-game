@@ -238,7 +238,7 @@ The core systems are covered; these are what's still missing. Recommended order:
 | 11 ✅ | Unlocks across runs (sideways unlocks + small upgrade tree) | Hades Mirror of Night, Dead Cells | Runs don't feed into anything permanent | L |
 | 12 ✅ | Shop lock | Brotato | Save up for an item across a reroll or wave | S |
 | 13 ✅ | Daily run (seeded by date) | Spelunky, Dead Cells | A shared daily challenge | M |
-| 14 | Controller support | Browser Gamepad API | Chromebook and PC players with controllers | M |
+| 14 ✅ | Controller support | Browser Gamepad API | Chromebook and PC players with controllers | M |
 | 15 | Accessibility round 2 | Dead Cells, Hades | Colorblind safety, UI scale, volume, assist mode | M |
 | 16 | Between-wave choices (wave modifiers + shrines) | Slay the Spire map, Hades rooms | More variety and decisions between waves | M |
 | 17 | Run history + bestiary | Most roguelites | Long-term record and a sense of collection | S |
@@ -295,7 +295,7 @@ Research warns: unlocks that only add raw power make runs trivial, so keep power
 - There's no server on GitHub Pages, so it stays local: a daily history calendar, a streak counter, and a "Copy result" share code.
 - Phase 11 upgrades are switched off in the Daily so it's fair.
 
-## Phase 14: Controller support
+## Phase 14: Controller support ✅ done
 
 - Gamepad API polling in the game loop, with dead zones (about 0.2) and a "press any button to use controller" prompt.
 - **Layout:** left stick moves, right stick aims (aim assist when the stick is idle), RT attack, LT block, A dash, X/Y abilities, RB ultimate, LB swap, D-pad items, Start pause. Remappable in Controls.

@@ -13,6 +13,8 @@ import { UI_CSS } from "./ui.css";
 import { initDevMode } from "./devmode";
 import { playIntro } from "./intro";
 import { initTouch } from "./touch";
+import { initGamepad, PAD_ACTIONS, BUTTON_NAMES } from "./gamepad";
+import type { PadAction } from "./gamepad";
 import { EVOLUTIONS, EVO_MASTERY } from "./content/evolutions";
 import { DUO_BY_ID } from "./content/duos";
 import { SIGNATURES } from "./content/signatures";
@@ -34,8 +36,8 @@ const SETTINGS_KEY = "ghostgame.settings.v1";
 const BEST_KEY = "ghostgame.best.v1";
 const LAST_KEY = "ghostgame.last.v1";
 
-interface Settings { sound: boolean; shake: boolean; tips: boolean; autoPause: boolean; cutscenes: boolean; difficulty: Difficulty; }
-type ToggleKey = "sound" | "shake" | "tips" | "autoPause" | "cutscenes";
+interface Settings { sound: boolean; shake: boolean; tips: boolean; autoPause: boolean; cutscenes: boolean; rumble: boolean; difficulty: Difficulty; }
+type ToggleKey = "sound" | "shake" | "tips" | "autoPause" | "cutscenes" | "rumble";
 interface LastPick { classId: ClassId; weapons: SecondaryId[]; }
 
 function readJSON<T>(key: string, fallback: T): T {
@@ -48,7 +50,7 @@ function writeJSON(key: string, value: unknown) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage blocked */ }
 }
 
-const settings: Settings = readJSON(SETTINGS_KEY, { sound: true, shake: true, tips: true, autoPause: true, cutscenes: true, difficulty: "normal" as Difficulty });
+const settings: Settings = readJSON(SETTINGS_KEY, { sound: true, shake: true, tips: true, autoPause: true, cutscenes: true, rumble: true, difficulty: "normal" as Difficulty });
 if (!(settings.difficulty in DIFFICULTIES)) settings.difficulty = "normal";
 // Best wave per class and difficulty (Normal keeps the original un-suffixed key).
 const bestKey = (cls: string, d: Difficulty) => (d === "normal" ? cls : `${cls}@${d}`);
@@ -142,6 +144,11 @@ function controlsPanel(): string {
     ACTIONS.filter(a => a.group === gname).map(a => `<div class="bind-row"><span>${a.label}</span>
       <button class="keycap${capturing === a.id ? " listening" : ""}" data-bind="${a.id}" aria-label="Rebind ${a.label}">${capturing === a.id ? "Press a key…" : K(a.id)}</button></div>`).join("")
   }</div>`).join("")}</div>
+  <h5 style="margin:16px 0 6px">Controller 🎮 ${pad.connected ? "<span class=\"dim\">connected</span>" : "<span class=\"dim\">(plug one in and press a button)</span>"}</h5>
+  <div class="bind-group pad-binds">${PAD_ACTIONS.map(a => `<div class="bind-row"><span>${a.label}</span>
+    <button class="keycap${pad.capturing === a.id ? " listening" : ""}" data-padbind="${a.id}" aria-label="Rebind ${a.label} on controller">${pad.capturing === a.id ? "Press a button…" : BUTTON_NAMES[pad.map[a.id]] ?? `Button ${pad.map[a.id]}`}</button></div>`).join("")}</div>
+  <p class="hint">Left stick moves · right stick aims (when it's idle you face the nearest foe while attacking) · in menus the D-pad moves, A selects, B goes back. B cancels a remap.</p>
+  <div style="margin-top:6px"><button class="btn ghost" data-act="resetpad">Reset controller</button></div>
   <p class="hint" style="margin-top:10px">Click a key, then press the new one (Esc cancels). Mouse: left-click attacks, right-click dashes. Arrow keys always move and Esc always pauses.</p>
   <div style="margin-top:10px"><button class="btn ghost" data-act="resetkeys">Reset to defaults</button></div>`;
 }
@@ -480,6 +487,21 @@ let attackHeld = false;
 // Touch controls (turn on with the first touch). Attacks from touch also tell
 // the engine so its aim assist can face the nearest enemy.
 const touch = initTouch(() => game, held => { attackHeld = held; game?.setInput({ attackHeld: held }); });
+// ─── Controller (Phase 14) ───
+const pad = initGamepad({
+  getGame: () => game,
+  keyCode: a => keys[a as Action],
+  uiRoot: () => overlay.classList.contains("show") ? overlay : menu.style.display !== "none" ? menu : null,
+  rumbleOn: () => settings.rumble !== false,
+  notify: html => {
+    const el = document.createElement("div");
+    el.className = "ach-toast"; el.style.setProperty("--tc", "hsl(42 90% 62%)"); el.setAttribute("role", "status");
+    el.innerHTML = `<span class="ach-k kanji" aria-hidden="true">🎮</span><div><div class="ach-n">${html}</div><div class="ach-d">Left stick moves, right stick aims, RT attacks. Remap in Controls.</div></div>`;
+    achToasts.append(el);
+    setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 220); }, 6000);
+  },
+  onCaptured: () => { if (controlsOpen) refreshControls(); },
+});
 let blockHeld = false;
 let lastHp = Infinity;
 
@@ -1235,7 +1257,7 @@ function renderPause(s: GameStats) {
         <button class="btn" data-act="guide"><span class="kanji" style="color:var(--gold)">道</span> Guide</button>
         <div class="pane" style="margin-top:6px">
           <h4>Settings</h4>
-          ${sw("sound", "Sound & music")}${sw("shake", "Screen shake")}${sw("tips", "Control tips")}${sw("cutscenes", "Ultimate cutscenes")}${sw("autoPause", "Pause when tabbed out")}
+          ${sw("sound", "Sound & music")}${sw("shake", "Screen shake")}${sw("tips", "Control tips")}${sw("cutscenes", "Ultimate cutscenes")}${sw("autoPause", "Pause when tabbed out")}${sw("rumble", "Controller rumble")}
         </div>
       </div>
       <div style="display:grid;gap:14px">
@@ -1304,7 +1326,10 @@ overlay.addEventListener("click", e => {
   if (bind) { capturing = bind.dataset.bind as Action; refreshControls(); return; }
   const cact = t.closest<HTMLElement>("[data-act]")?.dataset.act;
   if (cact === "resetkeys") { Object.assign(keys, DEFAULT_KEYS); writeJSON(KEYS_KEY, keys); capturing = null; refreshControls(); return; }
-  if (cact === "closecontrols") { closeControlsModal(); return; }
+  if (cact === "closecontrols") { pad.startCapture(null); closeControlsModal(); return; }
+  if (cact === "resetpad") { pad.reset(); refreshControls(); return; }
+  const pb = t.closest<HTMLElement>("[data-padbind]");
+  if (pb) { pad.startCapture(pb.dataset.padbind as PadAction); refreshControls(); return; }
   if (cact === "closecareer") { closeCareerModal(); return; }
   if (cact === "closeach") { closeAchModal(); return; }
   if (cact === "guide") { showGuide(guideTab); return; }

@@ -406,6 +406,8 @@ kbd {
 .card.bought { opacity: .45; }
 .card.bought .price { color: var(--muted); }
 .shop-slot { position: relative; display: flex; }
+body.pad :is(button, [tabindex], input):focus { outline: 3px solid var(--gold); outline-offset: 3px; }
+body.pad.playing { cursor: none; }
 .lock-btn { position: absolute; top: 6px; right: 6px; z-index: 2; width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--line);
   background: rgba(0,0,0,.35); font-size: 17px; cursor: pointer; opacity: .65; transition: opacity .15s, border-color .15s, background .15s; }
 .lock-btn:hover, .lock-btn:focus-visible { opacity: 1; border-color: var(--line-strong); }
