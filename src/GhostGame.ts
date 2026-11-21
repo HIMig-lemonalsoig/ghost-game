@@ -4726,6 +4726,25 @@ export class GhostGame {
     ctx.restore();
   }
 
+  // ===================== POLISH (Phase 18) =====================
+  static readonly MAGNET_R = 130;
+  /** Show the XP pickup radius while orbs are nearby (settings toggle). */
+  showPickupRadius = false;
+  /** Haptics hook (phones): "hit" | "deflect" | "ult". Set by the UI. */
+  onHaptic?: (kind: "hit" | "deflect" | "ult") => void;
+  private drawPickupRadius() {
+    if (!this.showPickupRadius || !this.player || !this.xpOrbs.length) return;
+    const R = GhostGame.MAGNET_R, p = this.player.pos;
+    const near = this.xpOrbs.some(o => Math.hypot(o.pos.x - p.x, o.pos.y - p.y) < R * 2.2);
+    if (!near) return;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.strokeStyle = "hsla(190, 90%, 70%, 0.45)"; ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 6]); ctx.lineDashOffset = -this.elapsed * 12;
+    ctx.beginPath(); ctx.arc(p.x, p.y, R, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  }
+
   /** A11Y options (set by the UI). colorblind: 0 off, 1 red-green safe, 2 blue-yellow safe. */
   a11y = { colorblind: 0 as 0 | 1 | 2, bigNumbers: false, outline: false };
   /** A11Y Assist mode: fraction of enemy damage removed (0 = off). Runs show an "Assist" tag. */
@@ -8295,6 +8314,7 @@ export class GhostGame {
       if (e && e.state !== "dead") {
         e.hp -= e.damage + this.perks.parryDamage;
         this.trackDealt("Deflect", e.damage + this.perks.parryDamage);
+        this.onHaptic?.("deflect");
         e.hitFlash = 1;
         e.stunTimer = Math.max(e.stunTimer, e.isBoss ? 0.4 : 0.8);
         if (e.hp <= 0) this.killEnemy(e, "honor");
@@ -8383,6 +8403,7 @@ export class GhostGame {
     this.run.damageTaken += baseDamage;
     this.lastHitBy = source ?? (e ? (e.archetype === "final" ? "final boss" : e.isBoss ? `${e.bossKind ?? "oni"} boss` : e.affixes ? `elite ${e.archetype}` : e.archetype) : "unknown");
     this.trackTaken(this.lastHitBy, baseDamage);
+    this.onHaptic?.("hit");
     if (e && e.state !== "dead" && e.affixes && e.affixes.includes("vampiric") && e.hp < e.maxHp) {
       const heal = e.maxHp * ELITE.vampHeal;
       e.hp = Math.min(e.maxHp, e.hp + heal);
@@ -9962,6 +9983,7 @@ export class GhostGame {
               const counterBonus = this.perks.parryDamage;
               e.hp -= e.damage + counterBonus;
               this.trackDealt("Deflect", e.damage + counterBonus);
+              this.onHaptic?.("deflect");
               e.hitFlash = 1;
               e.stunTimer = Math.max(e.stunTimer, e.isBoss ? 0.4 : 0.8);
               this.spawnSpark(this.player.pos);
@@ -10300,6 +10322,7 @@ export class GhostGame {
     this.drawSearchMarkers();
     if (this.devShowHitboxes) this.drawDevHitboxes();
 
+    this.drawPickupRadius();
     this.drawPlayer();
     this.drawA11yCues();
     this.drawPhantomDance();
@@ -13581,6 +13604,7 @@ export class GhostGame {
   }
 
   executeUltimate() {
+    this.onHaptic?.("ult");
     this.cameraShake = Math.max(this.cameraShake, 0.45);
     this.cameraZoom.setTarget(1.05, 13);
     setTimeout(() => this.cameraZoom.setTarget(1, 6), 150);
@@ -15249,7 +15273,7 @@ export class GhostGame {
   // Magnet radius is generous so orbs feel rewarding to chase.
   updateXpOrbs(dt: number) {
     const PICKUP_R = 20;
-    const MAGNET_R = 130;
+    const MAGNET_R = GhostGame.MAGNET_R;
     for (const o of this.xpOrbs) {
       o.life -= dt;
       // Scatter velocity drag

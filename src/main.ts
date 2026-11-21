@@ -38,8 +38,8 @@ const SETTINGS_KEY = "ghostgame.settings.v1";
 const BEST_KEY = "ghostgame.best.v1";
 const LAST_KEY = "ghostgame.last.v1";
 
-interface Settings { sound: boolean; shake: boolean; tips: boolean; autoPause: boolean; cutscenes: boolean; rumble: boolean; difficulty: Difficulty; }
-type ToggleKey = "sound" | "shake" | "tips" | "autoPause" | "cutscenes" | "rumble";
+interface Settings { sound: boolean; shake: boolean; tips: boolean; autoPause: boolean; cutscenes: boolean; rumble: boolean; dps: boolean; pickup: boolean; haptics: boolean; difficulty: Difficulty; }
+type ToggleKey = "sound" | "shake" | "tips" | "autoPause" | "cutscenes" | "rumble" | "dps" | "pickup" | "haptics";
 interface LastPick { classId: ClassId; weapons: SecondaryId[]; }
 
 function readJSON<T>(key: string, fallback: T): T {
@@ -52,7 +52,7 @@ function writeJSON(key: string, value: unknown) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage blocked */ }
 }
 
-const settings: Settings = readJSON(SETTINGS_KEY, { sound: true, shake: true, tips: true, autoPause: true, cutscenes: true, rumble: true, difficulty: "normal" as Difficulty });
+const settings: Settings = readJSON(SETTINGS_KEY, { sound: true, shake: true, tips: true, autoPause: true, cutscenes: true, rumble: true, dps: false, pickup: false, haptics: true, difficulty: "normal" as Difficulty });
 if (!(settings.difficulty in DIFFICULTIES)) settings.difficulty = "normal";
 // Best wave per class and difficulty (Normal keeps the original un-suffixed key).
 const bestKey = (cls: string, d: Difficulty) => (d === "normal" ? cls : `${cls}@${d}`);
@@ -575,6 +575,12 @@ window.addEventListener("resize", resize);
 function applySettings() {
   audio.setMuted(!settings.sound);
   if (game) {
+    game.showPickupRadius = settings.pickup;
+    game.onHaptic = kind => {
+      if (!settings.haptics || !touch.active || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      try { navigator.vibrate?.(kind === "hit" ? 40 : kind === "deflect" ? [15, 30, 15] : [30, 40, 60]); } catch { /* unsupported */ }
+    };
+    dpsEl.hidden = !settings.dps;
     game.shakeScale = settings.shake ? 1 : 0.15;
     game.ultCutscenes = settings.cutscenes;
   }
@@ -1002,7 +1008,29 @@ const fmtCd = (sec: number) => (sec < 1 ? sec.toFixed(1) : String(Math.ceil(sec)
 
 const H = (k: string) => hud.querySelector<HTMLElement>(`[data-h="${k}"]`);
 
+// ─── DPS meter (Phase 18) ───
+const dpsEl = document.createElement("div");
+dpsEl.id = "dps-meter"; dpsEl.hidden = true; dpsEl.setAttribute("aria-live", "off");
+document.body.append(dpsEl);
+const dpsSamples: { t: number; d: number }[] = [];
+let dpsDrawnAt = 0;
+function updateDps() {
+  if (!game || !settings.dps || game.stats.state !== "playing") { if (!settings.dps) dpsEl.hidden = true; return; }
+  dpsEl.hidden = false;
+  const now = performance.now(), dealt = game.run.damageDealt;
+  dpsSamples.push({ t: now, d: dealt });
+  while (dpsSamples.length && now - dpsSamples[0].t > 5000) dpsSamples.shift();
+  if (now - dpsDrawnAt < 250) return;
+  dpsDrawnAt = now;
+  const first = dpsSamples[0];
+  const secs = Math.max(0.5, (now - first.t) / 1000);
+  const dps = (dealt - first.d) / secs;
+  const top = Object.entries(game.run.dmgBy).sort((a, b) => b[1] - a[1])[0];
+  dpsEl.innerHTML = `<b class="num">${dps >= 1000 ? (dps / 1000).toFixed(1) + "k" : Math.round(dps)}</b><span>DPS</span>${top ? `<i>${top[0]}</i>` : ""}`;
+}
+
 function updateHud(s: GameStats) {
+  updateDps();
   const hpFrac = s.maxHp > 0 ? s.hp / s.maxHp : 0;
   if (s.hp < lastHp && lastHp !== Infinity) {
     const bar = hud.querySelector<HTMLElement>(".bar.hp");
@@ -1321,7 +1349,7 @@ function renderPause(s: GameStats) {
         <button class="btn" data-act="a11y">Accessibility</button>
         <div class="pane" style="margin-top:6px">
           <h4>Settings</h4>
-          ${sw("sound", "Sound & music")}${sw("shake", "Screen shake")}${sw("tips", "Control tips")}${sw("cutscenes", "Ultimate cutscenes")}${sw("autoPause", "Pause when tabbed out")}${sw("rumble", "Controller rumble")}
+          ${sw("sound", "Sound & music")}${sw("shake", "Screen shake")}${sw("tips", "Control tips")}${sw("cutscenes", "Ultimate cutscenes")}${sw("autoPause", "Pause when tabbed out")}${sw("rumble", "Controller rumble")}${sw("dps", "DPS meter")}${sw("pickup", "Show pickup radius")}${sw("haptics", "Phone vibration")}
         </div>
       </div>
       <div style="display:grid;gap:14px">
