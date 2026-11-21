@@ -841,6 +841,7 @@ export interface ShopItem {
   desc: string;
   price: number;          // in Mon (文)
   rarity: ShopRarity;
+  locked?: boolean;       // SHOPLOCK: kept through rerolls and into the next shop at this price
 }
 
 interface PoolEntry {
@@ -3975,6 +3976,7 @@ interface Perks {
   rerolls: number;          // level-up rerolls left this run
   banishes: number;         // level-up banishes left this run
   banished: string[];       // perk / ability ids removed from the pool this run
+  shopLocks: ShopItem[];    // SHOPLOCK: up to 2 shop items held for later
   weaponMastery: Record<string, number>;  // damage upgrades bought per weapon (evolutions)
   shopBought: string[];     // shop effects bought this run (evolution catalysts)
   evolved: string[];        // evolved weapon ids
@@ -4092,6 +4094,7 @@ const defaultPerks = (): Perks => ({
   rerolls: 2,
   banishes: 2,
   banished: [],
+  shopLocks: [],
   weaponMastery: {},
   shopBought: [],
   evolved: [],
@@ -15310,7 +15313,7 @@ export class GhostGame {
     if (this.stats.state !== "playing") return;
     const equipped = this.stats.secondaryIds.filter((s): s is SecondaryId => !!s);
     const infl = shopInflation(this.stats.wave) * (1 + 0.2 * this.vr("stingy")) * this.meta.shopMul;   // VOW Stingy Merchant, SHRINE Haggler
-    this.stats.shopOffer = this.dedupeOffer(rollShopOffer(this.shopSlots(), equipped, this.maxedShopEffects())).map(it => ({ ...it, price: Math.round(it.price * infl) }));
+    this.stats.shopOffer = this.rollOfferWithLocks(equipped, infl);
     this.emitEvent({ t: "offer", kind: "shop", ids: this.stats.shopOffer.map(it => it.effect) });
     this.stats.shopRerollCost = Math.round(SHOP_REROLL_COST * infl * this.meta.rerollMul);   // SHRINE Browser
     this.roninFreeReroll = this.isClass("ronin");   // SIGNATURE Masterless: first reroll free
@@ -15319,6 +15322,42 @@ export class GhostGame {
     this.stats.state = "shop";
     audio.play("levelUp");
     this.emitStats();
+  }
+
+  // ===================== SHOPLOCK =====================
+  static readonly MAX_SHOP_LOCKS = 2;
+  /** Locked items first (at their locked price), then fresh rolls for the other slots. */
+  private rollOfferWithLocks(equipped: SecondaryId[], infl: number): ShopItem[] {
+    const locks = this.perks.shopLocks.map(it => ({ ...it, locked: true }));
+    const n = Math.max(0, this.shopSlots() - locks.length);
+    const taken = new Set(locks.map(l => l.effect));
+    let fresh: ShopItem[] = [];
+    for (let tries = 0; tries < 6; tries++) {
+      fresh = this.dedupeOffer(rollShopOffer(n + locks.length, equipped, this.maxedShopEffects()))
+        .filter(it => !taken.has(it.effect)).slice(0, n);
+      if (fresh.length >= n) break;
+    }
+    return [...locks, ...fresh.map(it => ({ ...it, price: Math.round(it.price * infl) }))];
+  }
+
+  /** Lock or unlock a shop card. Returns false when the lock limit is reached. */
+  toggleShopLock(itemId: string): boolean {
+    if (this.stats.state !== "shop" || this.stats.shopPurchasedIds.includes(itemId)) return false;
+    const item = this.stats.shopOffer.find(i => i.id === itemId);
+    if (!item) return false;
+    if (item.locked) {
+      item.locked = false;
+      this.perks.shopLocks = this.perks.shopLocks.filter(l => l.id !== itemId);
+    } else {
+      if (this.perks.shopLocks.length >= GhostGame.MAX_SHOP_LOCKS) { this.flash(`You can lock ${GhostGame.MAX_SHOP_LOCKS} items at most`); return false; }
+      item.locked = true;
+      const { locked: _l, ...plain } = item;
+      this.perks.shopLocks.push(plain);
+    }
+    this.stats.shopOffer = [...this.stats.shopOffer];
+    audio.play("armorRing");
+    this.emitStats();
+    return true;
   }
 
   // Swap out items whose effect the player already has, so nothing is wasted.
@@ -15334,7 +15373,7 @@ export class GhostGame {
     this.stats.mon -= this.stats.shopRerollCost;
     const equipped = this.stats.secondaryIds.filter((s): s is SecondaryId => !!s);
     const infl = shopInflation(this.stats.wave) * (1 + 0.2 * this.vr("stingy")) * this.meta.shopMul;   // VOW Stingy Merchant, SHRINE Haggler
-    this.stats.shopOffer = this.dedupeOffer(rollShopOffer(this.shopSlots(), equipped, this.maxedShopEffects())).map(it => ({ ...it, price: Math.round(it.price * infl) }));
+    this.stats.shopOffer = this.rollOfferWithLocks(equipped, infl);
     this.emitEvent({ t: "offer", kind: "shop", ids: this.stats.shopOffer.map(it => it.effect) });
     // Slight escalation so reroll spam isn't free.
     if (this.roninFreeReroll) { this.roninFreeReroll = false; this.stats.shopRerollCost = Math.round(SHOP_REROLL_COST * infl * this.meta.rerollMul); }
@@ -15377,6 +15416,7 @@ export class GhostGame {
     }
     this.stats.mon -= item.price;
     this.stats.shopPurchasedIds.push(itemId);
+    if (item.locked) { item.locked = false; this.perks.shopLocks = this.perks.shopLocks.filter(l => l.id !== itemId); }   // SHOPLOCK
     this.run.purchases++;
     if (!this.perks.shopBought.includes(item.effect)) this.perks.shopBought.push(item.effect);
     {

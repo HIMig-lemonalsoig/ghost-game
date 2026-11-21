@@ -405,6 +405,15 @@ kbd {
 .card .price { margin-top: 12px; font-size: 16px; font-weight: 700; color: var(--gold); }
 .card.bought { opacity: .45; }
 .card.bought .price { color: var(--muted); }
+.shop-slot { position: relative; display: flex; }
+.lock-btn { position: absolute; top: 6px; right: 6px; z-index: 2; width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--line);
+  background: rgba(0,0,0,.35); font-size: 17px; cursor: pointer; opacity: .65; transition: opacity .15s, border-color .15s, background .15s; }
+.lock-btn:hover, .lock-btn:focus-visible { opacity: 1; border-color: var(--line-strong); }
+.lock-btn.on { opacity: 1; border-color: var(--gold); background: rgba(232,183,90,.18); }
+.card.locked-item { outline: 2px solid var(--gold); outline-offset: 3px; }
+.lock-btn:not(.on) { filter: grayscale(1); opacity: .45; }
+.locked-tag { font-size: 10px; letter-spacing: 1.4px; color: var(--gold); border: 1px solid var(--gold); border-radius: 5px; padding: 1px 5px; vertical-align: middle; margin-left: 4px; }
+.shop-lock-hint { margin-top: 14px; font-size: 12px; }
 .card[disabled] .price { color: var(--crimson); }
 .r-common { --rc: var(--common); } .r-rare { --rc: var(--rare); } .r-legendary { --rc: var(--legendary); }
 .panel-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 24px; }

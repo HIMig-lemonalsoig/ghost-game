@@ -1075,7 +1075,7 @@ function syncOverlay(s: GameStats) {
   let key = s.state;
   if (s.state === "levelup") key += s.pendingChoices.map(c => c.id).join(",") + `|${banishMode}|${game?.perks.rerolls}|${game?.perks.banishes}`;
   if (s.state === "swap") key += s.pendingAbilityId;
-  if (s.state === "shop") key += s.shopOffer.map(i => i.id).join(",") + "|" + s.shopPurchasedIds.join(",") + "|" + s.mon;
+  if (s.state === "shop") key += s.shopOffer.map(i => i.id + (i.locked ? "L" : "")).join(",") + "|" + s.shopPurchasedIds.join(",") + "|" + s.mon;
   if (s.state === "paused") key += "|" + JSON.stringify(settings) + JSON.stringify(keys) + capturing;
   if (key === overlayKey) return;
   overlayKey = key;
@@ -1131,16 +1131,19 @@ function renderShop(s: GameStats) {
   const items = s.shopOffer.map((it, i) => {
     const bought = s.shopPurchasedIds.includes(it.id);
     const broke = !bought && s.mon < it.price;
-    return `<button class="card glow tilt ${rarityClass(it.rarity)}${bought ? " bought" : ""}" data-buy="${it.id}" ${bought || broke ? "disabled" : ""}>
+    const lockBtn = bought ? "" : `<button class="lock-btn${it.locked ? " on" : ""}" data-lock="${it.id}" aria-pressed="${!!it.locked}" title="${it.locked ? "Unlock" : "Lock: keep it through rerolls and into the next shop"} (Shift+${i + 1})">${it.locked ? "🔒" : "🔓"}</button>`;
+    return `<div class="shop-slot">${lockBtn}<button class="card glow tilt ${rarityClass(it.rarity)}${bought ? " bought" : ""}${it.locked ? " locked-item" : ""}" data-buy="${it.id}" ${bought || broke ? "disabled" : ""}>
       <kbd class="key">${i + 1}</kbd><div class="kanji">${it.kanji}</div><div class="cn">${it.name}</div>
       <div class="rar">${it.rarity}</div><div class="cd">${it.desc}</div>${cardHints(it.effect)}
       ${(() => { const pv = game?.shopPreview(it.effect); return pv ? `<div class="preview num">${pv}</div>` : ""; })()}
-      <div class="price num">${bought ? "Purchased" : `文 ${it.price}`}</div></button>`;
+      <div class="price num">${bought ? "Purchased" : `文 ${it.price}`}${it.locked ? ` <span class="locked-tag">LOCKED</span>` : ""}</div></button></div>`;
   }).join("");
+  const nLocked = s.shopOffer.filter(i => i.locked).length;
   showOverlay(`<div class="panel">
     <div class="panel-title">商 MERCHANT</div>
     <div class="panel-sub num">Wave ${s.wave} cleared · You have <b style="color:var(--gold)">文 ${s.mon}</b></div>
     <div class="cards">${items}</div>
+    <div class="panel-sub shop-lock-hint">🔒 Lock up to 2 items (${nLocked}/2) · <kbd>Shift</kbd>+<kbd>1–${s.shopOffer.length}</kbd> · locked items survive rerolls and wait for you next wave at the same price</div>
     <div class="panel-actions">
       <button class="btn" data-act="reroll" ${s.mon < s.shopRerollCost ? "disabled" : ""}>Reroll · 文 ${s.shopRerollCost} · <kbd>R</kbd></button>
       <button class="btn primary" data-act="leave">Next wave · <kbd>Enter</kbd></button>
@@ -1290,6 +1293,8 @@ overlay.addEventListener("click", e => {
   }
   const sw = t.closest<HTMLElement>("[data-swap]");
   if (sw) { game.swapAbility(sw.dataset.swap!); return; }
+  const lk = t.closest<HTMLElement>("[data-lock]");
+  if (lk) { game.toggleShopLock(lk.dataset.lock!); return; }
   const buy = t.closest<HTMLButtonElement>("[data-buy]");
   if (buy) { if (!buy.disabled) game.buyShopItem(buy.dataset.buy!); return; }
   const set = t.closest<HTMLElement>("[data-set]");
@@ -1359,7 +1364,8 @@ function overlayKeys(e: KeyboardEvent, s: GameStats): boolean {
       if (e.code === "Escape") game.cancelSwap();
       return true;
     case "shop":
-      if (n >= 0 && s.shopOffer[n] && !s.shopPurchasedIds.includes(s.shopOffer[n].id)) game.buyShopItem(s.shopOffer[n].id);
+      if (n >= 0 && s.shopOffer[n] && e.shiftKey) game.toggleShopLock(s.shopOffer[n].id);   // SHOPLOCK
+      else if (n >= 0 && s.shopOffer[n] && !s.shopPurchasedIds.includes(s.shopOffer[n].id)) game.buyShopItem(s.shopOffer[n].id);
       if (e.code === "KeyR") game.rerollShop();
       if (e.code === "Enter") { e.preventDefault(); game.closeShop(); }
       return true;
