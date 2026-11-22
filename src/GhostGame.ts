@@ -2547,6 +2547,8 @@ const PD = {
   dashTime: 0.15,
   spacing: 62,         // gap between the three afterimages
   tick: 0.12,          // damage tick
+  steerSpeed: 430,     // WASD / stick moves the storm this fast (px/s)
+  leash: 560,          // how far the storm can roam from your body
 };
 
 interface Player {
@@ -3681,6 +3683,9 @@ export class GhostGame {
   ultPhantomImages: PhantomImage[] = [];
   /** Phantom Dance: centre of the slash flurry and timers. */
   phantom = { t: 0, cx: 0, cy: 0, hitAcc: 0, slashAcc: 0, finished: false };
+  /** Movement input redirected to steer Phantom Dance (WASD / stick instead of the body). */
+  private phantomMove = { x: 0, y: 0 };
+  private phantomSteering() { return this.ultPhantomTimer > 0 && this.phantom.t < PD.flurryEnd; }
   ultEarthshakerTimer = 0;      // Sumo charge
   ultEarthshakerDir = 0;
   ultDeathWebTimer = 0;         // Tsuchigumo
@@ -4697,14 +4702,18 @@ export class GhostGame {
     const ph = this.phantom, p = this.player;
     ph.t += dt;
     const t = ph.t;
-    // The zone drifts toward where you're aiming (like Miko's beam), so you can steer it.
+    // Steer the storm with WASD / the stick (movement is redirected here while it lasts).
     if (t < PD.flurryEnd) {
-      const aim = this.aimPoint();
-      const ang = Math.atan2(aim.y - p.pos.y, aim.x - p.pos.x);
-      const d = Math.min(PD.reach + 60, Math.max(110, Math.hypot(aim.x - p.pos.x, aim.y - p.pos.y)));
-      const tx = p.pos.x + Math.cos(ang) * d, ty = p.pos.y + Math.sin(ang) * d;
-      const k = Math.min(1, dt * 3);
-      ph.cx += (tx - ph.cx) * k; ph.cy += (ty - ph.cy) * k;
+      const mv = this.phantomMove, m = Math.hypot(mv.x, mv.y);
+      if (m > 0.05) {
+        ph.cx += (mv.x / Math.max(m, 1)) * PD.steerSpeed * dt;
+        ph.cy += (mv.y / Math.max(m, 1)) * PD.steerSpeed * dt;
+      }
+      // Stay in the arena and within reach of the body.
+      const dx = ph.cx - p.pos.x, dy = ph.cy - p.pos.y, d = Math.hypot(dx, dy);
+      if (d > PD.leash) { ph.cx = p.pos.x + (dx / d) * PD.leash; ph.cy = p.pos.y + (dy / d) * PD.leash; }
+      ph.cx = Math.max(PD.zoneR * 0.5, Math.min(this.worldW - PD.zoneR * 0.5, ph.cx));
+      ph.cy = Math.max(PD.zoneR * 0.5, Math.min(this.worldH - PD.zoneR * 0.5, ph.cy));
     }
     const ease = (x: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
     for (const [i, img] of this.ultPhantomImages.entries()) {
@@ -6662,6 +6671,9 @@ export class GhostGame {
     if (this.input.left) mx -= 1;
     if (this.input.right) mx += 1;
     if (this.input.joyActive) { mx = this.input.joyDx; my = this.input.joyDy; }
+    // Kunoichi Phantom Dance: movement steers the slash storm; the body holds still.
+    if (this.phantomSteering()) { this.phantomMove = { x: mx, y: my }; mx = 0; my = 0; }
+    else this.phantomMove = { x: 0, y: 0 };
 
     const mag = Math.hypot(mx, my);
     if (mag > 0.05) {
@@ -7377,6 +7389,7 @@ export class GhostGame {
       if (this.kunoichiHitChain >= 4) {
         this.kunoichiHitChain = 0;
         e.poisonRemaining = Math.min(8, e.poisonRemaining + 4);
+        if (this.perks.poisonDps <= 0) this.perks.poisonDps = 4;
       }
     }
     if (this.stats.classId === "yukionna") {
@@ -11479,7 +11492,9 @@ export class GhostGame {
         e.poisonRemaining = Math.max(0, e.poisonRemaining - dt);
         // Phase 3 — poison ramps with remaining duration. Longer = nastier.
         const ramp = 1 + Math.min(2, Math.max(0, this.perks.poisonRamp) * e.poisonRemaining);
-        const dps = this.perks.poisonDps * this.perks.poisonDmgMul * ramp;
+        // Every poison source does damage (Kunoichi's Venom Rhythm used to apply 0 DPS), and it grows a little each wave.
+        const baseDps = Math.max(4, this.perks.poisonDps) * (1 + 0.1 * Math.max(0, this.stats.wave - 1));
+        const dps = baseDps * this.perks.poisonDmgMul * ramp;
         e.poisonTickAccum += dps * dt;
         if (e.poisonTickAccum >= 1) {
           const tick = Math.floor(e.poisonTickAccum);
