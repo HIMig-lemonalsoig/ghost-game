@@ -3,7 +3,7 @@ import { Fx, hueOf } from "./fx";
 import { Arena } from "./arena";
 import { ULT_STYLES, poseFrame, drawMotif, STRIKE } from "./ultimates";
 import type { UltMotif } from "./ultimates";
-import { defenseReduction, dexAttackSpeed, critFromPoints, moveSpeedFromMul, soft, softStat, SOFT_STATS, WEAPON_FLAT } from "./content/curves";
+import { defenseReduction, dexAttackSpeed, critFromPoints, moveSpeedFromMul, soft, softStat, SOFT_STATS, WEAPON_FLAT, ULT_WAVE_SCALE } from "./content/curves";
 import { AFFIXES, ELITE, ENEMY_LABEL, rollAffixes } from "./content/elites";
 import { hashStr, mulberry32 } from "./rng";
 import { OMENS, OMEN_BY_ID, omenBefore, ARENA_SHRINES, ARENA_SHRINE_BY_ID, ARENA_SHRINE_CHANCE, ARENA_SHRINE_HOLD, ARENA_SHRINE_R } from "./content/choices";
@@ -12757,11 +12757,15 @@ export class GhostGame {
    *  +45%) or with how much the player's own damage has grown — whichever is
    *  higher — so ultimates stay strong late in a run. */
   ultDmg(base: number): number {
+    // Phase 7.1: your build drives ult damage; the wave adds only a little.
     const wave = Math.max(1, this.stats.wave);
-    const waveScale = 1 + (wave - 1) * 0.35;
-    const powerScale = this.perks.damage / Math.max(0.01, this.baseKatanaDamage);
+    const waveScale = 1 + (wave - 1) * ULT_WAVE_SCALE;
+    // "Weapon power": how much your damage upgrades have grown your main weapon
+    // (katana upgrades or the all-weapons multiplier, whichever is bigger).
+    const katanaGrowth = this.perks.damage / Math.max(0.01, this.baseKatanaDamage);
+    const powerScale = Math.max(1, katanaGrowth, this.perks.secondaryDmgMul);
     this.ultHitFlag = true;   // RECAP: the hit this feeds into counts as "Ultimate"
-    return base * Math.max(waveScale, powerScale) * this.perks.ultPowerMul;
+    return base * powerScale * waveScale * this.perks.ultPowerMul;
   }
 
   /** ULTPERK: does the player own this ultimate perk? */

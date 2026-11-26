@@ -223,7 +223,7 @@ Research so far (R1 ult measurements, R8 other games) points to these changes, i
 
 | # | Change | Why | Done when |
 |---|---|---|---|
-| 7.1 | **Ults scale with you, not the wave.** Ult damage comes from your own damage and ult upgrades (like Risk of Rain 2 skills), with only a small wave bonus. | Today every damage ult gets +35% per wave automatically, so a no-upgrade character at wave 99 wipes crowds and builds barely matter (R1). | A no-upgrade ult at wave 50 clears about 30–40% of a pack; a strong build clears most of it. |
+| 7.1 ✅ | **Ults scale with you, not the wave.** Ult damage comes from your own damage and ult upgrades (like Risk of Rain 2 skills), with only a small wave bonus. | Today every damage ult gets +35% per wave automatically, so a no-upgrade character at wave 99 wipes crowds and builds barely matter (R1). | A no-upgrade ult at wave 50 clears about 30–40% of a pack; a strong build clears most of it. |
 | 7.2 | **Boss cap on ults.** One ult takes at most about 12% of a boss's HP. | Ults deleted wave-10 bosses (Miko, Kunoichi, Samurai 99–100%). Isaac and RAID cap big hits on bosses. | No single ult does more than 12% to any boss. |
 | 7.3 | **Shop rarity weighted Brotato-style.** About 65% common, 28% rare, legendary 0–2% early rising per wave to about 8%, plus Slay-the-Spire-style bad-luck protection. | Today picks are uniform, so about 21% of slots are legendary and rares beat commons. Other games: 1–8%. | Simulated shops match the target odds. |
 | 7.4 | **Smaller shop values, rising prices.** Each rarity is about 2× the one below (damage 6% / 12% / 25% instead of 12% / 30% / 75%). Legendary prices grow with the wave. | One shop legendary equals five level-up damage picks. | Shop items sit close to level-up perks in value per pick. |
@@ -262,6 +262,20 @@ Research so far (R1 ult measurements, R8 other games) points to these changes, i
   - **Soul Rend** does a share of the target's max HP (480,000 to four 1,000,000-HP dummies), so it shreds bosses whatever your build. Needs a boss cap like 7.2.
   - **Tengu's ult gale** does a flat 8 damage that never scales, the main reason Tengu is bottom tier.
   - **Sohei's Prayer Wheel, Onna's Thousand Cuts** and several other ults use the same wave-scaled formula as the rest, so they're covered by 7.1.
+
+**7.1 results (done 2026-11-26):**
+- Ult damage = base × weapon power (your katana growth, or your all-weapons multiplier, whichever is bigger) × wave bonus × ult upgrades. Your build now **multiplies** in instead of only counting once it beats the wave bonus.
+- The wave bonus dropped from **+35% to +12% per wave** (`ULT_WAVE_SCALE` in `src/content/curves.ts`).
+- Measured with 14 classes: total ult damage, in grunts' worth, 14 foes, 10 seconds.
+
+  | | Wave 5 | Wave 25 | Wave 50 | Wave 99 |
+  |---|---|---|---|---|
+  | No upgrades, vs. before | 62% | 41% | 38% | 36% |
+  | Built (6 Honed Edge + 2 ult perks), vs. before | 107% | 72% | 66% | 63% |
+  | Built ÷ no upgrades | 2.4× (was 1.36×) | 2.4× | 2.4× | 2.4× |
+
+- Effect: a no-upgrade ult now fades as waves go on (about half as strong relative to enemies by wave 50), while a built ult stays strong.
+- Not handled here: the size of each class's ult (Kunoichi about 359 grunts' worth at wave 5 vs. Samurai about 27) is the spread that **7.5** evens out.
 
 **Options to discuss before building** (from R8 round 2 in `docs/BALANCE_RESEARCH.md`):
 - **7.6:** a simple minimum time between ults, *or* the Hades approach: charge from damage dealt and taken instead of kills, partly reset between waves, and faster charging as a perk you choose.

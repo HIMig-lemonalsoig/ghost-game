@@ -41,6 +41,14 @@ export const SOFT_STATS: Record<string, { mode: "mul" | "add"; k: number; max: n
   eliteBounty:     { mode: "add", k: 16,  max: 16,  note: "Elite bounty coins: never above 16" },
   invulnBonus:     { mode: "add", k: 0.75, max: 0.75, note: "Extra i-frames: never above 0.75s" },
 };
+/**
+ * Ultimate damage (Phase 7.1). Ults scale mostly with YOUR power, like Risk of
+ * Rain 2 skills: base × your weapon power × a small wave bonus × ult upgrades.
+ * The wave bonus used to be +35% per wave (which matched enemy HP growth, so a
+ * no-upgrade ult never fell off). Now it's +12%, so builds decide late-game ults.
+ */
+export const ULT_WAVE_SCALE = 0.12;
+
 /** Weapon flat damage bonus (per weapon) as a fraction of that weapon's base hit. */
 export const WEAPON_FLAT = { k: 3, max: 3 };
 
