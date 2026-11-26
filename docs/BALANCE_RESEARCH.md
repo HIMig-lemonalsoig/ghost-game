@@ -224,6 +224,18 @@ It plays worse than a person against bosses (no learned patterns) and better in 
 3. **Power curve (R5).** Damage per second at wave 10 ranged from **27 to 177** between classes, about 6.5×. Late waves had 3–9 ults each.
 4. **Possible tracking bug:** in the bot runs, the end-of-run damage breakdown (Phase 10) put a large share under "Class powers", and the shares sometimes added up to more than 100%. The labelling should be checked before using it to tune.
 
+### R5 comparison: how other games pace bosses and difficulty
+
+**Our numbers:** the first boss (wave 5) hits for about **50 damage**, half of a 100-HP character (`36 × (1 + 0.1 × 4)`). Waves 1–4 are easy. No enemy before it teaches its attacks. So the bot (and probably new players) meets a big damage jump and new patterns at the same moment.
+
+| What other games do | Example | What it suggests for us | Source |
+|---|---|---|---|
+| **Bosses are planned peaks in a "sawtooth" curve**: build up, peak at the boss, then a breather. The danger is a peak the player hasn't been taught to handle. One developer's data showed a pre-boss spike causing quits, fixed with better telegraphs and enemies that teach the mechanic first. | Game-design writing, indie devlog | Keep bosses as peaks, but make wave 5 a smaller step and give a short breather wave after each boss. Add a mini-boss or "boss-like" elite at wave 3–4 that uses one of the boss's attacks. | [Game Developer](https://www.gamedeveloper.com/design/the-challenges-of-designing-a-hard-roguelike-game), [Abratabia](https://www.abratabia.com/game-design/difficulty-curves.php), [devlog](https://nimblegames-studio.itch.io/umigame/devlog/943521/this-graph-explains-why-nobody-sees-the-second-half-of-our-game) |
+| **Soften the first big spike on purpose.** Brotato's first elites (waves 11–12) spawn with **only 75% health**, because players found that wave harder than later ones. | Brotato | Give the first boss (and first elites) a "first meeting" discount, e.g. 70–80% HP and damage. | [Brotato Enemies](https://brotato.wiki.spellsandguns.com/Enemies) |
+| **The first boss is a teacher, and losing still pays.** Hades' first boss Megaera tests the basics, and dying to her moves the story and meta-progression forward, so the wall feels like progress. | Hades | Our Shrine embers already reward failed runs. Show a short "how to beat the Warlord" tip after dying to it, like the elite affix tips. | [GameSpot](https://gamespot.com/articles/hades-changes-what-it-means-to-be-a-roguelike/1100-6483420/), [Prima](https://primagames.com/tips/hades-boss-guide-how-beat-megaera-fury) |
+| **Extra difficulty is opt-in.** Vampire Survivors raises enemy HP, speed and count through *Curse*, a stat the player chooses to take. | Vampire Survivors | Our Vows already do this. Keep the base curve gentle and let Vows add the spikes. | [VS Curse](https://vampire-survivors.fandom.com/wiki/Curse) |
+| **Bad luck needs a way out.** Randomness can stack the odds unfairly, so good roguelikes give the player an escape or a second chance. | Game-design writing | Rerolls, skips, Second Wind and Assist mode already exist. Consider an early "Battle Ready" style option before the first boss. | [Game Developer](https://www.gamedeveloper.com/design/the-challenges-of-designing-a-hard-roguelike-game) |
+
 ## R7b results (2026-11-26): ult visual review
 
 Each ult was fired into the same 12-enemy pack. One enemy started an attack mid-ult, to check whether warnings stay visible. Frames were taken at 1.3 s and 2.5 s. The scores are 1–5 for **R**eadable (can you tell what it does and where), **I**mpact (does it look as strong as it is), **C**lear (can you still see yourself and enemy attacks) and **S**tyle (fits the ink and samurai look).

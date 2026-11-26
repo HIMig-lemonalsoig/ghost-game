@@ -248,6 +248,11 @@ Research so far (R1 ult measurements, R8 other games) points to these changes, i
 **Options to discuss before building** (from R8 round 2 in `docs/BALANCE_RESEARCH.md`):
 - **7.6:** a simple minimum time between ults, *or* the Hades approach: charge from damage dealt and taken instead of kills, partly reset between waves, and faster charging as a perk you choose.
 - **7.7:** Brotato-style falling drop chance per wave plus prices that outgrow income mid-game, with income in Endless tapering off.
+- **7.9 (wave-5 wall):** any mix of these:
+  - (a) a "first meeting" discount on the first boss and first elites (Brotato gives first elites 75% HP)
+  - (b) a wave-3/4 mini-boss that teaches one boss attack
+  - (c) a breather wave after each boss
+  - (d) a "how to beat it" tip after dying to a boss
 - **7.5:** one shared power budget per ult, tuned by re-running the bot. Overpowered effects get reshaped, not just cut (Hades II approach).
 - **New, from the ult visual review:** visual weight matches power, hit areas are clear, and enemy telegraphs stay visible during ults (League of Legends VFX rules).
 
