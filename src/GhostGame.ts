@@ -6,6 +6,7 @@ import type { UltMotif } from "./ultimates";
 import { defenseReduction, dexAttackSpeed, critFromPoints, moveSpeedFromMul, soft, softStat, SOFT_STATS, WEAPON_FLAT, ULT_WAVE_SCALE, BOSS_CAST_CAPS, SHOP_RARITY, shopLegChance } from "./content/curves";
 import { AFFIXES, ELITE, ENEMY_LABEL, rollAffixes } from "./content/elites";
 import { hashStr, mulberry32 } from "./rng";
+import { ULT_CLASS_MUL, ULT_EMPOWER } from "./content/ultbalance";
 import { OMENS, OMEN_BY_ID, omenBefore, ARENA_SHRINES, ARENA_SHRINE_BY_ID, ARENA_SHRINE_CHANCE, ARENA_SHRINE_HOLD, ARENA_SHRINE_R } from "./content/choices";
 import type { OmenId, OmenDef, ArenaShrineId } from "./content/choices";
 import type { AffixId } from "./content/elites";
@@ -4035,6 +4036,22 @@ export class GhostGame {
     // still belongs in the run's total, so the breakdown adds up to 100%.
     if (addToTotal) this.run.damageDealt += amt;
   }
+  /** BOSS CAP: how much of this source's current-cast allowance is left on this boss. */
+  private bossCap(e: Enemy, label: string, amount: number): number {
+    const capShare = BOSS_CAST_CAPS[label];
+    if (capShare === undefined) return amount;
+    const cast = this.castIds[label] ?? 0;
+    const rec = ((e.castCap ??= {})[label] ??= { cast, dealt: 0 });
+    if (rec.cast !== cast) { rec.cast = cast; rec.dealt = 0; rec.shown = false; }
+    const room = Math.max(0, e.maxHp * capShare - rec.dealt);
+    const out = Math.min(amount, room);
+    if (out <= 0) {
+      e.hitFlash = Math.max(e.hitFlash, 0.3);
+      if (!rec.shown) { rec.shown = true; this.spawnFloatText(e.pos, "Resists", { color: "hsl(210 30% 80%)", size: 12 }); }
+    }
+    rec.dealt += out;
+    return out;
+  }
   /** BOSS CAP: how many times each capped source has been cast this run. */
   castIds: Record<string, number> = {};
   /** RECAP: set by ultDmg(); the next dealDamage counts as ultimate damage. */
@@ -6874,7 +6891,7 @@ export class GhostGame {
           const along = rx * Math.cos(ang) + ry * Math.sin(ang);
           if (along < 0 || along > BASE.DASH_DISTANCE) continue;
           if (Math.abs(-rx * Math.sin(ang) + ry * Math.cos(ang)) > 46 + e.size) continue;
-          this.dmgSrcOverride = "Ultimate"; this.dealDamage(e, 8, ang, 120); this.dmgSrcOverride = null;   // Divine Wind gale
+          this.dmgSrcOverride = "Ultimate"; this.dealDamage(e, this.ultDmgRaw(2.1), ang, 120); this.dmgSrcOverride = null;   // Divine Wind gale (7.5: was a flat 8)
         }
         this.fx.streakLine(p.pos.x, p.pos.y, ex, ey, 140, 90, 18, 0.35);
       }
@@ -7371,25 +7388,21 @@ export class GhostGame {
     }
     const label = this.hitLabel(weaponSource);
     // BOSS CAP (7.2): one cast of an ult / Soul Rend can only take so much off a boss.
-    const capShare = e.isBoss ? BOSS_CAST_CAPS[label] : undefined;
-    if (capShare !== undefined) {
-      const cast = this.castIds[label] ?? 0;
-      const rec = ((e.castCap ??= {})[label] ??= { cast, dealt: 0 });
-      if (rec.cast !== cast) { rec.cast = cast; rec.dealt = 0; rec.shown = false; }
-      const room = Math.max(0, e.maxHp * capShare - rec.dealt);
-      if (dmg > room) {
-        dmg = room;
-        if (room <= 0) {
-          e.hitFlash = Math.max(e.hitFlash, 0.3);
-          if (!rec.shown) { rec.shown = true; this.spawnFloatText(e.pos, "Resists", { color: "hsl(210 30% 80%)", size: 12 }); }
-          return;
-        }
-      }
-      rec.dealt += dmg;
+    if (e.isBoss && BOSS_CAST_CAPS[label] !== undefined) {
+      dmg = this.bossCap(e, label, dmg);
+      if (dmg <= 0) return;
     }
-    e.hp -= dmg;
-    this.run.damageDealt += dmg;
+    // 7.5: power-up ults add bonus ult damage to every weapon hit while active.
+    let empower = 0;
+    const ek = weaponSource ? this.empowerBase() : 0;
+    if (ek > 0) {
+      empower = this.ultDmgRaw(ek);
+      if (e.isBoss) empower = this.bossCap(e, "Ultimate", empower);
+    }
+    e.hp -= dmg + empower;
+    this.run.damageDealt += dmg + empower;
     this.trackDealt(label, dmg, false);
+    if (empower > 0) { this.trackDealt("Ultimate", empower, false); dmg += empower; }
     if (dmg > this.run.biggestHit) this.run.biggestHit = dmg;
     if (!this.evoNested && !this.raijinZapping) this.onEvoHit(e, weaponSource, dmg, isCrit);
     // Floating damage number above the enemy.
@@ -12313,7 +12326,7 @@ export class GhostGame {
       if (nearest && nd < 90 && c.attackTimer <= 0) {
         c.attackTimer = 0.7;
         c.facing = Math.atan2(nearest.pos.y - c.pos.y, nearest.pos.x - c.pos.x);
-        this.dmgSrcOverride = "Ultimate"; this.dealDamage(nearest, this.perks.damage * 0.6, c.facing, 40); this.dmgSrcOverride = null;   // Twin Shadows clone
+        this.dmgSrcOverride = "Ultimate"; this.dealDamage(nearest, this.ultDmgRaw(7.5), c.facing, 40); this.dmgSrcOverride = null;   // Twin Shadows clone (7.5: scales like an ult)
       }
     }
     // Explode any clones whose life ran out (or were "destroyed")
@@ -12323,7 +12336,7 @@ export class GhostGame {
           if (e.state === "dead") continue;
           const d = Math.hypot(e.pos.x - c.pos.x, e.pos.y - c.pos.y);
           if (d < 120) {
-            this.dmgSrcOverride = "Ultimate"; this.dealDamage(e, 12, Math.atan2(e.pos.y - c.pos.y, e.pos.x - c.pos.x), 80); this.dmgSrcOverride = null;   // clone burst
+            this.dmgSrcOverride = "Ultimate"; this.dealDamage(e, this.ultDmgRaw(20), Math.atan2(e.pos.y - c.pos.y, e.pos.x - c.pos.x), 80); this.dmgSrcOverride = null;   // clone burst
           }
         }
         this.spawnSpark(c.pos);
@@ -12802,7 +12815,24 @@ export class GhostGame {
     const katanaGrowth = this.perks.damage / Math.max(0.01, this.baseKatanaDamage);
     const powerScale = Math.max(1, katanaGrowth, this.perks.secondaryDmgMul);
     this.ultHitFlag = true;   // RECAP: the hit this feeds into counts as "Ultimate"
-    return base * powerScale * waveScale * this.perks.ultPowerMul;
+    const classMul = ULT_CLASS_MUL[this.stats.classId] ?? 1;   // 7.5: per-class ult budget
+    return base * powerScale * waveScale * this.perks.ultPowerMul * classMul;
+  }
+  /** Same as ultDmg() but without marking the next hit (for bonus damage added inside a hit). */
+  ultDmgRaw(base: number): number {
+    const v = this.ultDmg(base);
+    this.ultHitFlag = false;
+    return v;
+  }
+  /** 7.5: bonus-damage base for weapon hits while this class's power-up ult is running (0 = none). */
+  private empowerBase(): number {
+    const k = ULT_EMPOWER[this.stats.classId];
+    if (!k) return 0;
+    const on =
+      this.ultBloodRageTimer > 0 || this.ultShadowStepTimer > 0 || this.ultShadowConsumeTimer > 0 ||
+      this.ultFinaleTimer > 0 || this.ultBannerActive || this.ultBlizzardTimer > 0 ||
+      this.ultMountainTimer > 0 || this.ultWindTimer > 0;
+    return on ? k : 0;
   }
 
   /** ULTPERK: does the player own this ultimate perk? */

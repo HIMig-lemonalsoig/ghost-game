@@ -227,7 +227,7 @@ Research so far (R1 ult measurements, R8 other games) points to these changes, i
 | 7.2 ✅ | **Boss cap on ults.** One ult takes at most about 12% of a boss's HP. | Ults deleted wave-10 bosses (Miko, Kunoichi, Samurai 99–100%). Isaac and RAID cap big hits on bosses. | No single ult does more than 12% to any boss. |
 | 7.3 ✅ | **Shop rarity weighted Brotato-style.** About 65% common, 28% rare, legendary 0–2% early rising per wave to about 8%, plus Slay-the-Spire-style bad-luck protection. | Today picks are uniform, so about 21% of slots are legendary and rares beat commons. Other games: 1–8%. | Simulated shops match the target odds. |
 | 7.4 ✅ | **Smaller shop values, rising prices.** Each rarity is about 2× the one below (damage 6% / 12% / 25% instead of 12% / 30% / 75%). Legendary prices grow with the wave. | One shop legendary equals five level-up damage picks. | Shop items sit close to level-up perks in value per pick. |
-| 7.5 | **Even out the classes.** All ults within about ±30% of each other: weak damage ults up, Miko and Onmyoji down, power-up ults (Berserker, Shinobi, Kabuki, Kagebushi, Hatamoto) stronger, and the seven "does nothing" ults fixed or checked for bugs. | The spread is about 70× (Miko 68.8× vs. Kensei 0.9×). | R1 and R7 tables re-run: every class within the target band. |
+| 7.5 ✅ | **Even out the classes.** All ults within about ±30% of each other: weak damage ults up, Miko and Onmyoji down, power-up ults (Berserker, Shinobi, Kabuki, Kagebushi, Hatamoto) stronger, and the seven "does nothing" ults fixed or checked for bugs. | The spread is about 70× (Miko 68.8× vs. Kensei 0.9×). | R1 and R7 tables re-run: every class within the target band. |
 
 **Added after R2–R4:**
 
@@ -318,6 +318,24 @@ Research so far (R1 ult measurements, R8 other games) points to these changes, i
 
 - **Legendary prices** now rise an extra 4% per wave (`legPricePerWave`). Average legendary price: wave 5 about 173 (was about 120), wave 10 about 301 (was about 190), wave 20 about 632 (was about 300).
 - Tested in the game: every effect matches its new description, and the shop shows the new text.
+
+**7.5 results (done 2026-11-26):**
+- **One shared ult budget:** the extra damage an ult adds over 10 seconds against a 14-enemy pack, at wave 25 with no upgrades. Target: about 60 grunts' worth, ±30%. The test harness is `budgetTest` (dev console). Settings live in `src/content/ultbalance.ts`.
+- **Damage ults** get a per-class multiplier (`ULT_CLASS_MUL`):
+  - toned down: Miko ×0.22, Kunoichi ×0.09, Onmyoji ×0.23, Tsuchigumo ×0.33
+  - raised: Samurai ×3.4, Tetsubo ×1.62, Ronin ×1.55
+- **Power-up ults keep their buff, and every weapon hit during them adds bonus ult damage that scales with your build** (`ULT_EMPOWER`). This covers Berserker, Shinobi, Kagebushi, Kabuki, Hatamoto, Yuki-onna, Yamabushi and Tengu. They still play like buffs, but now they matter (reshape, not just cut).
+- **Tengu's** gale went from a flat 8 to scaling ult damage, and **Kagemusha's** clones now scale like an ult.
+- **Result:**
+
+  | | Before | After |
+  |---|---|---|
+  | Spread between classes at wave 25 | 0 to 272 grunts (over 200×) | 44 to 73, every class within ±30% |
+  | Wave 10 sample | | 72 to 105 |
+  | Wave 50 sample | | 50 to 66 |
+
+- **Not measured by this budget:** defensive value (Yamabushi's immunity, Sohei's healing, Hatamoto's banner). Those classes sit at the low end of the band on purpose.
+- **Watch:** strong ults are much weaker now (7.1 + 7.5). Re-run the bot playtests after 7.6–7.9 to check overall difficulty, especially the wave-5 wall.
 
 **Options to discuss before building** (from R8 round 2 in `docs/BALANCE_RESEARCH.md`):
 - **7.6:** a simple minimum time between ults, *or* the Hades approach: charge from damage dealt and taken instead of kills, partly reset between waves, and faster charging as a perk you choose.
