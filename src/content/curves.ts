@@ -49,6 +49,16 @@ export const SOFT_STATS: Record<string, { mode: "mul" | "add"; k: number; max: n
  */
 export const ULT_WAVE_SCALE = 0.12;
 
+/**
+ * Boss caps (Phase 7.2): the most one cast of a source can take off a single
+ * boss, as a share of its max HP. Stops ults and Soul Rend from deleting bosses
+ * (like RAID's 5–10% caps and Isaac's big-hit cap). Extra damage is ignored.
+ */
+export const BOSS_CAST_CAPS: Record<string, number> = {
+  "Ultimate": 0.12,
+  "Soul Rend": 0.06,
+};
+
 /** Weapon flat damage bonus (per weapon) as a fraction of that weapon's base hit. */
 export const WEAPON_FLAT = { k: 3, max: 3 };
 

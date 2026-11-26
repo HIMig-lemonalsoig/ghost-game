@@ -3,7 +3,7 @@ import { Fx, hueOf } from "./fx";
 import { Arena } from "./arena";
 import { ULT_STYLES, poseFrame, drawMotif, STRIKE } from "./ultimates";
 import type { UltMotif } from "./ultimates";
-import { defenseReduction, dexAttackSpeed, critFromPoints, moveSpeedFromMul, soft, softStat, SOFT_STATS, WEAPON_FLAT, ULT_WAVE_SCALE } from "./content/curves";
+import { defenseReduction, dexAttackSpeed, critFromPoints, moveSpeedFromMul, soft, softStat, SOFT_STATS, WEAPON_FLAT, ULT_WAVE_SCALE, BOSS_CAST_CAPS } from "./content/curves";
 import { AFFIXES, ELITE, ENEMY_LABEL, rollAffixes } from "./content/elites";
 import { hashStr, mulberry32 } from "./rng";
 import { OMENS, OMEN_BY_ID, omenBefore, ARENA_SHRINES, ARENA_SHRINE_BY_ID, ARENA_SHRINE_CHANCE, ARENA_SHRINE_HOLD, ARENA_SHRINE_R } from "./content/choices";
@@ -2681,6 +2681,8 @@ interface Hazard {
 }
 
 interface Enemy {
+  /** BOSS CAP: damage taken from the current cast of each capped source. */
+  castCap?: Record<string, { cast: number; dealt: number; shown?: boolean }>;
   id: number;
   pos: Vec2;
   vel: Vec2;
@@ -4019,6 +4021,8 @@ export class GhostGame {
     // still belongs in the run's total, so the breakdown adds up to 100%.
     if (addToTotal) this.run.damageDealt += amt;
   }
+  /** BOSS CAP: how many times each capped source has been cast this run. */
+  castIds: Record<string, number> = {};
   /** RECAP: set by ultDmg(); the next dealDamage counts as ultimate damage. */
   private ultHitFlag = false;
   /** Which bar a dealDamage hit belongs to. */
@@ -7351,9 +7355,27 @@ export class GhostGame {
         this.healPlayer(1);
       }
     }
+    const label = this.hitLabel(weaponSource);
+    // BOSS CAP (7.2): one cast of an ult / Soul Rend can only take so much off a boss.
+    const capShare = e.isBoss ? BOSS_CAST_CAPS[label] : undefined;
+    if (capShare !== undefined) {
+      const cast = this.castIds[label] ?? 0;
+      const rec = ((e.castCap ??= {})[label] ??= { cast, dealt: 0 });
+      if (rec.cast !== cast) { rec.cast = cast; rec.dealt = 0; rec.shown = false; }
+      const room = Math.max(0, e.maxHp * capShare - rec.dealt);
+      if (dmg > room) {
+        dmg = room;
+        if (room <= 0) {
+          e.hitFlash = Math.max(e.hitFlash, 0.3);
+          if (!rec.shown) { rec.shown = true; this.spawnFloatText(e.pos, "Resists", { color: "hsl(210 30% 80%)", size: 12 }); }
+          return;
+        }
+      }
+      rec.dealt += dmg;
+    }
     e.hp -= dmg;
     this.run.damageDealt += dmg;
-    this.trackDealt(this.hitLabel(weaponSource), dmg, false);
+    this.trackDealt(label, dmg, false);
     if (dmg > this.run.biggestHit) this.run.biggestHit = dmg;
     if (!this.evoNested && !this.raijinZapping) this.onEvoHit(e, weaponSource, dmg, isCrit);
     // Floating damage number above the enemy.
@@ -8501,6 +8523,7 @@ export class GhostGame {
       this.flash("No target");
       return;
     }
+    this.castIds["Soul Rend"] = (this.castIds["Soul Rend"] ?? 0) + 1;   // BOSS CAP: new cast
     const dmg = Math.max(1, Math.floor(target.hp * 0.4));
     const ang = Math.atan2(target.pos.y - this.player.pos.y, target.pos.x - this.player.pos.x);
     this.dealDamage(target, dmg, ang, target.isBoss ? 8 : 30);
@@ -12801,6 +12824,7 @@ export class GhostGame {
 
   executeUltimate() {
     this.onHaptic?.("ult");
+    this.castIds.Ultimate = (this.castIds.Ultimate ?? 0) + 1;   // BOSS CAP: new cast
     this.cameraShake = Math.max(this.cameraShake, 0.45);
     this.cameraZoom.setTarget(1.05, 13);
     setTimeout(() => this.cameraZoom.setTarget(1, 6), 150);

@@ -224,7 +224,7 @@ Research so far (R1 ult measurements, R8 other games) points to these changes, i
 | # | Change | Why | Done when |
 |---|---|---|---|
 | 7.1 ✅ | **Ults scale with you, not the wave.** Ult damage comes from your own damage and ult upgrades (like Risk of Rain 2 skills), with only a small wave bonus. | Today every damage ult gets +35% per wave automatically, so a no-upgrade character at wave 99 wipes crowds and builds barely matter (R1). | A no-upgrade ult at wave 50 clears about 30–40% of a pack; a strong build clears most of it. |
-| 7.2 | **Boss cap on ults.** One ult takes at most about 12% of a boss's HP. | Ults deleted wave-10 bosses (Miko, Kunoichi, Samurai 99–100%). Isaac and RAID cap big hits on bosses. | No single ult does more than 12% to any boss. |
+| 7.2 ✅ | **Boss cap on ults.** One ult takes at most about 12% of a boss's HP. | Ults deleted wave-10 bosses (Miko, Kunoichi, Samurai 99–100%). Isaac and RAID cap big hits on bosses. | No single ult does more than 12% to any boss. |
 | 7.3 | **Shop rarity weighted Brotato-style.** About 65% common, 28% rare, legendary 0–2% early rising per wave to about 8%, plus Slay-the-Spire-style bad-luck protection. | Today picks are uniform, so about 21% of slots are legendary and rares beat commons. Other games: 1–8%. | Simulated shops match the target odds. |
 | 7.4 | **Smaller shop values, rising prices.** Each rarity is about 2× the one below (damage 6% / 12% / 25% instead of 12% / 30% / 75%). Legendary prices grow with the wave. | One shop legendary equals five level-up damage picks. | Shop items sit close to level-up perks in value per pick. |
 | 7.5 | **Even out the classes.** All ults within about ±30% of each other: weak damage ults up, Miko and Onmyoji down, power-up ults (Berserker, Shinobi, Kabuki, Kagebushi, Hatamoto) stronger, and the seven "does nothing" ults fixed or checked for bugs. | The spread is about 70× (Miko 68.8× vs. Kensei 0.9×). | R1 and R7 tables re-run: every class within the target band. |
@@ -276,6 +276,14 @@ Research so far (R1 ult measurements, R8 other games) points to these changes, i
 
 - Effect: a no-upgrade ult now fades as waves go on (about half as strong relative to enemies by wave 50), while a built ult stays strong.
 - Not handled here: the size of each class's ult (Kunoichi about 359 grunts' worth at wave 5 vs. Samurai about 27) is the spread that **7.5** evens out.
+
+**7.2 results (done 2026-11-26):**
+- One ult cast can take at most **12%** of a boss's max HP, and one Soul Rend cast at most **6%**. Any extra is ignored, and a "Resists" note pops once per cast. The limits are in `BOSS_CAST_CAPS` in `src/content/curves.ts`.
+- Measured with a strong build:
+  - Miko, Samurai, Onmyoji and Arashi ults take exactly 12% off both the wave-10 boss and the wave-25 Final Boss. Before, they took 88–100% of the wave-10 boss.
+  - Soul Rend takes 6% per cast from the Final Boss. Before, it took 40% of the boss's current HP, ×3 on a crit.
+  - Normal enemies are unaffected (Soul Rend still takes 40%+).
+- Poison, burn and other effects applied by ult hits aren't capped. For example, Kunoichi's passive poison added about 6.5% on the wave-10 boss.
 
 **Options to discuss before building** (from R8 round 2 in `docs/BALANCE_RESEARCH.md`):
 - **7.6:** a simple minimum time between ults, *or* the Hades approach: charge from damage dealt and taken instead of kills, partly reset between waves, and faster charging as a perk you choose.
