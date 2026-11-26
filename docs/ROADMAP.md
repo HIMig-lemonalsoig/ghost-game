@@ -217,6 +217,42 @@ Use the tracking from Phase 1 after some real play (yours and your friends'):
 
 Re-run the headless power-curve bot (`scratchpad/sim.js` pattern) to check that no build is immortal by wave 20.
 
+### Phase 7 implementation plan (after all research in `docs/BALANCE_RESEARCH.md` is done)
+
+Research so far (R1 ult measurements, R8 other games) points to these changes, in this order:
+
+| # | Change | Why | Done when |
+|---|---|---|---|
+| 7.1 | **Ults scale with you, not the wave.** Ult damage comes from your own damage and ult upgrades (like Risk of Rain 2 skills), with only a small wave bonus. | Today every damage ult gets +35% per wave automatically, so a no-upgrade character at wave 99 wipes crowds and builds barely matter (R1). | A no-upgrade ult at wave 50 clears about 30–40% of a pack; a strong build clears most of it. |
+| 7.2 | **Boss cap on ults.** One ult takes at most about 12% of a boss's HP. | Ults deleted wave-10 bosses (Miko, Kunoichi, Samurai 99–100%). Isaac and RAID cap big hits on bosses. | No single ult does more than 12% to any boss. |
+| 7.3 | **Shop rarity weighted Brotato-style.** About 65% common, 28% rare, legendary 0–2% early rising per wave to about 8%, plus Slay-the-Spire-style bad-luck protection. | Today picks are uniform, so about 21% of slots are legendary and rares beat commons. Other games: 1–8%. | Simulated shops match the target odds. |
+| 7.4 | **Smaller shop values, rising prices.** Each rarity is about 2× the one below (damage 6% / 12% / 25% instead of 12% / 30% / 75%). Legendary prices grow with the wave. | One shop legendary equals five level-up damage picks. | Shop items sit close to level-up perks in value per pick. |
+| 7.5 | **Even out the classes.** All ults within about ±30% of each other: weak damage ults up, Miko and Onmyoji down, power-up ults (Berserker, Shinobi, Kabuki, Kagebushi, Hatamoto) stronger, and the seven "does nothing" ults fixed or checked for bugs. | The spread is about 70× (Miko 68.8× vs. Kensei 0.9×). | R1 and R7 tables re-run: every class within the target band. |
+
+**Added after R2–R4:**
+
+| # | Change | Why | Done when |
+|---|---|---|---|
+| 7.6 | **Ult cooldown floor.** Charge still comes from kills and hits, but there's a minimum of about 20–25 seconds between ults, and charge per kill shrinks as waves get bigger. | Late waves have 100–180 kills, so the bar fills every 8–9 seconds (R2). | At most about 3–4 ults per late wave. |
+| 7.7 | **Coins vs. prices.** Kill rewards grow more slowly per wave, and shop prices grow faster after wave 8. | From about wave 7, one wave pays for 3–6 legendaries, so the shop is effectively free (R4). | A late-wave player can afford about 1 legendary or 2–3 rares per shop. |
+| 7.8 | **Ability cards stop counting as "rare"** for rarity rolls (they get their own slot chance), and duo perks get their own odds instead of raising legendary rates. | Abilities make up about half of all cards, so rares are 61–74% of level-up cards and commons only 18–34% (R3). | Level-up cards land near 70 / 25 / 5 again. |
+
+**Added after R7 (bot runs + ult visual review):**
+
+| # | Change | Why | Done when |
+|---|---|---|---|
+| 7.0 | **Fix what's broken first:** check Raijin's and Tengu's ults (nothing visible, nothing hit), Kensei's, Tetsubo's and Ashigaru's (did ~nothing to grouped foes), and the end-screen damage labels ("Class powers" too big, shares over 100%). | Tuning broken things gives wrong answers (R1, R7). | Every ult deals its intended effect, and the damage breakdown adds up to 100%. |
+| 7.9 | **Smooth the wave-5 boss wall.** Gentler first boss (or a warm-up mini-boss at wave 3), with later boss waves stepping up evenly. | 38 of 75 bot runs died on wave 5. Waves 1–4 are trivial, then difficulty jumps. | The bot's wave-5 death rate drops to about 15–25% for mid-tier classes. |
+| 7.10 | **Ult visual pass:** shrink or remove the name banner (it hides the first ~1.2 s and enemy warnings), give power-up ults a clear look (Berserker, Shinobi, Yamabushi, Kagebushi, Kabuki, Tengu), match looks to power (Tetsubo and Yuki-onna look huge but are weak; Kunoichi looks strongest but is mid; Tsuchigumo and Kitsune look medium but are the strongest), and tone down blinding effects (Onmyoji's white blob, Kunoichi's storm). | R7b scores; League rule that visual weight should match gameplay weight. | Re-run the screenshot review: every ult scores at least 3 on Readable and Clear. |
+
+**Options to discuss before building** (from R8 round 2 in `docs/BALANCE_RESEARCH.md`):
+- **7.6:** a simple minimum time between ults, *or* the Hades approach: charge from damage dealt and taken instead of kills, partly reset between waves, and faster charging as a perk you choose.
+- **7.7:** Brotato-style falling drop chance per wave plus prices that outgrow income mid-game, with income in Endless tapering off.
+- **7.5:** one shared power budget per ult, tuned by re-running the bot. Overpowered effects get reshaped, not just cut (Hades II approach).
+- **New, from the ult visual review:** visual weight matches power, hit areas are clear, and enemy telegraphs stay visible during ults (League of Legends VFX rules).
+
+Changes 7.1–7.4 are mostly formula and data edits (`ultDmg`, `rollShopOffer`, `SHOP_POOL`, `src/content/curves.ts`). Change 7.5 needs the R7 bot playtests and ult visual review first. After each change, re-run the same measurement scripts and compare before and after.
+
 ---
 
 ## Also shipped (outside the original plan)
