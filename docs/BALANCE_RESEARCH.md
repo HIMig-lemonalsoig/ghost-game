@@ -116,7 +116,7 @@ We haven't measured the real odds after all of that yet.
 2. **Ults that power up your attacks** (Berserker, Shinobi, Kabuki, Kagebushi, Hatamoto) don't get the wave bonus. They stay at 1.3–2.1× forever, so these classes fall far behind late.
 3. **Upgrades barely matter for ults.** Six damage upgrades plus two ult upgrades raised ult damage by only about 30–40%, while your normal damage went up about 75%. The wave bonus drowns out your build.
 4. **The class spread is about 70×**, from Miko's 68.8× down to Kensei's 0.9×.
-5. **Seven ults did about nothing to grouped targets:** Kensei, Tengu, Tetsubo, Yuki-onna, Kagemusha, Yamabushi and Ashigaru (when built). Some are defensive by design (Yamabushi), some may aim or move differently from this test (Kensei's dash, Tetsubo's cone), and some may be bugs. Each one needs a look during R7.
+5. **Correction (7.0, re-measured):** the "about nothing" results below were a flaw in this test setup. Measured with enemies in each ult's real hit area, all of them deal real damage (see the roadmap's 7.0 results). Original note: **Seven ults did about nothing to grouped targets:** Kensei, Tengu, Tetsubo, Yuki-onna, Kagemusha, Yamabushi and Ashigaru (when built). Some are defensive by design (Yamabushi), some may aim or move differently from this test (Kensei's dash, Tetsubo's cone), and some may be bugs. Each one needs a look during R7.
 
 ## R8 results (2026-11-25): how other games handle it
 

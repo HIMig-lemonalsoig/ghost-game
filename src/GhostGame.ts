@@ -2827,6 +2827,8 @@ interface AllyGhost {
   damage: number;
   hitSet: Set<number>;       // ids of enemies already hit (for piercing projectiles)
   curse: boolean;            // applies cursed debuff?
+  fromUlt?: boolean;         // RECAP: spawned by an ultimate (its hits count as "Ultimate")
+  label?: string;            // RECAP: explicit damage label (e.g. "Fox companion")
   size: number;
   homing?: boolean;
   burn?: boolean;
@@ -3986,7 +3988,7 @@ export class GhostGame {
       self[name] = (...args: unknown[]) => {
         const prev = this.dmgSrc;
         this.dmgSrc = label;
-        try { return fn.apply(this, args); } finally { this.dmgSrc = prev; }
+        try { return fn.apply(this, args); } finally { this.dmgSrc = prev; this.ultHitFlag = false; }
       };
     }
   }
@@ -4010,10 +4012,30 @@ export class GhostGame {
   }
 
   /** Record damage dealt under a source label. */
-  trackDealt(label: string, amt: number) {
+  trackDealt(label: string, amt: number, addToTotal = true) {
     if (!(amt > 0)) return;
     this.run.dmgBy[label] = (this.run.dmgBy[label] ?? 0) + amt;
+    // Damage that doesn't go through dealDamage (DoTs, dash, deflect, thorns…)
+    // still belongs in the run's total, so the breakdown adds up to 100%.
+    if (addToTotal) this.run.damageDealt += amt;
   }
+  /** RECAP: set by ultDmg(); the next dealDamage counts as ultimate damage. */
+  private ultHitFlag = false;
+  /** Which bar a dealDamage hit belongs to. */
+  private hitLabel(weaponSource?: SecondaryId | "katana"): string {
+    const ult = this.ultHitFlag;
+    this.ultHitFlag = false;
+    if (this.evoNested) return "Evolutions & duos";
+    if (weaponSource) return SECONDARIES[weaponSource]?.name ?? weaponSource;
+    if (this.dmgSrcOverride) return this.dmgSrcOverride;
+    if (ult) return "Ultimate";
+    // Ult helpers that live on after the cast (arrow storms, ghosts, clones, waves…).
+    if (this.dmgSrc === "Class powers" && this.stats.ultActive) return "Ultimate";
+    if (this.dmgSrc === "Lightning" && this.ultThunderTimer > 0) return "Ultimate";   // Raijin's Heaven's Drum
+    return this.dmgSrc ?? "Other";
+  }
+  /** Explicit label for one effect inside a bigger system (e.g. a perk inside class passives). */
+  private dmgSrcOverride: string | null = null;
 
   resize(w: number, h: number, dpr: number) {
     this.width = w;
@@ -6834,7 +6856,7 @@ export class GhostGame {
           const along = rx * Math.cos(ang) + ry * Math.sin(ang);
           if (along < 0 || along > BASE.DASH_DISTANCE) continue;
           if (Math.abs(-rx * Math.sin(ang) + ry * Math.cos(ang)) > 46 + e.size) continue;
-          this.dealDamage(e, 8, ang, 120);
+          this.dmgSrcOverride = "Ultimate"; this.dealDamage(e, 8, ang, 120); this.dmgSrcOverride = null;   // Divine Wind gale
         }
         this.fx.streakLine(p.pos.x, p.pos.y, ex, ey, 140, 90, 18, 0.35);
       }
@@ -7331,7 +7353,7 @@ export class GhostGame {
     }
     e.hp -= dmg;
     this.run.damageDealt += dmg;
-    this.trackDealt(this.evoNested ? "Evolutions & duos" : weaponSource ? (SECONDARIES[weaponSource]?.name ?? weaponSource) : this.dmgSrc ?? "Other", dmg);
+    this.trackDealt(this.hitLabel(weaponSource), dmg, false);
     if (dmg > this.run.biggestHit) this.run.biggestHit = dmg;
     if (!this.evoNested && !this.raijinZapping) this.onEvoHit(e, weaponSource, dmg, isCrit);
     // Floating damage number above the enemy.
@@ -11616,7 +11638,7 @@ export class GhostGame {
       this.foxTimer -= dt;
       if (this.foxTimer <= 0 && this.enemies.some(o => o.state !== "dead")) {
         this.foxTimer = 4;
-        this.spawnFoxfire(this.player.pos.x, this.player.pos.y, this.perks.damage * 1.5 + 2);
+        this.spawnFoxfire(this.player.pos.x, this.player.pos.y, this.perks.damage * 1.5 + 2, undefined, "Fox companion");
       }
     }
     if (this.ultFinaleTimer > 0) {
@@ -12126,7 +12148,10 @@ export class GhostGame {
         if (e.state === "dead" || g.hitSet.has(e.id)) continue;
         if (Math.hypot(e.pos.x - g.pos.x, e.pos.y - g.pos.y) <= e.size + g.size) {
           g.hitSet.add(e.id);
+          if (g.label) this.dmgSrcOverride = g.label;
+          else if (g.fromUlt) this.dmgSrcOverride = "Ultimate";
           this.dealDamage(e, g.damage, Math.atan2(e.pos.y - g.pos.y, e.pos.x - g.pos.x), 30);
+          this.dmgSrcOverride = null;
           if (g.curse) e.curseRemaining = Math.max(e.curseRemaining, 6);
           if (g.burn) { e.burnRemaining = Math.max(e.burnRemaining, 4); e.burnDps = Math.max(e.burnDps, 5); }
         }
@@ -12251,7 +12276,7 @@ export class GhostGame {
       if (nearest && nd < 90 && c.attackTimer <= 0) {
         c.attackTimer = 0.7;
         c.facing = Math.atan2(nearest.pos.y - c.pos.y, nearest.pos.x - c.pos.x);
-        this.dealDamage(nearest, this.perks.damage * 0.6, c.facing, 40);
+        this.dmgSrcOverride = "Ultimate"; this.dealDamage(nearest, this.perks.damage * 0.6, c.facing, 40); this.dmgSrcOverride = null;   // Twin Shadows clone
       }
     }
     // Explode any clones whose life ran out (or were "destroyed")
@@ -12261,7 +12286,7 @@ export class GhostGame {
           if (e.state === "dead") continue;
           const d = Math.hypot(e.pos.x - c.pos.x, e.pos.y - c.pos.y);
           if (d < 120) {
-            this.dealDamage(e, 12, Math.atan2(e.pos.y - c.pos.y, e.pos.x - c.pos.x), 80);
+            this.dmgSrcOverride = "Ultimate"; this.dealDamage(e, 12, Math.atan2(e.pos.y - c.pos.y, e.pos.x - c.pos.x), 80); this.dmgSrcOverride = null;   // clone burst
           }
         }
         this.spawnSpark(c.pos);
@@ -12292,7 +12317,7 @@ export class GhostGame {
     }
   }
 
-  spawnFoxfire(x: number, y: number, damage: number, ang = Math.random() * Math.PI * 2) {
+  spawnFoxfire(x: number, y: number, damage: number, ang = Math.random() * Math.PI * 2, label?: string) {
     this.allyGhosts.push({
       pos: { x, y },
       vel: { x: Math.cos(ang) * 340, y: Math.sin(ang) * 340 },
@@ -12300,6 +12325,8 @@ export class GhostGame {
       damage,
       hitSet: new Set(),
       curse: false,
+      fromUlt: this.dmgSrc === "Ultimate",
+      label,
       size: 13,
       homing: true,
       burn: true,
@@ -12733,6 +12760,7 @@ export class GhostGame {
     const wave = Math.max(1, this.stats.wave);
     const waveScale = 1 + (wave - 1) * 0.35;
     const powerScale = this.perks.damage / Math.max(0.01, this.baseKatanaDamage);
+    this.ultHitFlag = true;   // RECAP: the hit this feeds into counts as "Ultimate"
     return base * Math.max(waveScale, powerScale) * this.perks.ultPowerMul;
   }
 
@@ -12875,6 +12903,7 @@ export class GhostGame {
             damage: this.ultDmg(10),
             hitSet: new Set(),
             curse: true,
+            fromUlt: true,
             homing: true,     // used to fly off in random directions and miss
             size: 18,
           });

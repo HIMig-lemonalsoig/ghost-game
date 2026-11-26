@@ -241,9 +241,27 @@ Research so far (R1 ult measurements, R8 other games) points to these changes, i
 
 | # | Change | Why | Done when |
 |---|---|---|---|
-| 7.0 | **Fix what's broken first:** check Raijin's and Tengu's ults (nothing visible, nothing hit), Kensei's, Tetsubo's and Ashigaru's (did ~nothing to grouped foes), and the end-screen damage labels ("Class powers" too big, shares over 100%). | Tuning broken things gives wrong answers (R1, R7). | Every ult deals its intended effect, and the damage breakdown adds up to 100%. |
+| 7.0 ✅ | **Fix what's broken first:** check Raijin's and Tengu's ults (nothing visible, nothing hit), Kensei's, Tetsubo's and Ashigaru's (did ~nothing to grouped foes), and the end-screen damage labels ("Class powers" too big, shares over 100%). | Tuning broken things gives wrong answers (R1, R7). | Every ult deals its intended effect, and the damage breakdown adds up to 100%. |
 | 7.9 | **Smooth the wave-5 boss wall.** Gentler first boss (or a warm-up mini-boss at wave 3), with later boss waves stepping up evenly. | 38 of 75 bot runs died on wave 5. Waves 1–4 are trivial, then difficulty jumps. | The bot's wave-5 death rate drops to about 15–25% for mid-tier classes. |
 | 7.10 | **Ult visual pass:** shrink or remove the name banner (it hides the first ~1.2 s and enemy warnings), give power-up ults a clear look (Berserker, Shinobi, Yamabushi, Kagebushi, Kabuki, Tengu), match looks to power (Tetsubo and Yuki-onna look huge but are weak; Kunoichi looks strongest but is mid; Tsuchigumo and Kitsune look medium but are the strongest), and tone down blinding effects (Onmyoji's white blob, Kunoichi's storm). | R7b scores; League rule that visual weight should match gameplay weight. | Re-run the screenshot review: every ult scores at least 3 on Readable and Clear. |
+
+**7.0 results (done 2026-11-26):**
+- **The five "do-nothing" ults are not broken.** Measured properly with enemies in their real hit area:
+  - Kensei: 1,895 damage, about 20× normal
+  - Tetsubo: 1,706, about 7×
+  - Ashigaru: 1,538
+  - Raijin: 2,730 while attacking, about 17×
+  - Tengu: 261 while dashing, about 5×
+
+  Their low R1 numbers came from my first test setup. Raijin and Tengu are power-up ults that only act when you hit or dash. That's a visual problem for 7.10, not a bug.
+- **Damage breakdown fixed** (end screen and run history):
+  - dash, poison, burn, bleed, deflect, thorns, lightning and caltrops damage now count toward "Damage dealt", so the bars add up to 100%
+  - ult effects that outlast the cast (Arashi's storm, Ronin's debt, Kappa's wave, Dokkaebi's ghosts, Kitsune's foxfires, Kagemusha's clones, Tengu's gale, Raijin's thunder) now show as "Ultimate" instead of "Class powers" or "Other"
+  - the Fox Companion perk has its own bar
+- **New balance findings for 7.1 / 7.5:**
+  - **Soul Rend** does a share of the target's max HP (480,000 to four 1,000,000-HP dummies), so it shreds bosses whatever your build. Needs a boss cap like 7.2.
+  - **Tengu's ult gale** does a flat 8 damage that never scales, the main reason Tengu is bottom tier.
+  - **Sohei's Prayer Wheel, Onna's Thousand Cuts** and several other ults use the same wave-scaled formula as the rest, so they're covered by 7.1.
 
 **Options to discuss before building** (from R8 round 2 in `docs/BALANCE_RESEARCH.md`):
 - **7.6:** a simple minimum time between ults, *or* the Hades approach: charge from damage dealt and taken instead of kills, partly reset between waves, and faster charging as a perk you choose.
