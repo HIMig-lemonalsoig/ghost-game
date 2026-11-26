@@ -233,7 +233,7 @@ Research so far (R1 ult measurements, R8 other games) points to these changes, i
 
 | # | Change | Why | Done when |
 |---|---|---|---|
-| 7.6 | **Ult cooldown floor.** Charge still comes from kills and hits, but there's a minimum of about 20–25 seconds between ults, and charge per kill shrinks as waves get bigger. | Late waves have 100–180 kills, so the bar fills every 8–9 seconds (R2). | At most about 3–4 ults per late wave. |
+| 7.6 ✅ | **Ult cooldown floor.** Charge still comes from kills and hits, but there's a minimum of about 20–25 seconds between ults, and charge per kill shrinks as waves get bigger. | Late waves have 100–180 kills, so the bar fills every 8–9 seconds (R2). | At most about 3–4 ults per late wave. |
 | 7.7 | **Coins vs. prices.** Kill rewards grow more slowly per wave, and shop prices grow faster after wave 8. | From about wave 7, one wave pays for 3–6 legendaries, so the shop is effectively free (R4). | A late-wave player can afford about 1 legendary or 2–3 rares per shop. |
 | 7.8 | **Ability cards stop counting as "rare"** for rarity rolls (they get their own slot chance), and duo perks get their own odds instead of raising legendary rates. | Abilities make up about half of all cards, so rares are 61–74% of level-up cards and commons only 18–34% (R3). | Level-up cards land near 70 / 25 / 5 again. |
 
@@ -336,6 +336,23 @@ Research so far (R1 ult measurements, R8 other games) points to these changes, i
 
 - **Not measured by this budget:** defensive value (Yamabushi's immunity, Sohei's healing, Hatamoto's banner). Those classes sit at the low end of the band on purpose.
 - **Watch:** strong ults are much weaker now (7.1 + 7.5). Re-run the bot playtests after 7.6–7.9 to check overall difficulty, especially the wave-5 wall.
+
+**7.6 results (done 2026-11-26, Hades-style option):**
+- The ult bar now fills from **damage you deal** (grunts' worth × 2.5%, doubled at low HP) and **damage you take** (8% per hit, 13% at low HP). **Kills no longer charge it**, and ult damage doesn't refill it.
+- **Speed limits, so huge waves or tanking can't flood it:**
+  - dealing damage: at most 2.5% per second (with a 12% burst allowance)
+  - taking hits: at most 1.2% per second (with a 20% burst allowance)
+- **Between waves, the bar is trimmed to 50%** (a softer version of Hades' reset each room). Charge perks and items (Spirit Bell and others) still multiply everything.
+- Settings live in `ULT_CHARGE` in `src/content/curves.ts`.
+- Measured with a bot that never dies (Kensei and Miko, waves 1–20):
+
+  | | Before | After |
+  |---|---|---|
+  | Ults per wave, waves 2–7 | 1–4 | 1 |
+  | Ults per wave, waves 16–20 | 7–12 | 3–4 |
+  | First ult after | 0–5 s | 13–26 s |
+
+- **Watch for 7.9:** boss waves (10, 15, 20) now take the bot 2.5–4 minutes, because weaker ults, the 12% boss cap and slower charging all add up. Consider raising the boss cap or shortening boss HP when doing the boss-pacing fix.
 
 **Options to discuss before building** (from R8 round 2 in `docs/BALANCE_RESEARCH.md`):
 - **7.6:** a simple minimum time between ults, *or* the Hades approach: charge from damage dealt and taken instead of kills, partly reset between waves, and faster charging as a perk you choose.

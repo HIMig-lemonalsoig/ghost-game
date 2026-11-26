@@ -3,7 +3,7 @@ import { Fx, hueOf } from "./fx";
 import { Arena } from "./arena";
 import { ULT_STYLES, poseFrame, drawMotif, STRIKE } from "./ultimates";
 import type { UltMotif } from "./ultimates";
-import { defenseReduction, dexAttackSpeed, critFromPoints, moveSpeedFromMul, soft, softStat, SOFT_STATS, WEAPON_FLAT, ULT_WAVE_SCALE, BOSS_CAST_CAPS, SHOP_RARITY, shopLegChance } from "./content/curves";
+import { defenseReduction, dexAttackSpeed, critFromPoints, moveSpeedFromMul, soft, softStat, SOFT_STATS, WEAPON_FLAT, ULT_WAVE_SCALE, BOSS_CAST_CAPS, SHOP_RARITY, shopLegChance, ULT_CHARGE } from "./content/curves";
 import { AFFIXES, ELITE, ENEMY_LABEL, rollAffixes } from "./content/elites";
 import { hashStr, mulberry32 } from "./rng";
 import { ULT_CLASS_MUL, ULT_EMPOWER } from "./content/ultbalance";
@@ -5641,6 +5641,11 @@ export class GhostGame {
       this.healPlayer(this.perks.healBetweenWaves);
     }
     if (this.perks.secondWindAvailable) this.perks.hasSecondWind = true;
+    // 7.6: the bar is trimmed between waves (a softer version of Hades' per-room reset).
+    if (wave > 1 && !this.stats.ultActive && this.stats.ultCharge > this.stats.ultMax * ULT_CHARGE.carryBetweenWaves) {
+      this.stats.ultCharge = this.stats.ultMax * ULT_CHARGE.carryBetweenWaves;
+      this.stats.ultReady = false;
+    }
     // OMEN: announce it (and Elite Hunt's chest); ARENA SHRINE: maybe place one.
     const om = this.omenDef;
     if (om) {
@@ -6612,6 +6617,8 @@ export class GhostGame {
     this.updateHazards(dt);
     this.updateElites(dt);
     this.updateArenaShrine(dt);
+    this.ultDealtBucket = Math.min(ULT_CHARGE.dealtBurst, this.ultDealtBucket + ULT_CHARGE.dealtRatePerSec * dt);   // 7.6
+    this.ultTakenBucket = Math.min(ULT_CHARGE.takenBurst, this.ultTakenBucket + ULT_CHARGE.takenRatePerSec * dt);
     this.updateEvo(dt);
     this.updateInk(dt);
     this.updateParticles(dt);
@@ -7232,7 +7239,7 @@ export class GhostGame {
       }
     }
     // Ultimate charge — kills give a small amount, more when low HP.
-    this.addUltCharge(this.lowHp() ? 5 : 2.5);   // slower ult (was 8 / 4)
+    // 7.6: kills no longer charge the ult (damage dealt does, with a rate limit).
 
     // ===== Phase 3: chance to drop an ammo pickup for the active secondary =====
     this.maybeDropAmmoPickup(e);
@@ -7274,6 +7281,25 @@ export class GhostGame {
   }
 
   // Add charge to the ultimate gauge and update the `ultReady` flag.
+  // ===================== 7.6: Hades-style ult charging =====================
+  /** Refilling allowance (in % of the bar) for charge from dealing damage. */
+  private ultDealtBucket = ULT_CHARGE.dealtBurst;
+  private ultTakenBucket = ULT_CHARGE.takenBurst;
+  /** HP of a plain grunt this wave: the unit for "how much damage is a lot". */
+  gruntHp(): number {
+    const D = DIFFICULTIES[this.difficulty];
+    return Math.max(1, 2 * (1 + (Math.max(1, this.stats.wave) - 1) * 0.45) * D.hp);
+  }
+  /** Charge from dealt damage, measured in grunts' worth, limited by the bucket. */
+  chargeFromDealt(grunts: number) {
+    if (this.stats.ultActive || !(grunts > 0)) return;
+    const want = grunts * ULT_CHARGE.perGruntDealt * (this.lowHp() ? 2 : 1);
+    const got = Math.min(want, this.ultDealtBucket);
+    if (got <= 0) return;
+    this.ultDealtBucket -= got;
+    this.addUltCharge(got);
+  }
+
   addUltCharge(amount: number) {
     if (this.stats.ultActive) return;
     amount *= this.perks.ultChargeMul;
@@ -7403,6 +7429,8 @@ export class GhostGame {
     this.run.damageDealt += dmg + empower;
     this.trackDealt(label, dmg, false);
     if (empower > 0) { this.trackDealt("Ultimate", empower, false); dmg += empower; }
+    // 7.6: dealing damage charges the ult (ult damage itself doesn't refill the bar).
+    if (label !== "Ultimate") this.chargeFromDealt(dmg / Math.max(1, this.gruntHp()));
     if (dmg > this.run.biggestHit) this.run.biggestHit = dmg;
     if (!this.evoNested && !this.raijinZapping) this.onEvoHit(e, weaponSource, dmg, isCrit);
     // Floating damage number above the enemy.
@@ -7583,7 +7611,7 @@ export class GhostGame {
       });
       audio.play("parry");
       audio.play("armorRing");
-      this.addUltCharge(3);   // was 4
+      this.chargeFromDealt(1.2);   // 7.6: a deflect counts like ~1 grunt of damage
       void e;
       return;
     }
@@ -7658,7 +7686,10 @@ export class GhostGame {
     if (this.stats.classId === "samurai") {
       this.stats.bushidoStacks = Math.min(5, this.stats.bushidoStacks + 1);
     }
-    this.addUltCharge(this.lowHp() ? 13 : 8);   // slower ult (was 20 / 12)
+    {   // 7.6: taking damage charges (Hades-style), with its own speed limit
+      const got = Math.min(this.lowHp() ? ULT_CHARGE.takenHitLow : ULT_CHARGE.takenHit, this.ultTakenBucket);
+      if (got > 0) { this.ultTakenBucket -= got; this.addUltCharge(got); }
+    }
     this.player.invuln = 0.6 + this.perks.invulnBonus;
     this.player.hitFlash = 1;
     this.cameraShake = Math.max(this.cameraShake, 0.5);

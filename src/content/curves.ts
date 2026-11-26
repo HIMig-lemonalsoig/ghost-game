@@ -70,6 +70,23 @@ export const shopLegChance = (wave: number, pity: number) =>
     : Math.min(SHOP_RARITY.legMax, SHOP_RARITY.legBase + (wave - SHOP_RARITY.legFromWave) * SHOP_RARITY.legPerWave) + pity * SHOP_RARITY.pityStep;
 
 /**
+ * Ult charging (Phase 7.6), Hades-style: the bar fills from damage you deal and
+ * damage you take, not from kills. Charging from dealt damage has a speed limit
+ * (a refilling "bucket") so huge late waves can't flood it, and the bar is
+ * trimmed between waves. Charge perks/items (Spirit Bell…) still multiply all of it.
+ */
+export const ULT_CHARGE = {
+  perGruntDealt: 2.5,     // % charge per grunt's worth of damage dealt (×2 when low on HP)
+  dealtRatePerSec: 2.5,   // max % per second from dealing damage (bucket refill rate)
+  dealtBurst: 12,         // bucket size: how much can be gained at once after a lull
+  takenHit: 8,            // % per hit taken (13 when low on HP)
+  takenHitLow: 13,
+  takenRatePerSec: 1.2,   // max % per second from taking hits (own bucket, so tanking can't flood it)
+  takenBurst: 20,         // a couple of big hits still give a real boost
+  carryBetweenWaves: 0.5, // bar is trimmed to this share at the start of each wave
+};
+
+/**
  * Boss caps (Phase 7.2): the most one cast of a source can take off a single
  * boss, as a share of its max HP. Stops ults and Soul Rend from deleting bosses
  * (like RAID's 5–10% caps and Isaac's big-hit cap). Extra damage is ignored.
