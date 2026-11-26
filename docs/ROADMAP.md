@@ -242,7 +242,7 @@ Research so far (R1 ult measurements, R8 other games) points to these changes, i
 | # | Change | Why | Done when |
 |---|---|---|---|
 | 7.0 ✅ | **Fix what's broken first:** check Raijin's and Tengu's ults (nothing visible, nothing hit), Kensei's, Tetsubo's and Ashigaru's (did ~nothing to grouped foes), and the end-screen damage labels ("Class powers" too big, shares over 100%). | Tuning broken things gives wrong answers (R1, R7). | Every ult deals its intended effect, and the damage breakdown adds up to 100%. |
-| 7.9 | **Smooth the wave-5 boss wall.** Gentler first boss (or a warm-up mini-boss at wave 3), with later boss waves stepping up evenly. | 38 of 75 bot runs died on wave 5. Waves 1–4 are trivial, then difficulty jumps. | The bot's wave-5 death rate drops to about 15–25% for mid-tier classes. |
+| 7.9 ✅ | **Smooth the wave-5 boss wall.** Gentler first boss (or a warm-up mini-boss at wave 3), with later boss waves stepping up evenly. | 38 of 75 bot runs died on wave 5. Waves 1–4 are trivial, then difficulty jumps. | The bot's wave-5 death rate drops to about 15–25% for mid-tier classes. |
 | 7.10 | **Ult visual pass:** shrink or remove the name banner (it hides the first ~1.2 s and enemy warnings), give power-up ults a clear look (Berserker, Shinobi, Yamabushi, Kagebushi, Kabuki, Tengu), match looks to power (Tetsubo and Yuki-onna look huge but are weak; Kunoichi looks strongest but is mid; Tsuchigumo and Kitsune look medium but are the strongest), and tone down blinding effects (Onmyoji's white blob, Kunoichi's storm). | R7b scores; League rule that visual weight should match gameplay weight. | Re-run the screenshot review: every ult scores at least 3 on Readable and Clear. |
 
 **7.0 results (done 2026-11-26):**
@@ -380,6 +380,24 @@ Research so far (R1 ult measurements, R8 other games) points to these changes, i
   | Mid-run level-ups showing a legendary | ~30% | 6–12% |
 
 - Rares sit a bit above 25% only because your class's ult perk (a rare) is slipped into 1 level-up in 5 on purpose. Early in a run, ability cards stay common because you need two.
+
+**7.9 results (done 2026-11-26):**
+- **First-meeting discount:** the wave-5 boss has 75% HP and 60% damage, and elites up to wave 10 spawn with 75% HP (Brotato does the same for early elites).
+- **Rest before every boss:** a boss wave starts by restoring you to full HP, except with the No Rest vow (Slay the Spire puts a rest site before each boss).
+- **Breather wave after each boss:** 75% of the usual enemies and 85% of the usual length.
+- **Boss tip:** the first boss of a run shows "big attacks glow before they land; dash through them". The end screen already says how to beat what killed you.
+- Settings live in `BOSS_PACING` in `src/content/curves.ts`.
+- **Measured** (mortal bot, 10 mid-tier classes × 2 runs, waves 1–11):
+
+  | | Wave-5 deaths |
+  |---|---|
+  | Before Phase 7 (R7a) | about 50% |
+  | After 7.1–7.8, before 7.9 | **85%** (weaker early ults, slower charge, smaller shop items) |
+  | With discount + breather + tip | 80% |
+  | With rest before bosses + 60% first-boss damage | **65%** |
+
+- **What's left is mostly the bot.** It reaches the boss at full HP but circles it at sword range and doesn't learn its patterns. A person backs off and dashes through the glows. Judge the rest from real play (R6 data or your own runs), not by weakening the boss further.
+- Not measured yet: whether later boss fights (waves 10/15/20) still feel too long (see the 7.6 note). If they do, raise the ult boss cap (12% → 15%) in `BOSS_CAST_CAPS`.
 
 **Options to discuss before building** (from R8 round 2 in `docs/BALANCE_RESEARCH.md`):
 - **7.6:** a simple minimum time between ults, *or* the Hades approach: charge from damage dealt and taken instead of kills, partly reset between waves, and faster charging as a perk you choose.

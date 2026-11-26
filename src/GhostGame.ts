@@ -3,7 +3,7 @@ import { Fx, hueOf } from "./fx";
 import { Arena } from "./arena";
 import { ULT_STYLES, poseFrame, drawMotif, STRIKE } from "./ultimates";
 import type { UltMotif } from "./ultimates";
-import { defenseReduction, dexAttackSpeed, critFromPoints, moveSpeedFromMul, soft, softStat, SOFT_STATS, WEAPON_FLAT, ULT_WAVE_SCALE, BOSS_CAST_CAPS, SHOP_RARITY, shopLegChance, ULT_CHARGE, coinDropChance, endlessIncomeMul, lateInflation } from "./content/curves";
+import { defenseReduction, dexAttackSpeed, critFromPoints, moveSpeedFromMul, soft, softStat, SOFT_STATS, WEAPON_FLAT, ULT_WAVE_SCALE, BOSS_CAST_CAPS, SHOP_RARITY, shopLegChance, ULT_CHARGE, coinDropChance, endlessIncomeMul, lateInflation, BOSS_PACING } from "./content/curves";
 import { AFFIXES, ELITE, ENEMY_LABEL, rollAffixes } from "./content/elites";
 import { hashStr, mulberry32 } from "./rng";
 import { ULT_CLASS_MUL, ULT_EMPOWER } from "./content/ultbalance";
@@ -4615,14 +4615,16 @@ export class GhostGame {
     const isBoss = wave % 5 === 0;
     const base = Math.min(85, 18 + (wave - 1) * 4);
     const night = 1 + 0.2 * this.vr("long_night");   // VOW Long Night
-    return (isBoss ? Math.min(110, base + 25) : base) * night;
+    const breather = wave > 1 && (wave - 1) % 5 === 0 ? BOSS_PACING.breatherDuration : 1;   // 7.9
+    return (isBoss ? Math.min(110, base + 25) : base) * night * breather;
   }
 
   // Target number of live enemies on the field for this wave.
   // Used by maybeSpawnEnemies() to continuously replenish.
   computeTargetDensity(wave: number): number {
     const isBoss = wave % 5 === 0;
-    const dens = DIFFICULTIES[this.difficulty].density * (1 + 0.15 * this.vr("swarm")) * (this.omenDef?.density ?? 1);   // VOW Swarm, OMEN
+    const breather = wave > 1 && (wave - 1) % 5 === 0 ? BOSS_PACING.breatherDensity : 1;   // 7.9: the wave after a boss
+    const dens = DIFFICULTIES[this.difficulty].density * (1 + 0.15 * this.vr("swarm")) * (this.omenDef?.density ?? 1) * breather;   // VOW Swarm, OMEN
     if (isBoss) return Math.round(Math.min(14, 6 + Math.floor(wave / 5) * 2) * dens);
     return Math.round(Math.min(28, 5 + Math.floor(wave * 1.6) + Math.floor(wave / 2)) * dens);
   }
@@ -4679,6 +4681,10 @@ export class GhostGame {
       const om = this.omenDef;   // OMEN
       if (om?.hp && !e.isBoss) e.hp = e.maxHp = e.maxHp * om.hp;
       if (om?.speed) e.speed *= om.speed;
+      if (e.isBoss && !this.seenAffixes.has("tip:boss")) {   // 7.9: first boss of the run
+        this.seenAffixes.add("tip:boss");
+        this.flash("Boss tip: big attacks glow before they land. Dash through them (you're invulnerable while dashing), then punish.");
+      }
       const tip = NEW_ENEMY_TIPS[e.archetype];
       if (tip && !this.seenAffixes.has(`enemy:${e.archetype}`)) { this.seenAffixes.add(`enemy:${e.archetype}`); this.flash(tip); }
       if (e.isBoss) {
@@ -4698,7 +4704,7 @@ export class GhostGame {
     if (!affixes.length) return;
     e.affixes = affixes;
     if (!boss) {
-      e.hp = e.maxHp = e.maxHp * ELITE.hpMul;
+      e.hp = e.maxHp = e.maxHp * ELITE.hpMul * (this.stats.wave <= BOSS_PACING.earlyEliteUntilWave ? BOSS_PACING.earlyEliteHpMul : 1);   // 7.9
       e.size = Math.round(e.size * ELITE.sizeMul);
       e.xpReward = Math.round(e.xpReward * ELITE.rewardMul);
       e.monReward = Math.round(e.monReward * ELITE.rewardMul);
@@ -5390,6 +5396,11 @@ export class GhostGame {
         monReward: 80 + tier * 40 + Math.floor(Math.random() * 30),
       }));
       this.decorateBoss(this.enemies[this.enemies.length - 1], wave);
+      if (wave === BOSS_PACING.firstBossWave) {   // 7.9: "first meeting" discount
+        const b = this.enemies[this.enemies.length - 1];
+        b.hp = b.maxHp = Math.round(b.maxHp * BOSS_PACING.firstBossHpMul);
+        b.damage = Math.round(b.damage * BOSS_PACING.firstBossDmgMul);
+      }
     } else if (kind === "shielded") {
       // Tanky frontline — frontal melee bounces off until shield breaks.
       this.enemies.push(this.makeEnemy({
@@ -5641,6 +5652,11 @@ export class GhostGame {
       this.healPlayer(this.perks.healBetweenWaves);
     }
     if (this.perks.secondWindAvailable) this.perks.hasSecondWind = true;
+    // 7.9: rest before every boss (Slay the Spire puts a rest site before each boss).
+    if (wave % 5 === 0 && BOSS_PACING.restBeforeBoss && !this.vr("no_rest") && this.player && this.player.hp < this.player.maxHp) {
+      this.healPlayer(this.player.maxHp);
+      this.spawnFloatText(this.player.pos, "Rested", { color: "hsl(140 70% 70%)", size: 15, vy: -60 });
+    }
     // 7.6: the bar is trimmed between waves (a softer version of Hades' per-room reset).
     if (wave > 1 && !this.stats.ultActive && this.stats.ultCharge > this.stats.ultMax * ULT_CHARGE.carryBetweenWaves) {
       this.stats.ultCharge = this.stats.ultMax * ULT_CHARGE.carryBetweenWaves;

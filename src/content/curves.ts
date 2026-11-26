@@ -112,6 +112,22 @@ export const lateInflation = (wave: number) =>
   1 + COIN_ECONOMY.lateInflationPerWave * Math.max(0, wave - COIN_ECONOMY.lateInflationFromWave);
 
 /**
+ * Boss pacing (Phase 7.9). Bosses stay the peaks of the run, but the first one
+ * is a smaller step, early elites are softened (Brotato gives early elites 75%
+ * HP), and the wave after every boss is a breather.
+ */
+export const BOSS_PACING = {
+  firstBossWave: 5,
+  firstBossHpMul: 0.75,      // "first meeting" discount on the wave-5 boss
+  firstBossDmgMul: 0.6,
+  restBeforeBoss: true,      // Slay-the-Spire-style rest: full heal when a boss wave starts (not with the No Rest vow)
+  earlyEliteUntilWave: 10,   // elites up to this wave spawn with less HP
+  earlyEliteHpMul: 0.75,
+  breatherDensity: 0.75,     // the wave after a boss has fewer enemies…
+  breatherDuration: 0.85,    // …and is a bit shorter
+};
+
+/**
  * Boss caps (Phase 7.2): the most one cast of a source can take off a single
  * boss, as a share of its max HP. Stops ults and Soul Rend from deleting bosses
  * (like RAID's 5–10% caps and Isaac's big-hit cap). Extra damage is ignored.
