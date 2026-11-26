@@ -3,7 +3,7 @@ import { Fx, hueOf } from "./fx";
 import { Arena } from "./arena";
 import { ULT_STYLES, poseFrame, drawMotif, STRIKE } from "./ultimates";
 import type { UltMotif } from "./ultimates";
-import { defenseReduction, dexAttackSpeed, critFromPoints, moveSpeedFromMul, soft, softStat, SOFT_STATS, WEAPON_FLAT, ULT_WAVE_SCALE, BOSS_CAST_CAPS, SHOP_RARITY, shopLegChance, ULT_CHARGE } from "./content/curves";
+import { defenseReduction, dexAttackSpeed, critFromPoints, moveSpeedFromMul, soft, softStat, SOFT_STATS, WEAPON_FLAT, ULT_WAVE_SCALE, BOSS_CAST_CAPS, SHOP_RARITY, shopLegChance, ULT_CHARGE, coinDropChance, endlessIncomeMul, lateInflation } from "./content/curves";
 import { AFFIXES, ELITE, ENEMY_LABEL, rollAffixes } from "./content/elites";
 import { hashStr, mulberry32 } from "./rng";
 import { ULT_CLASS_MUL, ULT_EMPOWER } from "./content/ultbalance";
@@ -3497,7 +3497,7 @@ export function fmtNum(n: number): string {
 export const xpForLevel = (level: number): number => Math.round(42 + 7 * level * level);
 
 // Shop prices rise with the wave so late-game income can't buy everything.
-const shopInflation = (wave: number): number => 1 + 0.15 * Math.max(0, wave - 1);
+const shopInflation = (wave: number): number => (1 + 0.15 * Math.max(0, wave - 1)) * lateInflation(wave);   // 7.7: faster after wave 8
 
 export class GhostGame {
   ctx: CanvasRenderingContext2D;
@@ -7147,7 +7147,9 @@ export class GhostGame {
     if (type === "honor") this.stats.honor++;
     else this.stats.ghost++;
     // Mon coin drop — stealth kills (ghost) earn a 50% bonus.
-    const monGain = Math.max(0, Math.round(e.monReward * 0.75 * this.perks.monMul * DIFFICULTIES[this.difficulty].coins * (type === "ghost" ? 1.5 : 1) * (1 + VOW_COIN_BONUS * this.vowScore) * (this.omenDef?.coins ?? 1)));
+    // 7.7: Brotato-style — fewer kills drop coins as waves go on (bosses always pay).
+    const drops = e.isBoss || Math.random() < coinDropChance(this.stats.wave);
+    const monGain = !drops ? 0 : Math.max(0, Math.round(e.monReward * 0.75 * this.perks.monMul * DIFFICULTIES[this.difficulty].coins * (type === "ghost" ? 1.5 : 1) * (1 + VOW_COIN_BONUS * this.vowScore) * (this.omenDef?.coins ?? 1) * endlessIncomeMul(this.stats.wave)));
     if (this.perks.eliteBounty > 0 && e.archetype !== "normal" && e.archetype !== "wisp") {
       this.stats.mon += this.perks.eliteBounty;
       this.healPlayer(2);

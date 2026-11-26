@@ -234,7 +234,7 @@ Research so far (R1 ult measurements, R8 other games) points to these changes, i
 | # | Change | Why | Done when |
 |---|---|---|---|
 | 7.6 ✅ | **Ult cooldown floor.** Charge still comes from kills and hits, but there's a minimum of about 20–25 seconds between ults, and charge per kill shrinks as waves get bigger. | Late waves have 100–180 kills, so the bar fills every 8–9 seconds (R2). | At most about 3–4 ults per late wave. |
-| 7.7 | **Coins vs. prices.** Kill rewards grow more slowly per wave, and shop prices grow faster after wave 8. | From about wave 7, one wave pays for 3–6 legendaries, so the shop is effectively free (R4). | A late-wave player can afford about 1 legendary or 2–3 rares per shop. |
+| 7.7 ✅ | **Coins vs. prices.** Kill rewards grow more slowly per wave, and shop prices grow faster after wave 8. | From about wave 7, one wave pays for 3–6 legendaries, so the shop is effectively free (R4). | A late-wave player can afford about 1 legendary or 2–3 rares per shop. |
 | 7.8 | **Ability cards stop counting as "rare"** for rarity rolls (they get their own slot chance), and duo perks get their own odds instead of raising legendary rates. | Abilities make up about half of all cards, so rares are 61–74% of level-up cards and commons only 18–34% (R3). | Level-up cards land near 70 / 25 / 5 again. |
 
 **Added after R7 (bot runs + ult visual review):**
@@ -353,6 +353,20 @@ Research so far (R1 ult measurements, R8 other games) points to these changes, i
   | First ult after | 0–5 s | 13–26 s |
 
 - **Watch for 7.9:** boss waves (10, 15, 20) now take the bot 2.5–4 minutes, because weaker ults, the 12% boss cap and slower charging all add up. Consider raising the boss cap or shortening boss HP when doing the boss-pacing fix.
+
+**7.7 results (done 2026-11-26, Brotato approach):**
+- **Coin drop chance per kill** falls 3% per wave from wave 5, with a 40% floor. Bosses always pay. (Brotato: −1.5% per wave, but its waves are shorter.)
+- **Prices grow faster after wave 8:** an extra +5% per wave on top of the normal +15%. Legendaries also keep their extra +4% per wave from 7.4.
+- **Endless:** income ×0.92 per wave past wave 25, with a 25% floor (Brotato: −20% per wave).
+- Settings live in `COIN_ECONOMY` in `src/content/curves.ts`.
+- Measured with a bot that never dies and never buys (at the first setting, −3.5% per wave and +8% prices; then eased slightly to −3% and +5%):
+
+  | | Before (R4) | After |
+  |---|---|---|
+  | Coins per wave, waves 16–20 | 1,750–2,900 | about 300–1,500 (average ~600) |
+  | What one late wave buys | 3–6 legendaries | 1–2 rares, or a legendary every ~2 waves |
+
+- The easing makes rares about 18% cheaper and drops about 14% more common by wave 19, closer to the target of about 1 legendary or 2–3 rares per shop. Real players kill less than this bot, so their income will be somewhat lower.
 
 **Options to discuss before building** (from R8 round 2 in `docs/BALANCE_RESEARCH.md`):
 - **7.6:** a simple minimum time between ults, *or* the Hades approach: charge from damage dealt and taken instead of kills, partly reset between waves, and faster charging as a perk you choose.

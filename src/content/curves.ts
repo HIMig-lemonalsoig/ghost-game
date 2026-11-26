@@ -87,6 +87,31 @@ export const ULT_CHARGE = {
 };
 
 /**
+ * Coin economy (Phase 7.7), Brotato-style: from wave 5 a kill is less and less
+ * likely to drop coins, shop prices grow faster after mid-game so the shop
+ * slowly outgrows your income, and income tapers off further in Endless.
+ */
+export const COIN_ECONOMY = {
+  dropFallFromWave: 5,
+  dropFallPerWave: 0.03,    // −3% coin drop chance per wave after that
+  dropFloor: 0.4,           // never below 40%
+  lateInflationFromWave: 8,
+  lateInflationPerWave: 0.05, // +5% prices per wave after wave 8 (on top of the normal +15%)
+  endlessFromWave: 26,
+  endlessDecay: 0.92,       // Endless: income ×0.92 per wave past wave 25…
+  endlessFloor: 0.25,       // …but never below 25%
+};
+/** Chance a kill drops coins on this wave. */
+export const coinDropChance = (wave: number) =>
+  Math.max(COIN_ECONOMY.dropFloor, 1 - COIN_ECONOMY.dropFallPerWave * Math.max(0, wave - COIN_ECONOMY.dropFallFromWave));
+/** Extra income multiplier in Endless. */
+export const endlessIncomeMul = (wave: number) =>
+  wave < COIN_ECONOMY.endlessFromWave ? 1 : Math.max(COIN_ECONOMY.endlessFloor, Math.pow(COIN_ECONOMY.endlessDecay, wave - COIN_ECONOMY.endlessFromWave + 1));
+/** Extra price multiplier after mid-game. */
+export const lateInflation = (wave: number) =>
+  1 + COIN_ECONOMY.lateInflationPerWave * Math.max(0, wave - COIN_ECONOMY.lateInflationFromWave);
+
+/**
  * Boss caps (Phase 7.2): the most one cast of a source can take off a single
  * boss, as a share of its max HP. Stops ults and Soul Rend from deleting bosses
  * (like RAID's 5–10% caps and Isaac's big-hit cap). Extra damage is ignored.
