@@ -2410,7 +2410,7 @@ export interface PerkChoice {
   name: string;
   kanji: string;
   desc: string;
-  rarity: "common" | "rare" | "legendary";
+  rarity: "common" | "rare" | "legendary" | "ability" | "duo";   // 7.8: abilities and duos have their own odds
   kind?: "passive" | "ability";
   duo?: boolean;
 }
@@ -6404,7 +6404,7 @@ export class GhostGame {
     const duos = this.availableDuos().filter(d => !this.perks.banished.includes(d.id));
     if (duos.length && out.length && Math.random() < 0.25) {
       const d = duos[Math.floor(Math.random() * duos.length)];
-      out[out.length - 1] = { id: d.id, name: d.name, kanji: d.kanji, desc: `${d.desc} (${d.needsLabel})`, rarity: "legendary", kind: "passive", duo: true };
+      out[out.length - 1] = { id: d.id, name: d.name, kanji: d.kanji, desc: `${d.desc} (${d.needsLabel})`, rarity: "duo", kind: "passive", duo: true };   // 7.8: duos have their own odds
     }
     this.emitEvent({ t: "offer", kind: "perk", ids: out.map(c => c.id) });
     return out;
@@ -6448,16 +6448,16 @@ export class GhostGame {
         kanji: a.kanji,
         name: a.name,
         desc: a.desc,
-        rarity: "rare",
+        rarity: "ability",   // 7.8: own category, no longer counted as "rare"
         kind: "ability",
       }));
 
     const out: PerkChoice[] = [];
     const seen = new Set<string>();
 
-    // Guarantee at least one ability card on early level-ups so the player
-    // always has a way to unlock their first abilities.
-    if (abilityCards.length > 0 && (equipped.length < 2 || Math.random() < 0.5)) {
+    // Guarantee an ability card while you still have an empty ability slot.
+    // 7.8: once both slots are full, ability cards are only occasional swap offers.
+    if (abilityCards.length > 0 && (equipped.length < 2 || Math.random() < 0.2)) {
       const ac = abilityCards[Math.floor(Math.random() * abilityCards.length)];
       out.push(ac);
       seen.add(ac.id);
@@ -6466,7 +6466,7 @@ export class GhostGame {
     let safety = 30;
     while (out.length < 3 && safety-- > 0) {
       // Mix in another ability card occasionally
-      const useAbility = abilityCards.length > 0 && Math.random() < 0.25;
+      const useAbility = abilityCards.length > 0 && equipped.length < 2 && Math.random() < 0.15;   // 7.8: was 25%, even with full slots
       const candidate = useAbility
         ? abilityCards[Math.floor(Math.random() * abilityCards.length)]
         : pickPassive();

@@ -441,6 +441,7 @@ body.pad.playing { cursor: none; }
 .shop-lock-hint { margin-top: 14px; font-size: 12px; }
 .card[disabled] .price { color: var(--crimson); }
 .r-common { --rc: var(--common); } .r-rare { --rc: var(--rare); } .r-legendary { --rc: var(--legendary); }
+.r-ability { --rc: hsl(175 60% 58%); } .r-duo { --rc: var(--legendary); }
 .panel-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 24px; }
 .lvl-actions { margin-top: 16px; }
 .lvl-actions .btn { min-height: 44px; }

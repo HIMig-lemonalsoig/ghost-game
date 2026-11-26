@@ -235,7 +235,7 @@ Research so far (R1 ult measurements, R8 other games) points to these changes, i
 |---|---|---|---|
 | 7.6 ✅ | **Ult cooldown floor.** Charge still comes from kills and hits, but there's a minimum of about 20–25 seconds between ults, and charge per kill shrinks as waves get bigger. | Late waves have 100–180 kills, so the bar fills every 8–9 seconds (R2). | At most about 3–4 ults per late wave. |
 | 7.7 ✅ | **Coins vs. prices.** Kill rewards grow more slowly per wave, and shop prices grow faster after wave 8. | From about wave 7, one wave pays for 3–6 legendaries, so the shop is effectively free (R4). | A late-wave player can afford about 1 legendary or 2–3 rares per shop. |
-| 7.8 | **Ability cards stop counting as "rare"** for rarity rolls (they get their own slot chance), and duo perks get their own odds instead of raising legendary rates. | Abilities make up about half of all cards, so rares are 61–74% of level-up cards and commons only 18–34% (R3). | Level-up cards land near 70 / 25 / 5 again. |
+| 7.8 ✅ | **Ability cards stop counting as "rare"** for rarity rolls (they get their own slot chance), and duo perks get their own odds instead of raising legendary rates. | Abilities make up about half of all cards, so rares are 61–74% of level-up cards and commons only 18–34% (R3). | Level-up cards land near 70 / 25 / 5 again. |
 
 **Added after R7 (bot runs + ult visual review):**
 
@@ -367,6 +367,19 @@ Research so far (R1 ult measurements, R8 other games) points to these changes, i
   | What one late wave buys | 3–6 legendaries | 1–2 rares, or a legendary every ~2 waves |
 
 - The easing makes rares about 18% cheaper and drops about 14% more common by wave 19, closer to the target of about 1 legendary or 2–3 rares per shop. Real players kill less than this bot, so their income will be somewhat lower.
+
+**7.8 results (done 2026-11-26):**
+- **Ability cards** now have their own "Ability" rarity, with their own teal look. They're guaranteed while you have an empty ability slot. Once both slots are full, they only appear 20% of the time as swap offers (was 50%, plus 25% per extra slot).
+- **Duo cards** have their own "Duo" rarity, so they no longer count as legendaries (they still appear on 25% of eligible level-ups).
+- Simulated with 4,000 level-ups per case:
+
+  | | Before | After |
+  |---|---|---|
+  | Passive cards, common / rare / legendary | 18–34% / 61–74% / 2–14% | 55–64% / 31–41% / 4–5% |
+  | Ability cards mid-run (both slots full) | 44–55% | 6.5–9% |
+  | Mid-run level-ups showing a legendary | ~30% | 6–12% |
+
+- Rares sit a bit above 25% only because your class's ult perk (a rare) is slipped into 1 level-up in 5 on purpose. Early in a run, ability cards stay common because you need two.
 
 **Options to discuss before building** (from R8 round 2 in `docs/BALANCE_RESEARCH.md`):
 - **7.6:** a simple minimum time between ults, *or* the Hades approach: charge from damage dealt and taken instead of kills, partly reset between waves, and faster charging as a perk you choose.
