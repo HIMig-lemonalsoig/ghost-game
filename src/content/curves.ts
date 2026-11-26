@@ -62,6 +62,7 @@ export const SHOP_RARITY = {
   legPerWave: 0.004,     // +0.4% per wave after that
   legMax: 0.08,          // cap (reached around wave 19)
   pityStep: 0.005,       // +0.5% per slot for each roll in a row without a legendary
+  legPricePerWave: 0.04, // 7.4: legendaries cost +4% more per wave on top of normal inflation
 };
 /** Legendary chance per slot for this wave and pity count. */
 export const shopLegChance = (wave: number, pity: number) =>

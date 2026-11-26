@@ -226,7 +226,7 @@ Research so far (R1 ult measurements, R8 other games) points to these changes, i
 | 7.1 ✅ | **Ults scale with you, not the wave.** Ult damage comes from your own damage and ult upgrades (like Risk of Rain 2 skills), with only a small wave bonus. | Today every damage ult gets +35% per wave automatically, so a no-upgrade character at wave 99 wipes crowds and builds barely matter (R1). | A no-upgrade ult at wave 50 clears about 30–40% of a pack; a strong build clears most of it. |
 | 7.2 ✅ | **Boss cap on ults.** One ult takes at most about 12% of a boss's HP. | Ults deleted wave-10 bosses (Miko, Kunoichi, Samurai 99–100%). Isaac and RAID cap big hits on bosses. | No single ult does more than 12% to any boss. |
 | 7.3 ✅ | **Shop rarity weighted Brotato-style.** About 65% common, 28% rare, legendary 0–2% early rising per wave to about 8%, plus Slay-the-Spire-style bad-luck protection. | Today picks are uniform, so about 21% of slots are legendary and rares beat commons. Other games: 1–8%. | Simulated shops match the target odds. |
-| 7.4 | **Smaller shop values, rising prices.** Each rarity is about 2× the one below (damage 6% / 12% / 25% instead of 12% / 30% / 75%). Legendary prices grow with the wave. | One shop legendary equals five level-up damage picks. | Shop items sit close to level-up perks in value per pick. |
+| 7.4 ✅ | **Smaller shop values, rising prices.** Each rarity is about 2× the one below (damage 6% / 12% / 25% instead of 12% / 30% / 75%). Legendary prices grow with the wave. | One shop legendary equals five level-up damage picks. | Shop items sit close to level-up perks in value per pick. |
 | 7.5 | **Even out the classes.** All ults within about ±30% of each other: weak damage ults up, Miko and Onmyoji down, power-up ults (Berserker, Shinobi, Kabuki, Kagebushi, Hatamoto) stronger, and the seven "does nothing" ults fixed or checked for bugs. | The spread is about 70× (Miko 68.8× vs. Kensei 0.9×). | R1 and R7 tables re-run: every class within the target band. |
 
 **Added after R2–R4:**
@@ -299,6 +299,25 @@ Research so far (R1 ult measurements, R8 other games) points to these changes, i
   | First legendary seen | wave 1 | about wave 6 |
 
 - Affording them is a separate step (7.4 prices and 7.7 coin income).
+
+**7.4 results (done 2026-11-26):**
+- Shop values now step about 2× per rarity and sit in the same range as level-up perks (Honed Edge +15%):
+
+  | Item | Old | New |
+  |---|---|---|
+  | Whetstone (C) / Honed Whetstone (R) / Masterforged Edge (L) | +12% / +30% / +75% | +7% / +14% / +28% |
+  | Per-weapon Mastery (C) / Honed (R) / Forged (L) | +12% / +30% / +75% | +10% / +20% / +40% |
+  | War Paint (C) / Crimson Blade (R) | +8% / +15% | +5% / +10% |
+  | Ronin's Gamble (R) | +30% dmg, −15% HP | +18% dmg, −12% HP |
+  | Sharpened Tips (R) | +15% secondaries | +12% |
+  | Ghost Steps (C) | +10% speed (more than the rare) | +5% |
+  | Daimyo's Cuirass (L) | +5 defense | +4 |
+  | Iron Resolve (C) / Soul Collector (R) | +10% max HP / +30 HP | +6% / +20 HP |
+  | Spirit Surge (C) / Spirit Bell (C) | 50% ult / +25% charge | 35% / +12% |
+  | Battle Drum (R) / Dash Talisman (C) / Fire Charm (C) | 20% / 15% / +10% | 15% / 10% / +6% |
+
+- **Legendary prices** now rise an extra 4% per wave (`legPricePerWave`). Average legendary price: wave 5 about 173 (was about 120), wave 10 about 301 (was about 190), wave 20 about 632 (was about 300).
+- Tested in the game: every effect matches its new description, and the shop shows the new text.
 
 **Options to discuss before building** (from R8 round 2 in `docs/BALANCE_RESEARCH.md`):
 - **7.6:** a simple minimum time between ults, *or* the Hades approach: charge from damage dealt and taken instead of kills, partly reset between waves, and faster charging as a perk you choose.

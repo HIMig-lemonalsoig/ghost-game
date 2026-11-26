@@ -862,18 +862,18 @@ export const SHOP_POOL: PoolEntry[] = [
   { effect: "heal_full",     kanji: "癒", name: "Full Mend",        desc: "Restore all HP.",                          priceMin: 40, priceMax: 55, rarity: "common"   },
   { effect: "heal_half",     kanji: "薬", name: "Salve",             desc: "Restore 40% of your max HP.",              priceMin: 18, priceMax: 25, rarity: "common"   },
   { effect: "crit",          kanji: "極", name: "Killing Eye",       desc: "+8% crit chance (crits deal 3× damage).",  priceMin: 40, priceMax: 60, rarity: "rare"     },
-  { effect: "ult_charge",    kanji: "気", name: "Spirit Surge",      desc: "Instantly fills 50% of your ultimate.",    priceMin: 25, priceMax: 35, rarity: "common"   },
+  { effect: "ult_charge",    kanji: "気", name: "Spirit Surge",      desc: "Instantly fills 35% of your ultimate.",    priceMin: 25, priceMax: 35, rarity: "common"   },
   { effect: "ammo_refill",   kanji: "充", name: "Ammo Cache",        desc: "Refill all secondary ammo.",               priceMin: 15, priceMax: 22, rarity: "common"   },
   { effect: "ammo_cap",      kanji: "袋", name: "Wider Quiver",      desc: "+2 max ammo on every secondary.",          priceMin: 30, priceMax: 45, rarity: "rare"     },
   { effect: "ammo_regen",    kanji: "練", name: "Trained Hand",      desc: "−25% secondary regen time.",               priceMin: 35, priceMax: 50, rarity: "rare"     },
-  { effect: "secondary_dmg_global", kanji: "矢", name: "Sharpened Tips", desc: "+15% damage to ALL secondary weapons.", priceMin: 38, priceMax: 55, rarity: "rare" },
+  { effect: "secondary_dmg_global", kanji: "矢", name: "Sharpened Tips", desc: "+12% damage to ALL secondary weapons.", priceMin: 38, priceMax: 55, rarity: "rare" },
   { effect: "lifesteal",     kanji: "吸", name: "Crimson Rite",      desc: "Heal +1 HP on every kill (per-kill heal capped at 6).",          priceMin: 40, priceMax: 55, rarity: "rare"     },
   { effect: "hp_regen",      kanji: "息", name: "Steady Breath",     desc: "+0.5 HP/s passive regeneration.",          priceMin: 30, priceMax: 45, rarity: "rare"     },
   // ===== Stat upgrades (rarity-tiered) =====
   // Damage — Katana (always available).
-  { effect: "dmg_katana_common", kanji: "刃", name: "Whetstone",          desc: "+12% damage with all weapons.",                       priceMin: 28, priceMax: 42, rarity: "common"    },
-  { effect: "dmg_katana_rare",   kanji: "刃", name: "Honed Whetstone",    desc: "+30% damage with all weapons.",                       priceMin: 50, priceMax: 70, rarity: "rare"      },
-  { effect: "dmg_katana_leg",    kanji: "刃", name: "Masterforged Edge",  desc: "+75% damage with all weapons.",                       priceMin: 95, priceMax: 130, rarity: "legendary" },
+  { effect: "dmg_katana_common", kanji: "刃", name: "Whetstone",          desc: "+7% damage with all weapons.",                       priceMin: 28, priceMax: 42, rarity: "common"    },
+  { effect: "dmg_katana_rare",   kanji: "刃", name: "Honed Whetstone",    desc: "+14% damage with all weapons.",                       priceMin: 50, priceMax: 70, rarity: "rare"      },
+  { effect: "dmg_katana_leg",    kanji: "刃", name: "Masterforged Edge",  desc: "+28% damage with all weapons.",                       priceMin: 95, priceMax: 130, rarity: "legendary" },
   // Dexterity (replaces flat attack-speed perks).
   { effect: "dex_common", kanji: "敏", name: "Light Hands",      desc: "+3 dexterity (attack speed scales with weapon).", priceMin: 28, priceMax: 42, rarity: "common"   },
   { effect: "dex_rare",   kanji: "敏", name: "Trained Reflexes", desc: "+6 dexterity.",                                     priceMin: 50, priceMax: 70, rarity: "rare"     },
@@ -884,35 +884,35 @@ export const SHOP_POOL: PoolEntry[] = [
   { effect: "spd_leg",    kanji: "風", name: "Boots of the Gale",desc: "+15% movement speed.",                              priceMin: 90, priceMax: 120, rarity: "legendary" },
   // Defense (no common variant).
   { effect: "def_rare",   kanji: "盾", name: "Lacquered Plate",  desc: "+2 defense — blocks a share of every hit.",        priceMin: 55, priceMax: 75, rarity: "rare"      },
-  { effect: "def_leg",    kanji: "盾", name: "Daimyo's Cuirass", desc: "+5 defense — blocks a share of every hit.",        priceMin: 100, priceMax: 140, rarity: "legendary" },
+  { effect: "def_leg",    kanji: "盾", name: "Daimyo's Cuirass", desc: "+4 defense — blocks a share of every hit.",        priceMin: 100, priceMax: 140, rarity: "legendary" },
   // Max HP (cap removed).
-  { effect: "hp_common",  kanji: "命", name: "Iron Resolve",     desc: "+10% max HP and heals fully.",                     priceMin: 32, priceMax: 48, rarity: "common"    },
+  { effect: "hp_common",  kanji: "命", name: "Iron Resolve",     desc: "+6% max HP and heals fully.",                     priceMin: 32, priceMax: 48, rarity: "common"    },
   { effect: "hp_rare",    kanji: "命", name: "Steel Heart",      desc: "+15 max HP and heals 15.",                         priceMin: 48, priceMax: 65, rarity: "rare"      },
   { effect: "hp_leg",     kanji: "命", name: "Oni's Vigor",      desc: "+40 max HP and heals 40.",                         priceMin: 95, priceMax: 130, rarity: "legendary" },
   // ===== Per-weapon damage upgrades (only shown when equipped) =====
   ...buildWeaponDamagePool(),
   // ===== Phase A — 12 new purchasable perks =====
-  { effect: "perk_crimson_blade",   kanji: "紅", name: "Crimson Blade",      desc: "+15% damage with all weapons.",   priceMin: 35, priceMax: 50, rarity: "rare"      },
+  { effect: "perk_crimson_blade",   kanji: "紅", name: "Crimson Blade",      desc: "+10% damage with all weapons.",   priceMin: 35, priceMax: 50, rarity: "rare"      },
   { effect: "perk_stone_stance",    kanji: "岩", name: "Stone Stance",       desc: "−10% damage taken and +10% damage.",     priceMin: 40, priceMax: 55, rarity: "rare"      },
-  { effect: "perk_ghost_steps",     kanji: "歩", name: "Ghost Steps",        desc: "+10% movement speed.",               priceMin: 30, priceMax: 45, rarity: "common"    },
+  { effect: "perk_ghost_steps",     kanji: "歩", name: "Ghost Steps",        desc: "+5% movement speed.",               priceMin: 30, priceMax: 45, rarity: "common"    },
   { effect: "perk_void_shard",      kanji: "虚", name: "Void Shard",         desc: "+0.25s of invulnerability after you're hit.",   priceMin: 45, priceMax: 65, rarity: "rare"      },
   { effect: "perk_hungry_blade",    kanji: "飢", name: "Hungry Blade",       desc: "Heal 1 HP on every kill (max 6 HP per kill).",                                priceMin: 50, priceMax: 70, rarity: "rare"      },
-  { effect: "perk_war_paint",       kanji: "戦", name: "War Paint",          desc: "+8% damage with all weapons.",           priceMin: 35, priceMax: 50, rarity: "common"    },
+  { effect: "perk_war_paint",       kanji: "戦", name: "War Paint",          desc: "+5% damage with all weapons.",           priceMin: 35, priceMax: 50, rarity: "common"    },
   { effect: "perk_cursed_eye",      kanji: "眼", name: "Cursed Eye",         desc: "+5% critical chance and +5% damage.",        priceMin: 40, priceMax: 55, rarity: "rare"      },
   { effect: "perk_raging_current",  kanji: "波", name: "Raging Current",     desc: "+10% attack speed with the katana.",                        priceMin: 55, priceMax: 75, rarity: "legendary" },
   { effect: "perk_twin_fang",       kanji: "牙", name: "Twin Fang",          desc: "+25% damage with every weapon except the katana.",                    priceMin: 60, priceMax: 85, rarity: "legendary" },
   { effect: "perk_bone_armor",      kanji: "骨", name: "Bone Armor",         desc: "Survive one fatal blow each wave, at half HP.",      priceMin: 70, priceMax: 95, rarity: "legendary" },
   { effect: "perk_drifting_leaves", kanji: "葉", name: "Drifting Leaves",    desc: "+20% knockback and +5% movement speed.",        priceMin: 45, priceMax: 60, rarity: "rare"      },
-  { effect: "perk_soul_collector",  kanji: "魂", name: "Soul Collector",     desc: "+30 max HP and heal 30 HP.",        priceMin: 50, priceMax: 70, rarity: "rare"      },
+  { effect: "perk_soul_collector",  kanji: "魂", name: "Soul Collector",     desc: "+20 max HP and heal 20 HP.",        priceMin: 50, priceMax: 70, rarity: "rare"      },
   // ===== Build-direction items =====
   { effect: "shop_lucky_coin",    kanji: "運", name: "Lucky Coin",      desc: "+20% coins from kills.",                                     priceMin: 40, priceMax: 55, rarity: "rare"      },
   { effect: "shop_bounty",        kanji: "賞", name: "Bounty Ledger",   desc: "Elite kills give +4 coins and heal 2 HP.",                   priceMin: 45, priceMax: 60, rarity: "rare"      },
-  { effect: "shop_spirit_bell",   kanji: "鈴", name: "Spirit Bell",     desc: "Ultimate charges 25% faster.",                               priceMin: 30, priceMax: 42, rarity: "common"    },
-  { effect: "shop_battle_drum",   kanji: "鼓", name: "Battle Drum",     desc: "Ability cooldowns recover 20% faster.",                      priceMin: 45, priceMax: 62, rarity: "rare"      },
-  { effect: "shop_dash_talisman", kanji: "符", name: "Dash Talisman",   desc: "Dash recharges 15% faster.",                                 priceMin: 28, priceMax: 40, rarity: "common"    },
-  { effect: "shop_gamble",        kanji: "賭", name: "Ronin's Gamble",  desc: "+30% damage, but −15% max HP.",                              priceMin: 45, priceMax: 60, rarity: "rare"      },
+  { effect: "shop_spirit_bell",   kanji: "鈴", name: "Spirit Bell",     desc: "Ultimate charges 12% faster.",                               priceMin: 30, priceMax: 42, rarity: "common"    },
+  { effect: "shop_battle_drum",   kanji: "鼓", name: "Battle Drum",     desc: "Ability cooldowns recover 15% faster.",                      priceMin: 45, priceMax: 62, rarity: "rare"      },
+  { effect: "shop_dash_talisman", kanji: "符", name: "Dash Talisman",   desc: "Dash recharges 10% faster.",                                 priceMin: 28, priceMax: 40, rarity: "common"    },
+  { effect: "shop_gamble",        kanji: "賭", name: "Ronin's Gamble",  desc: "+18% damage, but −12% max HP.",                              priceMin: 45, priceMax: 60, rarity: "rare"      },
   { effect: "shop_oni_mask",      kanji: "面", name: "Oni Mask",        desc: "Below 30% HP: +50% damage and −20% damage taken.",           priceMin: 90, priceMax: 120, rarity: "legendary" },
-  { effect: "shop_fire_charm",    kanji: "火", name: "Fire Charm",      desc: "+10% chance to ignite on hit.",                              priceMin: 30, priceMax: 42, rarity: "common"    },
+  { effect: "shop_fire_charm",    kanji: "火", name: "Fire Charm",      desc: "+6% chance to ignite on hit.",                              priceMin: 30, priceMax: 42, rarity: "common"    },
   { effect: "shop_thunder_charm", kanji: "雷", name: "Thunder Charm",   desc: "+8% chance to call lightning on hit.",                       priceMin: 42, priceMax: 58, rarity: "rare"      },
   { effect: "shop_fortune",       kanji: "籤", name: "Fortune Stick",   desc: "+2 level-up rerolls and +1 banish.",                          priceMin: 26, priceMax: 38, rarity: "common"    },
   { effect: "shop_reaper_bell",   kanji: "冥", name: "Reaper's Bell",   desc: "Every 10th kill releases a soul shockwave (stacks faster).", priceMin: 95, priceMax: 125, rarity: "legendary" },
@@ -948,21 +948,21 @@ function buildWeaponDamagePool(): PoolEntry[] {
       effect: `dmg_${wid}_common`,
       kanji: def.kanji,
       name: `${def.name} Mastery`,
-      desc: `+12% ${def.name} damage.`,
+      desc: `+10% ${def.name} damage.`,
       priceMin: 28, priceMax: 42, rarity: "common",
     });
     out.push({
       effect: `dmg_${wid}_rare`,
       kanji: def.kanji,
       name: `${def.name} Honed`,
-      desc: `+30% ${def.name} damage.`,
+      desc: `+20% ${def.name} damage.`,
       priceMin: 50, priceMax: 70, rarity: "rare",
     });
     out.push({
       effect: `dmg_${wid}_leg`,
       kanji: def.kanji,
       name: `${def.name} Forged`,
-      desc: `+75% ${def.name} damage.`,
+      desc: `+40% ${def.name} damage.`,
       priceMin: 95, priceMax: 130, rarity: "legendary",
     });
   }
@@ -4462,9 +4462,9 @@ export class GhostGame {
   shopPreview(effect: string): string | null {
     const P = this.perks;
     const pc = (v: number) => `${Math.round(v * 100)}%`;
-    const def: Record<string, number> = { def_rare: 2, def_leg: 5 };
+    const def: Record<string, number> = { def_rare: 2, def_leg: 4 };
     const dex: Record<string, number> = { dex_common: 3, dex_rare: 6, dex_leg: 12 };
-    const spd: Record<string, number> = { spd_common: 1.05, spd_rare: 1.08, spd_leg: 1.15, perk_ghost_steps: 1.10, perk_drifting_leaves: 1.05 };
+    const spd: Record<string, number> = { spd_common: 1.05, spd_rare: 1.08, spd_leg: 1.15, perk_ghost_steps: 1.05, perk_drifting_leaves: 1.05 };
     const crit: Record<string, number> = { crit: 0.08, perk_cursed_eye: 0.05 };
     if (effect in def) return `Blocked ${pc(defenseReduction(P.defense))} → ${pc(defenseReduction(P.defense + def[effect]))}`;
     if (effect in dex) {
@@ -14869,7 +14869,9 @@ export class GhostGame {
         .filter(it => !taken.has(it.effect)).slice(0, n);
       if (fresh.length >= n) break;
     }
-    const offer = [...locks, ...fresh.map(it => ({ ...it, price: Math.round(it.price * infl) }))];
+    // 7.4: legendaries also get pricier each wave on top of normal inflation.
+    const legMul = 1 + SHOP_RARITY.legPricePerWave * Math.max(0, this.stats.wave - 1);
+    const offer = [...locks, ...fresh.map(it => ({ ...it, price: Math.round(it.price * infl * (it.rarity === "legendary" ? legMul : 1)) }))];
     // Bad-luck protection: count rolls without a fresh legendary; reset when one appears.
     if (this.stats.wave >= SHOP_RARITY.legFromWave) {
       this.perks.shopPity = fresh.some(it => it.rarity === "legendary") ? 0 : (this.perks.shopPity ?? 0) + 1;
@@ -15024,7 +15026,7 @@ export class GhostGame {
         break;
       // ===== Stats rework — rarity-tiered upgrades =====
       case "hp_common":
-        this.perks.maxHpBonus = Math.round(this.perks.maxHpBonus + (100 + this.perks.maxHpBonus) * 0.10);
+        this.perks.maxHpBonus = Math.round(this.perks.maxHpBonus + (100 + this.perks.maxHpBonus) * 0.06);   // 7.4: was 10%
         p.maxHp = 100 + this.perks.maxHpBonus;
         p.hp = p.maxHp;
         break;
@@ -15039,13 +15041,13 @@ export class GhostGame {
         this.healPlayer(40);
         break;
       case "dmg_katana_common":
-        this.addKatanaDamagePct(0.12);
+        this.addKatanaDamagePct(0.07);   // 7.4: was 12%
         break;
       case "dmg_katana_rare":
-        this.addKatanaDamagePct(0.30);
+        this.addKatanaDamagePct(0.14);   // 7.4: was 30%
         break;
       case "dmg_katana_leg":
-        this.addKatanaDamagePct(0.75);
+        this.addKatanaDamagePct(0.28);   // 7.4: was 75%
         break;
       case "dex_common":
         this.perks.dexterity += 3;
@@ -15069,13 +15071,13 @@ export class GhostGame {
         this.perks.defense += 2;
         break;
       case "def_leg":
-        this.perks.defense += 5;
+        this.perks.defense += 4;   // 7.4: was 5
         break;
       case "crit":
         this.perks.critChance = this.perks.critChance + 0.08;
         break;
       case "ult_charge":
-        this.addUltCharge(this.stats.ultMax * 0.5);
+        this.addUltCharge(this.stats.ultMax * 0.35);   // 7.4: was 50%
         break;
       case "ammo_refill":
         for (let s = 0; s < this.stats.secondaryIds.length; s++) {
@@ -15097,7 +15099,7 @@ export class GhostGame {
         this.perks.secondaryRegenMul *= 0.75;
         break;
       case "secondary_dmg_global":
-        this.perks.secondaryDmgMul += 0.15;
+        this.perks.secondaryDmgMul += 0.12;   // 7.4: was 15%
         break;
       case "lifesteal":
         this.perks.healOnKill += 1;
@@ -15107,13 +15109,13 @@ export class GhostGame {
         break;
       case "shop_lucky_coin": this.perks.monMul += 0.2; break;
       case "shop_bounty": this.perks.eliteBounty += 4; break;
-      case "shop_spirit_bell": this.perks.ultChargeMul += 0.25; break;
-      case "shop_battle_drum": this.perks.abilityHaste += 0.2; break;
-      case "shop_dash_talisman": this.perks.dashCdMul *= 0.85; break;
-      case "shop_gamble": this.applyGlassCannon(1.3, 0.15); break;
+      case "shop_spirit_bell": this.perks.ultChargeMul += 0.12; break;   // 7.4: was 25%
+      case "shop_battle_drum": this.perks.abilityHaste += 0.15; break;   // 7.4: was 20%
+      case "shop_dash_talisman": this.perks.dashCdMul *= 0.90; break;   // 7.4: was 15%
+      case "shop_gamble": this.applyGlassCannon(1.18, 0.12); break;   // 7.4: was +30% / −15%
       case "shop_oni_mask": this.perks.lastStand = true; break;
       case "shop_fire_charm":
-        this.perks.fireChance += 0.10;
+        this.perks.fireChance += 0.06;   // 7.4: was 10%
         this.perks.fireDmgMul = Math.max(this.perks.fireDmgMul, 1);
         break;
       case "shop_thunder_charm": this.perks.lightningChance += 0.08; break;
@@ -15125,7 +15127,7 @@ export class GhostGame {
       // simplified implementations preserve the spirit (offense /
       // defense / utility) until full mechanics ship.
       case "perk_crimson_blade":
-        this.perks.classDamageMul += 0.15;
+        this.perks.classDamageMul += 0.10;   // 7.4: was 15%
         this.flash("Crimson Blade");
         break;
       case "perk_stone_stance":
@@ -15136,7 +15138,7 @@ export class GhostGame {
         this.flash("Stone Stance");
         break;
       case "perk_ghost_steps":
-        this.perks.speedMul *= 1.10;
+        this.perks.speedMul *= 1.05;   // 7.4: was 10% (more than the rare boots)
         this.flash("Ghost Steps");
         break;
       case "perk_void_shard":
@@ -15148,7 +15150,7 @@ export class GhostGame {
         this.flash("Hungry Blade");
         break;
       case "perk_war_paint":
-        this.perks.classDamageMul += 0.08;
+        this.perks.classDamageMul += 0.05;   // 7.4: was 8%
         this.flash("War Paint");
         break;
       case "perk_cursed_eye":
@@ -15178,10 +15180,10 @@ export class GhostGame {
       case "perk_soul_collector": {
         // "+2 max HP per 25 kills" → grant a flat +30 maxHP burst now,
         // clamped to the global HP cap.
-        this.perks.maxHpBonus = Math.min(MAX_HP_CAP - 100, this.perks.maxHpBonus + 30);
+        this.perks.maxHpBonus = Math.min(MAX_HP_CAP - 100, this.perks.maxHpBonus + 20);   // 7.4: was 30
         if (this.player) {
           this.player.maxHp = Math.min(MAX_HP_CAP, 100 + this.perks.maxHpBonus);
-          this.healPlayer(30);
+          this.healPlayer(20);
         }
         this.flash("Soul Collector");
         break;
@@ -15198,7 +15200,7 @@ export class GhostGame {
           // Percent of the weapon's current base damage, added on the bonus channel.
           const def = SECONDARIES[wid];
           const base = this.baseKatanaDamage * def.damageMul * def.dmgScale;
-          const pct = tier === "common" ? 0.12 : tier === "rare" ? 0.30 : 0.75;
+          const pct = tier === "common" ? 0.10 : tier === "rare" ? 0.20 : 0.40;   // 7.4: was 12/30/75%
           this.perks.weaponDamageBonus[wid] = cur + base * pct;
           this.flash(`${SECONDARIES[wid].name} +dmg`);
           break;
