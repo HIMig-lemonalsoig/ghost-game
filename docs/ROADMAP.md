@@ -202,7 +202,7 @@ Changes beyond the plan:
 
 ---
 
-## Phase 7: Data-driven balance pass
+## Phase 7: Data-driven balance pass ✅ done (7.0–7.10, 2026-11-26)
 
 Use the tracking from Phase 1 after some real play (yours and your friends'):
 
@@ -243,7 +243,7 @@ Research so far (R1 ult measurements, R8 other games) points to these changes, i
 |---|---|---|---|
 | 7.0 ✅ | **Fix what's broken first:** check Raijin's and Tengu's ults (nothing visible, nothing hit), Kensei's, Tetsubo's and Ashigaru's (did ~nothing to grouped foes), and the end-screen damage labels ("Class powers" too big, shares over 100%). | Tuning broken things gives wrong answers (R1, R7). | Every ult deals its intended effect, and the damage breakdown adds up to 100%. |
 | 7.9 ✅ | **Smooth the wave-5 boss wall.** Gentler first boss (or a warm-up mini-boss at wave 3), with later boss waves stepping up evenly. | 38 of 75 bot runs died on wave 5. Waves 1–4 are trivial, then difficulty jumps. | The bot's wave-5 death rate drops to about 15–25% for mid-tier classes. |
-| 7.10 | **Ult visual pass:** shrink or remove the name banner (it hides the first ~1.2 s and enemy warnings), give power-up ults a clear look (Berserker, Shinobi, Yamabushi, Kagebushi, Kabuki, Tengu), match looks to power (Tetsubo and Yuki-onna look huge but are weak; Kunoichi looks strongest but is mid; Tsuchigumo and Kitsune look medium but are the strongest), and tone down blinding effects (Onmyoji's white blob, Kunoichi's storm). | R7b scores; League rule that visual weight should match gameplay weight. | Re-run the screenshot review: every ult scores at least 3 on Readable and Clear. |
+| 7.10 ✅ | **Ult visual pass:** shrink or remove the name banner (it hides the first ~1.2 s and enemy warnings), give power-up ults a clear look (Berserker, Shinobi, Yamabushi, Kagebushi, Kabuki, Tengu), match looks to power (Tetsubo and Yuki-onna look huge but are weak; Kunoichi looks strongest but is mid; Tsuchigumo and Kitsune look medium but are the strongest), and tone down blinding effects (Onmyoji's white blob, Kunoichi's storm). | R7b scores; League rule that visual weight should match gameplay weight. | Re-run the screenshot review: every ult scores at least 3 on Readable and Clear. |
 
 **7.0 results (done 2026-11-26):**
 - **The five "do-nothing" ults are not broken.** Measured properly with enemies in their real hit area:
@@ -398,6 +398,14 @@ Research so far (R1 ult measurements, R8 other games) points to these changes, i
 
 - **What's left is mostly the bot.** It reaches the boss at full HP but circles it at sword range and doesn't learn its patterns. A person backs off and dashes through the glows. Judge the rest from real play (R6 data or your own runs), not by weakening the boss further.
 - Not measured yet: whether later boss fights (waves 10/15/20) still feel too long (see the 7.6 note). If they do, raise the ult boss cap (12% → 15%) in `BOSS_CAST_CAPS`.
+
+**7.10 results (done 2026-11-26):**
+- **Ult name banner:** now a slim strip near the top for 0.95 s (was a big diagonal band through the middle plus black letterbox bars for about 1.2 s), so the fight and enemy warnings stay visible.
+- **Power-up ults** (Berserker, Shinobi, Kagebushi, Kabuki, Hatamoto, Yuki-onna, Yamabushi, Tengu) and Raijin's charged weapon get a pulsing aura in the class color. Empowered hits throw class-colored sparks and show their damage number in that color.
+- **No more white blobs:** during ult ticks each enemy shows at most one damage number every 0.3 s and only a soft hit flash. Kunoichi's storm draws fewer, dimmer slashes (every 0.06 s instead of 0.035 s).
+- **Warnings stay visible:** while any ult is running, enemies winding up an attack show a "!" (the colorblind-mode marker).
+- Checked by screenshots: Kensei, Berserker, Shinobi, Kabuki, Raijin, Tengu, Onmyoji and Kunoichi at 0.4 s and 1.5 s.
+- Looks vs. power mostly sorted itself out with 7.5: Tetsubo and Yuki-onna are now in the power band, so their big visuals fit.
 
 **Options to discuss before building** (from R8 round 2 in `docs/BALANCE_RESEARCH.md`):
 - **7.6:** a simple minimum time between ults, *or* the Hades approach: charge from damage dealt and taken instead of kills, partly reset between waves, and faster charging as a perk you choose.

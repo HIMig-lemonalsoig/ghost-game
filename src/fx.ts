@@ -174,7 +174,7 @@ export class Fx {
 
   // Quick title banner, used when cutscenes are turned off.
   ultimate(_x: number, _y: number, kanji: string, name: string, hue: number, _follow?: Pt) {
-    this.cine = { kanji, name, hue, t: 0, dur: 1.15 };
+    this.cine = { kanji, name, hue, t: 0, dur: 0.95 };   // 7.10: shorter
   }
 
   abilityCast(x: number, y: number, kanji: string, hue: number, follow?: Pt) {
@@ -460,15 +460,11 @@ export class Fx {
     const outT = p > 0.75 ? (p - 0.75) / 0.25 : 0;
     const vis = inT * (1 - outT);
     ctx.save();
-    // Letterbox bars
-    const bar = H * 0.09 * vis;
-    ctx.fillStyle = "rgba(0,0,0,0.92)";
-    ctx.fillRect(0, 0, W, bar);
-    ctx.fillRect(0, H - bar, W, bar);
-    // Diagonal brush band
-    const bandH = Math.min(220, H * 0.28);
+    // 7.10: a compact strip near the top of the screen instead of a big band
+    // across the middle with letterbox bars, so enemy attacks stay visible.
+    const bandH = Math.min(78, H * 0.1);
     const sweep = easeOut(Math.min(1, p / 0.22));
-    ctx.translate(W / 2, H / 2);
+    ctx.translate(W / 2, Math.min(H * 0.2, 150));
     ctx.rotate(-0.12);
     const bw = W * 1.4 * sweep;
     const g = ctx.createLinearGradient(-W * 0.7, 0, -W * 0.7 + bw, 0);
@@ -495,14 +491,14 @@ export class Fx {
     // Kanji stamp
     const kp = Math.min(1, Math.max(0, (p - 0.08) / 0.14));
     const ks = 1.8 - easeOut(kp) * 0.8;
-    const size = Math.min(150, H * 0.22);
+    const size = Math.min(64, H * 0.09);
     ctx.globalAlpha = kp * (1 - outT);
     ctx.font = `900 ${size * ks}px "Hiragino Mincho ProN","Yu Mincho","Noto Serif JP",serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.lineWidth = 10;
     ctx.strokeStyle = "rgba(0,0,0,.8)";
-    const kx = -Math.min(260, W * 0.2);
+    const kx = -Math.min(150, W * 0.14);
     ctx.strokeText(c.kanji, kx, 0);
     ctx.fillStyle = hsla(c.hue, 90, 72, 1);
     ctx.fillText(c.kanji, kx, 0);
@@ -510,7 +506,7 @@ export class Fx {
     const np = Math.min(1, Math.max(0, (p - 0.16) / 0.15));
     ctx.globalAlpha = np * (1 - outT);
     ctx.textAlign = "left";
-    ctx.font = `700 ${Math.min(40, H * 0.055)}px "Hiragino Mincho ProN","Yu Mincho",Georgia,serif`;
+    ctx.font = `700 ${Math.min(26, H * 0.04)}px "Hiragino Mincho ProN","Yu Mincho",Georgia,serif`;
     ctx.lineWidth = 6;
     const nx = kx + size * 0.75 + (1 - easeOut(np)) * 40;
     ctx.strokeText(c.name.toUpperCase(), nx, 4);
@@ -518,7 +514,7 @@ export class Fx {
     ctx.fillText(c.name.toUpperCase(), nx, 4);
     ctx.font = `600 ${Math.min(13, H * 0.02)}px system-ui, sans-serif`;
     ctx.fillStyle = hsla(c.hue, 80, 70, 1);
-    ctx.fillText("ULTIMATE", nx + 2, -Math.min(30, H * 0.045));
+    ctx.fillText("ULTIMATE", nx + 2, -Math.min(20, H * 0.03));
     ctx.restore();
   }
 }

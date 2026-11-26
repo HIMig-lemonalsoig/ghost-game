@@ -2694,6 +2694,8 @@ interface Hazard {
 }
 
 interface Enemy {
+  /** 7.10: last time an ult tick showed a damage number on this enemy. */
+  lastUltNum?: number;
   /** BOSS CAP: damage taken from the current cast of each capped source. */
   castCap?: Record<string, { cast: number; dealt: number; shown?: boolean }>;
   id: number;
@@ -4835,12 +4837,12 @@ export class GhostGame {
     if (t >= PD.split && t < PD.flurryEnd) {
       // A storm of slashes inside the zone.
       ph.slashAcc += dt;
-      while (ph.slashAcc >= 0.035) {
-        ph.slashAcc -= 0.035;
+      while (ph.slashAcc >= 0.06) {   // 7.10: was every 0.035s
+        ph.slashAcc -= 0.06;
         const a = Math.random() * Math.PI * 2, r = Math.random() * PD.zoneR * 0.75;
         this.fx.slash(ph.cx + Math.cos(a) * r, ph.cy + Math.sin(a) * r, Math.random() * Math.PI * 2, 46 + Math.random() * 40,
           Math.PI * (0.5 + Math.random() * 0.4), Math.random() < 0.5 ? 1 : -1,
-          { hue: 315 + Math.random() * 30, sat: 80, light: 85, width: 5 + Math.random() * 4, life: 0.18 });
+          { hue: 315 + Math.random() * 30, sat: 80, light: 72, width: 4 + Math.random() * 3, life: 0.16 });
       }
       // Damage + a gentle pull that keeps foes inside the storm.
       ph.hitAcc += dt;
@@ -7452,12 +7454,19 @@ export class GhostGame {
     if (dmg > this.run.biggestHit) this.run.biggestHit = dmg;
     if (!this.evoNested && !this.raijinZapping) this.onEvoHit(e, weaponSource, dmg, isCrit);
     // Floating damage number above the enemy.
-    const shown = fmtNum(dmg);
-    this.spawnFloatText(e.pos, isCrit ? `${shown}!` : `${shown}`, {
-      color: isCrit ? "hsl(42 100% 65%)" : "hsl(36 30% 92%)",
-      size: isCrit ? 18 : 13,
-    });
-    e.hitFlash = 1;
+    // 7.10: rapid ult ticks show at most one number per enemy every 0.3s and a
+    // softer white flash, so packs inside a storm don't turn into a white blob.
+    const ultTick = label === "Ultimate";
+    if (!ultTick || this.elapsed - (e.lastUltNum ?? -9) > 0.3) {
+      if (ultTick) e.lastUltNum = this.elapsed;
+      const shown = fmtNum(dmg);
+      this.spawnFloatText(e.pos, isCrit ? `${shown}!` : `${shown}`, {
+        color: empower > 0 ? `hsl(${this.ultAuraHue()} 90% 72%)` : isCrit ? "hsl(42 100% 65%)" : "hsl(36 30% 92%)",
+        size: isCrit ? 18 : 13,
+      });
+    }
+    e.hitFlash = ultTick ? Math.max(e.hitFlash, 0.45) : 1;
+    if (empower > 0 && Math.random() < 0.5) this.fx.burst(e.pos.x, e.pos.y, { count: 3, hue: this.ultAuraHue(), light: 72, speed: 200, life: 0.25 });   // 7.10: empowered hit sparks
     // ===== Phase 2 — Hitstun =====
     // Look up base hitstun from the weapon source (defaults to katana value
     // if unspecified). Apply damage scaling + enemy resist + player mul.
@@ -7902,6 +7911,19 @@ export class GhostGame {
   private drawA11yCues() {
     const ctx = this.ctx;
     const cb = this.a11y.colorblind > 0;
+    // 7.10: while an ult is running, warnings get the "!" marker too, so big
+    // effects never hide an incoming attack.
+    if (!cb && this.stats.ultActive) {
+      ctx.save();
+      ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = "900 22px system-ui, sans-serif";
+      for (const e of this.enemies) {
+        if (e.state === "dead" || !(e.attackTelegraph > 0)) continue;
+        const y = e.pos.y - e.size - 30;
+        ctx.lineWidth = 4; ctx.strokeStyle = "#000"; ctx.strokeText("!", e.pos.x, y);
+        ctx.fillStyle = "#fff"; ctx.fillText("!", e.pos.x, y);
+      }
+      ctx.restore();
+    }
     if (cb) {
       ctx.save();
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
@@ -9606,6 +9628,7 @@ export class GhostGame {
     if (this.devShowHitboxes) this.drawDevHitboxes();
 
     this.drawPickupRadius();
+    this.drawUltAura();
     this.drawPlayer();
     this.drawA11yCues();
     this.drawPhantomDance();
@@ -12873,6 +12896,30 @@ export class GhostGame {
     this.ultHitFlag = false;
     return v;
   }
+  /** 7.10: the class's accent hue, used for its ult aura and empowered hits. */
+  ultAuraHue(): number { return hueOf(getClass(this.stats.classId).accent); }
+  /** 7.10: power-up ults (and Raijin's charged weapon) get a clear, pulsing aura. */
+  private drawUltAura() {
+    const powered = this.empowerBase() > 0 || this.ultThunderTimer > 0;
+    if (!powered || !this.player) return;
+    const ctx = this.ctx, p = this.player.pos, h = this.ultAuraHue(), t = this.elapsed;
+    const r = BASE.PLAYER_RADIUS + 14 + Math.sin(t * 8) * 3;
+    ctx.save();
+    const g = ctx.createRadialGradient(p.x, p.y, BASE.PLAYER_RADIUS * 0.6, p.x, p.y, r + 16);
+    g.addColorStop(0, `hsla(${h}, 90%, 60%, 0.0)`);
+    g.addColorStop(0.55, `hsla(${h}, 90%, 60%, 0.28)`);
+    g.addColorStop(1, `hsla(${h}, 90%, 60%, 0)`);
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(p.x, p.y, r + 16, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = `hsla(${h}, 95%, 72%, ${0.55 + Math.sin(t * 8) * 0.25})`;
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([10, 7]); ctx.lineDashOffset = -t * 40;
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+    if (Math.random() < 0.35) this.fx.burst(p.x + (Math.random() - 0.5) * 30, p.y + (Math.random() - 0.5) * 30, { count: 1, hue: h, light: 70, speed: 60, life: 0.4, grav: -120 });
+  }
+
   /** 7.5: bonus-damage base for weapon hits while this class's power-up ult is running (0 = none). */
   private empowerBase(): number {
     const k = ULT_EMPOWER[this.stats.classId];
