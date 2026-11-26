@@ -3,7 +3,7 @@ import { Fx, hueOf } from "./fx";
 import { Arena } from "./arena";
 import { ULT_STYLES, poseFrame, drawMotif, STRIKE } from "./ultimates";
 import type { UltMotif } from "./ultimates";
-import { defenseReduction, dexAttackSpeed, critFromPoints, moveSpeedFromMul, soft, softStat, SOFT_STATS, WEAPON_FLAT, ULT_WAVE_SCALE, BOSS_CAST_CAPS } from "./content/curves";
+import { defenseReduction, dexAttackSpeed, critFromPoints, moveSpeedFromMul, soft, softStat, SOFT_STATS, WEAPON_FLAT, ULT_WAVE_SCALE, BOSS_CAST_CAPS, SHOP_RARITY, shopLegChance } from "./content/curves";
 import { AFFIXES, ELITE, ENEMY_LABEL, rollAffixes } from "./content/elites";
 import { hashStr, mulberry32 } from "./rng";
 import { OMENS, OMEN_BY_ID, omenBefore, ARENA_SHRINES, ARENA_SHRINE_BY_ID, ARENA_SHRINE_CHANCE, ARENA_SHRINE_HOLD, ARENA_SHRINE_R } from "./content/choices";
@@ -993,6 +993,7 @@ export const rollShopOffer = (
   count = 6,
   equippedSecondaries: SecondaryId[] = [],
   blocked: Set<string> = new Set(),
+  odds?: { legendary: number; rare: number },   // SHOP RARITY (7.3): per-slot chances; omitted = uniform
 ): ShopItem[] => {
   const equippedSet = new Set(equippedSecondaries);
   const pool = SHOP_POOL.filter((entry) => {
@@ -1005,7 +1006,18 @@ export const rollShopOffer = (
   });
   const out: ShopItem[] = [];
   for (let i = 0; i < count && pool.length > 0; i++) {
-    const idx = Math.floor(Math.random() * pool.length);
+    let idx = Math.floor(Math.random() * pool.length);
+    if (odds) {
+      // Roll the rarity first, then an item of that rarity (falling back to the
+      // nearest rarity that still has items left).
+      const r = Math.random();
+      const want: ShopRarity = r < odds.legendary ? "legendary" : r < odds.legendary + odds.rare ? "rare" : "common";
+      const order: ShopRarity[] = want === "legendary" ? ["legendary", "rare", "common"] : want === "rare" ? ["rare", "common", "legendary"] : ["common", "rare", "legendary"];
+      for (const rar of order) {
+        const ids = pool.map((e, k) => (e.rarity === rar ? k : -1)).filter(k => k >= 0);
+        if (ids.length) { idx = ids[Math.floor(Math.random() * ids.length)]; break; }
+      }
+    }
     const [entry] = pool.splice(idx, 1);
     out.push(rollOne(entry));
   }
@@ -3138,6 +3150,7 @@ interface Perks {
   banishes: number;         // level-up banishes left this run
   banished: string[];       // perk / ability ids removed from the pool this run
   shopLocks: ShopItem[];    // SHOPLOCK: up to 2 shop items held for later
+  shopPity: number;         // SHOP RARITY: rolls in a row without a legendary
   softRaw: Record<string, { base: number; raw: number; eff: number }>;   // SOFTCAP raw totals behind curved stats
   weaponMastery: Record<string, number>;  // damage upgrades bought per weapon (evolutions)
   shopBought: string[];     // shop effects bought this run (evolution catalysts)
@@ -3257,6 +3270,7 @@ const defaultPerks = (): Perks => ({
   banishes: 2,
   banished: [],
   shopLocks: [],
+  shopPity: 0,
   softRaw: {},
   weaponMastery: {},
   shopBought: [],
@@ -14851,11 +14865,22 @@ export class GhostGame {
     const taken = new Set(locks.map(l => l.effect));
     let fresh: ShopItem[] = [];
     for (let tries = 0; tries < 6; tries++) {
-      fresh = this.dedupeOffer(rollShopOffer(n + locks.length, equipped, this.maxedShopEffects()))
+      fresh = this.dedupeOffer(rollShopOffer(n + locks.length, equipped, this.maxedShopEffects(), this.shopOdds()))
         .filter(it => !taken.has(it.effect)).slice(0, n);
       if (fresh.length >= n) break;
     }
-    return [...locks, ...fresh.map(it => ({ ...it, price: Math.round(it.price * infl) }))];
+    const offer = [...locks, ...fresh.map(it => ({ ...it, price: Math.round(it.price * infl) }))];
+    // Bad-luck protection: count rolls without a fresh legendary; reset when one appears.
+    if (this.stats.wave >= SHOP_RARITY.legFromWave) {
+      this.perks.shopPity = fresh.some(it => it.rarity === "legendary") ? 0 : (this.perks.shopPity ?? 0) + 1;
+    }
+    return offer;
+  }
+
+  /** SHOP RARITY (7.3): per-slot odds for this wave, including bad-luck protection. */
+  shopOdds() {
+    const legendary = Math.min(0.5, shopLegChance(this.stats.wave, this.perks.shopPity ?? 0));
+    return { legendary, rare: SHOP_RARITY.rare };
   }
 
   /** Lock or unlock a shop card. Returns false when the lock limit is reached. */

@@ -50,6 +50,25 @@ export const SOFT_STATS: Record<string, { mode: "mul" | "add"; k: number; max: n
 export const ULT_WAVE_SCALE = 0.12;
 
 /**
+ * Shop rarity (Phase 7.3), Brotato-style. Each slot rolls a rarity first, then
+ * an item of that rarity. Legendaries can't appear early, then their chance
+ * grows a little each wave up to a cap. Slay-the-Spire-style bad-luck
+ * protection: every shop roll without a legendary adds a bit until one shows.
+ */
+export const SHOP_RARITY = {
+  rare: 0.28,            // chance per slot of a rare
+  legFromWave: 4,        // no legendaries before this wave
+  legBase: 0.02,         // legendary chance per slot at legFromWave
+  legPerWave: 0.004,     // +0.4% per wave after that
+  legMax: 0.08,          // cap (reached around wave 19)
+  pityStep: 0.005,       // +0.5% per slot for each roll in a row without a legendary
+};
+/** Legendary chance per slot for this wave and pity count. */
+export const shopLegChance = (wave: number, pity: number) =>
+  wave < SHOP_RARITY.legFromWave ? 0
+    : Math.min(SHOP_RARITY.legMax, SHOP_RARITY.legBase + (wave - SHOP_RARITY.legFromWave) * SHOP_RARITY.legPerWave) + pity * SHOP_RARITY.pityStep;
+
+/**
  * Boss caps (Phase 7.2): the most one cast of a source can take off a single
  * boss, as a share of its max HP. Stops ults and Soul Rend from deleting bosses
  * (like RAID's 5–10% caps and Isaac's big-hit cap). Extra damage is ignored.

@@ -225,7 +225,7 @@ Research so far (R1 ult measurements, R8 other games) points to these changes, i
 |---|---|---|---|
 | 7.1 ✅ | **Ults scale with you, not the wave.** Ult damage comes from your own damage and ult upgrades (like Risk of Rain 2 skills), with only a small wave bonus. | Today every damage ult gets +35% per wave automatically, so a no-upgrade character at wave 99 wipes crowds and builds barely matter (R1). | A no-upgrade ult at wave 50 clears about 30–40% of a pack; a strong build clears most of it. |
 | 7.2 ✅ | **Boss cap on ults.** One ult takes at most about 12% of a boss's HP. | Ults deleted wave-10 bosses (Miko, Kunoichi, Samurai 99–100%). Isaac and RAID cap big hits on bosses. | No single ult does more than 12% to any boss. |
-| 7.3 | **Shop rarity weighted Brotato-style.** About 65% common, 28% rare, legendary 0–2% early rising per wave to about 8%, plus Slay-the-Spire-style bad-luck protection. | Today picks are uniform, so about 21% of slots are legendary and rares beat commons. Other games: 1–8%. | Simulated shops match the target odds. |
+| 7.3 ✅ | **Shop rarity weighted Brotato-style.** About 65% common, 28% rare, legendary 0–2% early rising per wave to about 8%, plus Slay-the-Spire-style bad-luck protection. | Today picks are uniform, so about 21% of slots are legendary and rares beat commons. Other games: 1–8%. | Simulated shops match the target odds. |
 | 7.4 | **Smaller shop values, rising prices.** Each rarity is about 2× the one below (damage 6% / 12% / 25% instead of 12% / 30% / 75%). Legendary prices grow with the wave. | One shop legendary equals five level-up damage picks. | Shop items sit close to level-up perks in value per pick. |
 | 7.5 | **Even out the classes.** All ults within about ±30% of each other: weak damage ults up, Miko and Onmyoji down, power-up ults (Berserker, Shinobi, Kabuki, Kagebushi, Hatamoto) stronger, and the seven "does nothing" ults fixed or checked for bugs. | The spread is about 70× (Miko 68.8× vs. Kensei 0.9×). | R1 and R7 tables re-run: every class within the target band. |
 
@@ -284,6 +284,21 @@ Research so far (R1 ult measurements, R8 other games) points to these changes, i
   - Soul Rend takes 6% per cast from the Final Boss. Before, it took 40% of the boss's current HP, ×3 on a crit.
   - Normal enemies are unaffected (Soul Rend still takes 40%+).
 - Poison, burn and other effects applied by ult hits aren't capped. For example, Kunoichi's passive poison added about 6.5% on the wave-10 boss.
+
+**7.3 results (done 2026-11-26):**
+- Each shop slot rolls a rarity first, then an item of that rarity: **28% rare**, **no legendaries before wave 4**, then **2% rising 0.4% per wave to an 8% cap**, and the rest common.
+- **Bad-luck protection:** every shop roll without a legendary adds +0.5% per slot, and it resets when one appears. This is saved with the run.
+- Settings live in `SHOP_RARITY` in `src/content/curves.ts`.
+- Simulated with 3,000 shops per wave and 500 full runs:
+
+  | | Before | Now |
+  |---|---|---|
+  | Legendary per slot | 24% at every wave | 0% → 2% (wave 4) → 4.6% (wave 10) → 7.7% (wave 20) |
+  | Shops showing a legendary | 82% | 12% (wave 4) → 24% (wave 10) → 38% (wave 20) |
+  | Legendary-showing rolls per 25-wave run (out of 50) | about 41 | about 15 (3 by wave 10) |
+  | First legendary seen | wave 1 | about wave 6 |
+
+- Affording them is a separate step (7.4 prices and 7.7 coin income).
 
 **Options to discuss before building** (from R8 round 2 in `docs/BALANCE_RESEARCH.md`):
 - **7.6:** a simple minimum time between ults, *or* the Hades approach: charge from damage dealt and taken instead of kills, partly reset between waves, and faster charging as a perk you choose.
