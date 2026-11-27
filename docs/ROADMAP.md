@@ -612,3 +612,6 @@ Fix:
 - Orb volleys: 7 / 9 / 11 orbs (was 9 / 12 / 15), leave from the boss's edge and **start slow, then speed up** over 0.5 s. Kitsune's foxfire fan does the same and has fewer, wider-spaced orbs.
 - Boss charge (Raijin, Oni phase 3): each dash shows a **danger lane for 0.4 s**, aimed where you stood; step sideways.
 Bot check (60 s at melee range, simple dodging): Oni 0 hits, Gashadokuro 0, Nine-Tailed Witch 3, Thunder General 3. Without dodging the Thunder General still lands 22, so dodging is the skill.
+
+### Content expansion research (started 2026-11-27)
+See `docs/CONTENT_RESEARCH.md`: audit of current content, stat gaps (crit chance thin, crit damage / area / projectiles / luck / XP / pickup / frost missing), comparisons with Brotato, Vampire Survivors and Halls of Torment, and candidate perks, shop items, enemies and classes. Research steps C5a–C5f still to do before building.
