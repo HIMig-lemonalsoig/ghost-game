@@ -749,6 +749,78 @@ body.pad.playing { cursor: none; }
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor;
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); mask-composite: exclude; animation: beam-spin 5s linear infinite; opacity: 1; z-index: 2; }
 
+/* ═══════════ Class rack — garments on a bamboo rail ═══════════ */
+.rack-host { margin: 4px 0 18px; }
+.rack { position: relative; height: 318px; perspective: 1100px; outline: none; touch-action: pan-y; cursor: grab; overflow: hidden; border-radius: 18px;
+  background: radial-gradient(ellipse 34% 70% at 50% 62%, color-mix(in srgb, var(--rack-accent, #d6453f) 20%, transparent), transparent 70%),
+    linear-gradient(180deg, rgba(20,16,13,.0), rgba(20,16,13,.55)); user-select: none; -webkit-user-select: none; }
+.rack:active { cursor: grabbing; }
+.rack:focus-visible { box-shadow: inset 0 0 0 2px var(--gold); }
+.rack::after { content: ""; position: absolute; left: 8%; right: 8%; bottom: 14px; height: 18px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,.55), transparent 70%); }
+.rack-pole { position: absolute; top: 22px; left: 3%; right: 3%; height: 13px; border-radius: 7px; z-index: 0;
+  background: repeating-linear-gradient(90deg, transparent 0 132px, rgba(70,45,12,.75) 132px 135px, rgba(255,235,180,.25) 135px 137px, transparent 137px 140px),
+    linear-gradient(180deg, #e2cd8a, #b6984c 35%, #7f6427 75%, #5a4518);
+  box-shadow: 0 6px 14px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,245,210,.5); }
+.rack-cap { position: absolute; top: -5px; width: 20px; height: 23px; border-radius: 6px; background: linear-gradient(180deg, #4a2e1a, #2a180d); box-shadow: 0 4px 8px rgba(0,0,0,.6); }
+.rack-cap.l { left: -8px; } .rack-cap.r { right: -8px; }
+.rack-stage { position: absolute; left: 50%; top: 24px; width: 0; height: 100%; transform-style: preserve-3d; }
+.hanger { position: absolute; top: 0; left: 0; width: 152px; will-change: transform, opacity; }
+.hang { display: flex; flex-direction: column; align-items: center; transform: rotate(var(--swing, 0deg)); transform-origin: 50% 2px; }
+.hook { width: 22px; height: 32px; overflow: visible; }
+.hook path { fill: none; stroke: #c9c2b2; stroke-width: 2.6; stroke-linecap: round; filter: drop-shadow(0 1px 1px rgba(0,0,0,.6)); }
+.hanger.sel .hook path { stroke: var(--gold); }
+.garment { position: relative; isolation: isolate; width: 152px; height: 204px; margin-top: -3px; padding: 26px 12px 14px; text-align: center; overflow: visible;
+  border-radius: 10px 10px 18px 18px; border: 1px solid rgba(237,227,200,.12);
+  background: radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--accent) calc(10% + var(--near, 0) * 18%), transparent), transparent 70%),
+    linear-gradient(180deg, #2a221c, #15110e);
+  box-shadow: inset 0 1px 0 rgba(255,240,210,.07), 0 18px 34px -16px #000, 0 0 calc(var(--near, 0) * 34px) calc(var(--near, 0) * -6px) var(--accent);
+  transition: border-color .25s; }
+.garment::after { content: ""; position: absolute; inset: 22px 10px 10px; border-radius: 6px 6px 12px 12px; pointer-events: none;
+  border: 1px dashed color-mix(in srgb, var(--accent) 30%, transparent); }   /* stitched seam */
+.g-bar { position: absolute; z-index: 2; top: -4px; left: -10px; right: -10px; height: 12px; border-radius: 7px 7px 4px 4px;
+  background: linear-gradient(180deg, #8b5a2b, #5e3a1a 70%, #3d250f); box-shadow: 0 3px 6px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,220,170,.35); }
+.garment .kanji { position: relative; z-index: 1; font-size: 46px; line-height: 1.1; color: var(--accent); text-shadow: 0 0 18px color-mix(in srgb, var(--accent) 45%, transparent); }
+.garment .name { position: relative; z-index: 1; font-weight: 700; font-size: 15px; margin-top: 10px; }
+.garment .role { position: relative; z-index: 1; color: var(--muted); font-size: 12px; margin-top: 2px; }
+.garment .watermark { position: absolute; z-index: 0; right: 4px; bottom: -6px; font-family: var(--font-display); font-size: 80px; line-height: 1; color: var(--accent); opacity: .07; pointer-events: none; }
+.garment .best { position: absolute; z-index: 1; top: 14px; right: 10px; font-size: 10.5px; color: var(--gold); }
+.garment .best.lock { font-size: 14px; }
+.g-tassel { position: absolute; left: 50%; bottom: -26px; width: 3px; height: 22px; transform: translateX(-50%); border-radius: 2px;
+  background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 50%, #000)); }
+.g-tassel::after { content: ""; position: absolute; left: 50%; bottom: -8px; width: 9px; height: 12px; transform: translateX(-50%); border-radius: 3px 3px 5px 5px;
+  background: repeating-linear-gradient(90deg, var(--accent) 0 1.5px, color-mix(in srgb, var(--accent) 55%, #000) 1.5px 3px); }
+.hanger.sel .garment { border-color: transparent; }
+.hanger.sel .garment::before {
+  content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1.5px; pointer-events: none; z-index: 3;
+  background: conic-gradient(from var(--beam), transparent 0deg, color-mix(in srgb, var(--accent) 60%, transparent) 48deg, var(--accent) 58deg, #fff 61deg, transparent 64deg,
+    transparent 180deg, color-mix(in srgb, var(--gold) 50%, transparent) 230deg, var(--gold) 240deg, transparent 244deg, transparent 360deg);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); mask-composite: exclude; animation: beam-spin 6s linear infinite; }
+.hanger.locked .garment { filter: grayscale(.85) brightness(.75); }
+.hanger:not(.sel):hover .garment { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.rack-nav { position: absolute; top: 50%; z-index: 200; width: 46px; height: 46px; border-radius: 50%; transform: translateY(-50%);
+  background: rgba(20,16,13,.78); border: 1px solid rgba(217,173,91,.35); color: var(--gold); font-size: 26px; line-height: 1; backdrop-filter: blur(4px);
+  box-shadow: 0 6px 16px rgba(0,0,0,.5); transition: border-color .2s, transform .15s; }
+.rack-nav:hover { border-color: var(--gold); transform: translateY(-50%) scale(1.06); }
+.rack-nav.prev { left: 12px; } .rack-nav.next { right: 12px; }
+/* Detail panel under the rack, in two columns */
+.menu-body.rackmode { display: block; }
+.menu-body.rackmode .detail { position: relative; top: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 0 30px; padding: 22px 26px; }
+.menu-body.rackmode .d-col { min-width: 0; position: relative; z-index: 1; }
+.detail.swap-in .d-col { animation: detailIn .38s var(--ease) both; }
+.detail.swap-in .d-right { animation-delay: .06s; }
+@keyframes detailIn { from { opacity: 0; transform: translateY(12px); filter: blur(3px); } }
+@media (max-width: 900px) {
+  .menu-body.rackmode .detail { grid-template-columns: 1fr; }
+  .rack { height: 262px; }
+  .hanger, .garment { width: 120px; }
+  .garment { height: 166px; padding-top: 22px; }
+  .garment .kanji { font-size: 36px; }
+  .garment .name { font-size: 13px; }
+  .rack-nav { width: 42px; height: 42px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }

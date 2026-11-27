@@ -10,6 +10,8 @@ import type { NodeId } from "./unlocks";
 import { hueOf } from "./fx";
 import type { ClassId, GameStats, SecondaryId, Difficulty } from "./GhostGame";
 import { UI_CSS } from "./ui.css";
+import { createRack } from "./classrack";
+import type { Rack } from "./classrack";
 import { PATCH_NOTES, LATEST_PATCH } from "./content/patchnotes";
 import type { NoteTag } from "./content/patchnotes";
 import { COSMETICS, SLOTS, flowers, flowersEarned, addFlowers, flowersFor, isOwned, buy as buyCosmetic, equip, equippedId, unlockText, newlyEarned, ownedCount, currentLook, drawPreview } from "./cosmetics";
@@ -767,7 +769,7 @@ function showMenu() {
   showUnlockToasts();
   renderMenu();
   menu.style.display = "block";
-  requestAnimationFrame(() => $<HTMLElement>(".class-card.sel", menu)?.focus({ preventScroll: true }));
+  requestAnimationFrame(() => $<HTMLElement>(".rack", menu)?.focus({ preventScroll: true }));
 }
 
 function renderMenu() {
@@ -777,11 +779,45 @@ function renderMenu() {
     const won = wonClasses().has(c.id);
     const badge = (b ? `<span class="best num">${won ? "✓ " : ""}Best W${b}</span>` : won ? `<span class="best num">✓ Won</span>` : "");
     const locked = !classUnlocked(c.id);
-    return `<button class="class-card glow${c.id === currentClass ? " sel" : ""}${locked ? " locked" : ""}" data-class="${c.id}" style="--accent:${c.accent}" aria-pressed="${c.id === currentClass}"${locked ? ` title="Locked: ${reqText(CLASS_REQS[c.id])}"` : ""}>
-      <span class="watermark" aria-hidden="true">${c.ultKanji}</span>${locked ? `<span class="best lock">🔒</span>` : badge}<div class="kanji">${c.kanji}</div><div class="name">${c.name}</div><div class="role">${locked ? "Locked" : c.role}</div>
-    </button>`;
-  }).join("");
+    return { id: c.id, accent: c.accent, locked,
+      html: `<span class="g-bar" aria-hidden="true"></span><span class="watermark" aria-hidden="true">${c.ultKanji}</span>${locked ? `<span class="best lock">🔒</span>` : badge}<div class="kanji">${c.kanji}</div><div class="name">${c.name}</div><div class="role">${locked ? "Locked" : c.role}</div><span class="g-tassel" aria-hidden="true"></span>` };
+  });
 
+  const continueBtn = saved
+    ? `<button class="btn" data-act="continue">Continue · ${getClass(saved.classId).name} · Wave ${saved.wave}</button>`
+    : "";
+
+  menu.innerHTML = `${EMBERS}
+  <div class="menu-wrap">
+    <div class="menu-top">
+      <div class="logo"><span class="kanji">幽</span><div><h1>YŪKEN</h1><p>Survive the waves. Forge your legend.</p></div></div>
+      <div class="menu-actions">${continueBtn}<button class="btn ghost" data-act="guide"><span class="kanji" style="color:var(--gold)">道</span> Guide</button><button class="btn ghost" data-act="ach">Achievements <span class="num" style="opacity:.7">${unlockedCount()}/${ACHIEVEMENTS.length}</span></button><button class="btn ghost" data-act="career">Career</button><button class="btn ghost" data-act="daily"><span class="kanji" style="color:var(--gold)">日</span> Daily${dailyDay() ? "" : ` <span class="dl-new">NEW</span>`}</button><button class="btn ghost" data-act="shrine"><span class="kanji" style="color:var(--gold)">祖</span> Shrine <span class="num" style="opacity:.7">${getShrine().embers} 火</span></button><button class="btn ghost" data-act="patch"><span class="kanji" style="color:var(--gold)">新</span> Patch notes${patchSeen() ? "" : ` <span class="dl-new">NEW</span>`}</button><button class="btn ghost" data-act="wardrobe"><span class="kanji" style="color:var(--gold)">装</span> Wardrobe <span class="num" style="opacity:.7">${flowers()} 花</span></button><button class="btn ghost" data-act="controls">Controls</button><button class="btn ghost" data-act="a11y">Accessibility</button><button class="btn ghost" data-act="random">Random class</button></div>
+    </div>
+    <div class="rack-host"></div>
+    <div class="menu-body rackmode">${detailHTML(saved)}</div>
+    <div class="controls-strip">
+      <span><kbd>${K("up")}</kbd><kbd>${K("left")}</kbd><kbd>${K("down")}</kbd><kbd>${K("right")}</kbd> Move</span>
+      <span>Mouse Aim</span>
+      <span><kbd>Click</kbd>/<kbd>${K("attack")}</kbd> Attack (hold)</span>
+      <span><kbd>${K("dash")}</kbd>/<kbd>Right-click</kbd> Dash</span>
+      <span><kbd>${K("ability1")}</kbd><kbd>${K("ability2")}</kbd> Abilities</span>
+      <span><kbd>${K("ult")}</kbd> Ultimate</span>
+      <span><kbd>${K("swap")}</kbd> Swap weapon</span>
+      <span><kbd>${K("block")}</kbd> Block (shields)</span>
+      <span><kbd>${K("item1")}</kbd><kbd>${K("item2")}</kbd><kbd>${K("item3")}</kbd> Items</span>
+      <span><kbd>Esc</kbd> Pause</span>
+      <span><button class="btn ghost" style="min-height:30px;padding:0 10px" data-act="controls">Change keys</button></span>
+    </div>
+  </div>`;
+  rack?.destroy();
+  const rackHost = $<HTMLElement>(".rack-host", menu);
+  rackHost.style.setProperty("--rack-accent", getClass(currentClass).accent);
+  rack = createRack(rackHost, cards, CLASSES.findIndex(c => c.id === currentClass), i => selectClass(CLASSES[i].id, true));
+}
+
+let rack: Rack | null = null;
+/** The class detail panel (rebuilt alone when you switch class, so the rack keeps animating). */
+function detailHTML(saved: ReturnType<typeof loadRun> | null = hasSavedRun() ? loadRun() : null): string {
   const cls = getClass(currentClass);
   const weapons = CLASS_WEAPON_OPTIONS[currentClass].map(id => {
     const w = SECONDARIES[id];
@@ -795,20 +831,9 @@ function renderMenu() {
     </button>`;
   }).join("");
 
-  const continueBtn = saved
-    ? `<button class="btn" data-act="continue">Continue · ${getClass(saved.classId).name} · Wave ${saved.wave}</button>`
-    : "";
-
-  menu.innerHTML = `${EMBERS}
-  <div class="menu-wrap">
-    <div class="menu-top">
-      <div class="logo"><span class="kanji">幽</span><div><h1>YŪKEN</h1><p>Survive the waves. Forge your legend.</p></div></div>
-      <div class="menu-actions">${continueBtn}<button class="btn ghost" data-act="guide"><span class="kanji" style="color:var(--gold)">道</span> Guide</button><button class="btn ghost" data-act="ach">Achievements <span class="num" style="opacity:.7">${unlockedCount()}/${ACHIEVEMENTS.length}</span></button><button class="btn ghost" data-act="career">Career</button><button class="btn ghost" data-act="daily"><span class="kanji" style="color:var(--gold)">日</span> Daily${dailyDay() ? "" : ` <span class="dl-new">NEW</span>`}</button><button class="btn ghost" data-act="shrine"><span class="kanji" style="color:var(--gold)">祖</span> Shrine <span class="num" style="opacity:.7">${getShrine().embers} 火</span></button><button class="btn ghost" data-act="patch"><span class="kanji" style="color:var(--gold)">新</span> Patch notes${patchSeen() ? "" : ` <span class="dl-new">NEW</span>`}</button><button class="btn ghost" data-act="wardrobe"><span class="kanji" style="color:var(--gold)">装</span> Wardrobe <span class="num" style="opacity:.7">${flowers()} 花</span></button><button class="btn ghost" data-act="controls">Controls</button><button class="btn ghost" data-act="a11y">Accessibility</button><button class="btn ghost" data-act="random">Random class</button></div>
-    </div>
-    <div class="menu-body">
-      <div class="class-grid" role="listbox" aria-label="Classes">${cards}</div>
-      <aside class="detail" style="--accent:${cls.accent}">
+  return `<aside class="detail swap-in" style="--accent:${cls.accent}">
         <span class="bigmark" aria-hidden="true">${cls.kanji}</span>
+        <div class="d-col d-left">
         <div class="detail-head"><span class="kanji">${cls.kanji}</span><div><h2>${cls.name}</h2><div class="role">${cls.role}</div></div></div>
         ${classUnlocked(cls.id) ? "" : `<div class="lock-banner">🔒 <b>Locked.</b> ${reqText(CLASS_REQS[cls.id])}</div>`}
         <div class="sig-box"><span class="kanji">${SIGNATURES[cls.id].kanji}</span><div><b>Signature · ${SIGNATURES[cls.id].name}</b><p>${SIGNATURES[cls.id].desc}</p></div></div>
@@ -816,6 +841,7 @@ function renderMenu() {
         <ul>${cls.bonuses.filter(b => !/secondary|Starts with/i.test(b) && !sameAsSignature(b, cls.id)).map(b => `<li>${b}</li>`).join("") || "<li>No stat bonuses. The signature is the whole kit</li>"}</ul>
         <h3>Ultimate · ${K("ult")}</h3>
         <div class="ult-box"><b><span class="kanji">${cls.ultKanji}</span> ${cls.ultName}</b><p>${cls.ultDesc}</p></div>
+        </div><div class="d-col d-right">
         <h3>Weapons · pick 2</h3>
         <div class="weapons">${weapons}</div>
         <p class="hint">Press ${K("swap")} in a fight to swap between your two weapons.</p>
@@ -832,22 +858,8 @@ function renderMenu() {
           <button class="btn primary" data-act="start" ${canStart() ? "" : "disabled"}>${classUnlocked(cls.id) ? "" : "🔒 "}Begin · ${DIFFICULTIES[settings.difficulty].name}${vowsUnlocked() && vowScore(vowSet) ? ` · 誓 ${vowScore(vowSet)}` : ""} · Enter</button>
         </div>
         ${saved ? `<p class="hint">Starting a new run replaces your saved run.</p>` : ""}
-      </aside>
-    </div>
-    <div class="controls-strip">
-      <span><kbd>${K("up")}</kbd><kbd>${K("left")}</kbd><kbd>${K("down")}</kbd><kbd>${K("right")}</kbd> Move</span>
-      <span>Mouse Aim</span>
-      <span><kbd>Click</kbd>/<kbd>${K("attack")}</kbd> Attack (hold)</span>
-      <span><kbd>${K("dash")}</kbd>/<kbd>Right-click</kbd> Dash</span>
-      <span><kbd>${K("ability1")}</kbd><kbd>${K("ability2")}</kbd> Abilities</span>
-      <span><kbd>${K("ult")}</kbd> Ultimate</span>
-      <span><kbd>${K("swap")}</kbd> Swap weapon</span>
-      <span><kbd>${K("block")}</kbd> Block (shields)</span>
-      <span><kbd>${K("item1")}</kbd><kbd>${K("item2")}</kbd><kbd>${K("item3")}</kbd> Items</span>
-      <span><kbd>Esc</kbd> Pause</span>
-      <span><button class="btn ghost" style="min-height:30px;padding:0 10px" data-act="controls">Change keys</button></span>
-    </div>
-  </div>`;
+        </div>
+      </aside>`;
 }
 
 /** True when a bonus line just repeats the class's signature passive (shared key words). */
@@ -859,10 +871,18 @@ function sameAsSignature(bonus: string, id: ClassId): boolean {
   return shared >= 2;
 }
 
-function selectClass(id: ClassId) {
+function selectClass(id: ClassId, fromRack = false) {
   if (id === currentClass) return;
   currentClass = id;
   currentWeapons = defaultWeapons(id);
+  // Swap only the detail panel so the rack keeps swinging.
+  const body = $<HTMLElement>(".menu-body", menu);
+  if (body && rack) {
+    body.innerHTML = detailHTML();
+    $<HTMLElement>(".rack-host", menu)?.style.setProperty("--rack-accent", getClass(id).accent);
+    if (!fromRack) rack.select(CLASSES.findIndex(c => c.id === id));
+    return;
+  }
   renderMenu();
   $<HTMLElement>(`.class-card[data-class="${id}"]`, menu)?.focus({ preventScroll: true });
 }
@@ -927,13 +947,11 @@ function menuKeys(e: KeyboardEvent) {
     e.preventDefault();
     return;
   }
-  const arrows: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 0, ArrowUp: 0 };
-  if (!(e.key in arrows)) return;
-  const grid = $<HTMLElement>(".class-grid", menu);
-  const cols = Math.max(1, getComputedStyle(grid).gridTemplateColumns.split(" ").length);
-  const step = e.key === "ArrowDown" ? cols : e.key === "ArrowUp" ? -cols : arrows[e.key];
+  // The rack slides left / right (no wrap-around: it's a rail with two ends).
+  const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+  if (!step || (e.target as HTMLElement).closest?.("input,select,textarea")) return;
   const idx = CLASSES.findIndex(c => c.id === currentClass);
-  const next = CLASSES[(idx + step + CLASSES.length) % CLASSES.length];
+  const next = CLASSES[Math.max(0, Math.min(CLASSES.length - 1, idx + step))];
   selectClass(next.id);
   e.preventDefault();
 }

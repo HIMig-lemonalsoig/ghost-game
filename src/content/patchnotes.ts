@@ -12,6 +12,16 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "2.7", date: "2026-11-26", title: "The Garment Rack", kanji: "衣",
+    summary: "Class select is now a rack of hanging garments.",
+    lines: [
+      ["new", "Classes hang like garments on a bamboo rail. The chosen one steps forward into a spotlight in its colour, with a light running around its edge."],
+      ["new", "Switching class slides the rack and the garments swing on their hooks, then settle."],
+      ["new", "Pick a class by clicking, dragging or swiping the rail, the mouse wheel, the ‹ › buttons or the arrow keys."],
+      ["change", "The class details sit under the rack in two columns and fade in when you switch."],
+    ],
+  },
+  {
     version: "2.6", date: "2026-11-26", title: "Find Your Way", kanji: "道",
     summary: "A minimap and arrows that point to the important stuff.",
     lines: [
