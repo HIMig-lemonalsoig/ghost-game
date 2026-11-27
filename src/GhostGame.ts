@@ -2735,6 +2735,8 @@ interface Enemy {
   bossPatternStep: number;     // final boss: step counter inside a pattern
   bossPatternCd: number;       // final boss: cooldown between patterns
   bossRecover?: number;        // melee pass: boss is winded after a pattern (stands still)
+  blinkX?: number; blinkY?: number;   // Kitsune: where her blink will land (shown in advance)
+  lastBossPattern?: number;
   // Class-driven debuffs / status:
   poisonRemaining: number;     // seconds left of poison DoT
   poisonTickAccum: number;     // fractional ticks
@@ -7991,6 +7993,18 @@ export class GhostGame {
         ctx.beginPath(); ctx.arc(e.pos.x, e.pos.y, e.size + 70 * (1 - k) + 6, 0, Math.PI * 2); ctx.stroke();
         ctx.restore();
       }
+    } else if (e.bossPatternTimer > 0 && e.bossPattern === 3 && e.bossPatternStep === 1 && e.blinkX !== undefined) {
+      // Kitsune blink: foxfire marks where she'll reappear.
+      const k = Math.max(0, Math.min(1, (1.3 - e.bossPatternTimer) / 0.55));
+      ctx.save();
+      ctx.strokeStyle = `hsla(24, 95%, 60%, ${0.5 + 0.4 * pulse})`;
+      ctx.lineWidth = 3;
+      ctx.setLineDash([6, 6]);
+      ctx.beginPath(); ctx.arc(e.blinkX, e.blinkY!, e.size + 30 * (1 - k) + 4, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = `hsla(24, 95%, 55%, ${0.15 + 0.2 * k})`;
+      ctx.beginPath(); ctx.arc(e.blinkX, e.blinkY!, e.size * k, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
     } else if ((e.bossRecover ?? 0) > 0) {
       // Winded: a little "breath" puff over its head — your opening.
       ctx.save();
@@ -8084,18 +8098,26 @@ export class GhostGame {
         }
       }
       else if (e.bossPattern === 3) {
-        // Kitsune blink: vanish in smoke, reappear beside you, then a foxfire fan.
+        // Kitsune blink (readable version): the landing spot is marked first,
+        // she vanishes, reappears there, fires a foxfire fan, then is dazed.
         if (e.bossPatternStep === 0) {
           e.bossPatternStep = 1;
-          this.fx.smoke(e.pos.x, e.pos.y, 10, 60, 70, 24, 60);
+          // Lands fairly close (150 px) so a melee class can reach her afterwards.
           const a = Math.random() * Math.PI * 2;
-          e.pos.x = Math.max(40, Math.min(this.worldW - 40, this.player.pos.x + Math.cos(a) * 240));
-          e.pos.y = Math.max(40, Math.min(this.worldH - 40, this.player.pos.y + Math.sin(a) * 240));
+          e.blinkX = Math.max(40, Math.min(this.worldW - 40, this.player.pos.x + Math.cos(a) * 150));
+          e.blinkY = Math.max(40, Math.min(this.worldH - 40, this.player.pos.y + Math.sin(a) * 150));
+          this.fx.smoke(e.pos.x, e.pos.y, 6, 60, 70, 24, 40);
+        } else if (e.bossPatternStep === 1 && e.bossPatternTimer < 0.75) {
+          e.bossPatternStep = 2;
+          this.fx.smoke(e.pos.x, e.pos.y, 10, 60, 70, 24, 60);
+          e.pos.x = e.blinkX ?? e.pos.x;
+          e.pos.y = e.blinkY ?? e.pos.y;
           this.fx.smoke(e.pos.x, e.pos.y, 10, 60, 70, 24, 60);
           this.fx.shockwave(e.pos.x, e.pos.y, 90, { hue: 24, life: 0.35, width: 6 });
           audio.play("smokeWoosh");
-        } else if (e.bossPatternStep === 1 && e.bossPatternTimer < 0.45) {
-          e.bossPatternStep = 2;
+        } else if (e.bossPatternStep === 2 && e.bossPatternTimer < 0.3) {
+          e.bossPatternStep = 3;
+          e.blinkX = e.blinkY = undefined;
           const n = 3 + e.bossPhase * 2;
           for (let i = 0; i < n; i++) {
             const a = angToPlayer + (i / (n - 1) - 0.5) * 0.9;
@@ -8166,6 +8188,8 @@ export class GhostGame {
         e.bossPatternCd = 2.0 - e.bossPhase * 0.25;
         e.bossPatternStep = 0;
         e.bossRecover = 1.0 - (e.bossPhase - 1) * 0.15;
+        if (e.bossPattern === 3) e.bossRecover += 0.6;   // dazed after a blink: your chance to hit her
+        e.lastBossPattern = e.bossPattern;
       }
       return;
     }
@@ -8192,7 +8216,13 @@ export class GhostGame {
     if (e.bossPatternCd <= 0) {
       // Pick a pattern weighted by phase
       const choices: number[] = [0, 1];
-      if (e.bossKind === "kitsune") { choices.length = 0; choices.push(0, 3, 4); if (e.bossPhase >= 2) choices.push(3); if (e.bossPhase >= 3) choices.push(0, 3); }
+      if (e.bossKind === "kitsune") {
+        // Blinks are rarer and never back-to-back; she volleys and summons more.
+        choices.length = 0; choices.push(0, 0, 4);
+        if (e.bossPhase >= 2) choices.push(3);
+        if (e.bossPhase >= 3) choices.push(0);
+        if (e.lastBossPattern !== 3) choices.push(3);
+      }
       else if (e.bossKind === "gasha") { choices.length = 0; choices.push(1, 5, 4); if (e.bossPhase >= 2) choices.push(5); if (e.bossPhase >= 3) choices.push(1, 5); }
       else if (e.bossKind === "raijin") { choices.length = 0; choices.push(6, 2, 0); if (e.bossPhase >= 2) choices.push(6); if (e.bossPhase >= 3) choices.push(2, 6); }
       else if (e.bossPhase >= 2) choices.push(1);
@@ -8202,7 +8232,7 @@ export class GhostGame {
       e.bossPatternTimer =
         e.bossPattern === 0 ? 0.6 + (e.bossPhase === 1 ? 1 : e.bossPhase === 2 ? 2 : 3) * 0.35 :
         e.bossPattern === 1 ? 1.25 :
-        e.bossPattern === 3 ? 0.9 :
+        e.bossPattern === 3 ? 1.3 :
         e.bossPattern === 4 ? 0.6 :
         e.bossPattern === 5 ? 1.6 :
         e.bossPattern === 6 ? 1.2 : 1.5;

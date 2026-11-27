@@ -551,3 +551,7 @@ Fix (Hades / Hollow Knight style "tell → attack → opening"):
 - Orb volleys always wind up ≥ 0.6 s, with energy gathering on the boss before each burst.
 - After every attack the boss is winded for ~1 s (stands still, "隙 opening" shown), and the gap between attacks is longer (2.0/1.75/1.5 s by phase).
 - Kitsune backs off at half speed so melee classes can stay on her.
+- Follow-up (Kitsune felt untouchable — teleports too often, runs from ranged too):
+  - Her blink now marks the landing spot with foxfire 0.55 s before she appears there, lands 150 px from you (was 240), and leaves her dazed ~1.6 s after the foxfire fan.
+  - Blinks are rarer (volleys/summons weighted up) and never back-to-back.
+  - Bot check (chasing at normal player speed, wave 10): within melee reach 93% of the fight, ~5 blinks per minute.
