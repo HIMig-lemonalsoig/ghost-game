@@ -12,6 +12,15 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.0", date: "2026-11-27", title: "A Drop of Ink", kanji: "墨",
+    summary: "A new way into the game: the cut bleeds a single drop of ink.",
+    lines: [
+      ["new", "After the sword cut, a bead of ink swells on the slash, stretches and falls. It splashes with ripples and splatter."],
+      ["new", "The ink floods the screen while the view dives into it, then a ragged hole with a wet crimson rim blooms open, revealing the menu."],
+      ["change", "Replaces the screen-splitting transition from v2.9. The intro is about 6.4 s; Skip still works at any time."],
+    ],
+  },
+  {
     version: "2.9", date: "2026-11-27", title: "Cut Into the World", kanji: "斬",
     summary: "The intro's sword cut now opens straight into the game.",
     lines: [
