@@ -506,21 +506,28 @@ function showGuide(tab: GuideTab = guideTab) {
 }
 // ─── Accessibility (Phase 15) ────────────────────────────────────────────────
 const A11Y_KEY = "ghostgame.a11y.v1";
-interface A11y { colorblind: 0 | 1 | 2; uiScale: number; bigNumbers: boolean; outline: boolean; music: number; sfx: number; ui: number; assist: boolean; assistDeaths: number; cursorSize: number; }
-const a11y: A11y = readJSON(A11Y_KEY, { colorblind: 0, uiScale: 100, bigNumbers: false, outline: false, music: 100, sfx: 100, ui: 100, assist: false, assistDeaths: 0, cursorSize: 100 } as A11y);
+interface A11y { colorblind: 0 | 1 | 2; uiScale: number; bigNumbers: boolean; outline: boolean; music: number; sfx: number; ui: number; assist: boolean; assistDeaths: number; cursorSize: number; mapSize: number; }
+const a11y: A11y = readJSON(A11Y_KEY, { colorblind: 0, uiScale: 100, bigNumbers: false, outline: false, music: 100, sfx: 100, ui: 100, assist: false, assistDeaths: 0, cursorSize: 100, mapSize: 100 } as A11y);
 if (typeof a11y.cursorSize !== "number") a11y.cursorSize = 100;
+if (typeof a11y.mapSize !== "number") a11y.mapSize = 100;
 let a11yOpen = false;
 const assistLevel = () => (a11y.assist ? Math.min(0.8, 0.2 + 0.02 * a11y.assistDeaths) : 0);
 function applyA11y() {
   audio.setVolumes({ music: a11y.music / 100, sfx: a11y.sfx / 100, ui: a11y.ui / 100 });
+  // Keep the DPS meter below the minimap when the map is resized.
+  const aspect = game ? game.worldH / game.worldW : 0.75;
+  document.body.style.setProperty("--mm-extra", `${Math.round(Math.max(-0.4, a11y.mapSize / 100 - 1) * (innerWidth < 760 ? 104 : 148) * aspect)}px`);
   const z = String(Math.max(0.9, Math.min(1.5, a11y.uiScale / 100)));
   for (const el of [hud, menu, overlay, achToasts]) (el.style as CSSStyleDeclaration & { zoom: string }).zoom = z;
-  if (game) { game.a11y = { colorblind: a11y.colorblind, bigNumbers: a11y.bigNumbers, outline: a11y.outline }; game.cursorScale = a11y.cursorSize / 100; }
+  if (game) { game.a11y = { colorblind: a11y.colorblind, bigNumbers: a11y.bigNumbers, outline: a11y.outline }; game.cursorScale = a11y.cursorSize / 100; game.minimapScale = a11y.mapSize / 100; }
   writeJSON(A11Y_KEY, a11y);
 }
 // Cursor size slider with a live crest preview (pause Settings + Accessibility).
 function cursorSliderHTML(): string {
   return `<label class="a11y-slider cursor-slider"><span>Cursor size</span><input type="range" data-a11ys="cursorSize" min="50" max="200" step="10" value="${a11y.cursorSize}" aria-label="Cursor size"><b class="num" data-a11yv="cursorSize">${a11y.cursorSize}%</b><canvas class="cursor-prev" width="104" height="104" aria-hidden="true"></canvas></label>`;
+}
+function mapSliderHTML(): string {
+  return `<label class="a11y-slider"><span>Minimap size</span><input type="range" data-a11ys="mapSize" min="60" max="200" step="10" value="${a11y.mapSize}" aria-label="Minimap size"><b class="num" data-a11yv="mapSize">${a11y.mapSize}%</b></label>`;
 }
 let cursorPrevRaf = 0;
 function runCursorPreview() {
@@ -552,6 +559,7 @@ function a11yHTML(): string {
         <p class="hint">Danger zones get stripes and a white edge, enemies about to attack show a <b>!</b>, and elite affixes show their kanji in a clear box.</p>
         ${sl("uiScale", "UI scale", 90, 150, 10)}
         ${cursorSliderHTML()}
+        ${mapSliderHTML()}
         ${tg("bigNumbers", "Bigger damage numbers")}
         ${tg("outline", "Highlight my character", "A bright ring around you in busy fights")}
       </div>
@@ -1564,7 +1572,7 @@ function renderPause(s: GameStats) {
         <button class="btn" data-act="a11y">Accessibility</button>
         <div class="pane" style="margin-top:6px">
           <h4>Settings</h4>
-          ${sw("sound", "Sound & music")}${sw("shake", "Screen shake")}${sw("tips", "Control tips")}${sw("cutscenes", "Ultimate cutscenes")}${sw("autoPause", "Pause when tabbed out")}${sw("rumble", "Controller rumble")}${sw("cursor", "Big crest cursor")}${settings.cursor !== false ? cursorSliderHTML() : ""}${sw("minimap", "Minimap")}${sw("pointers", "Arrows to altars & chests")}${sw("dps", "DPS meter")}${sw("pickup", "Show pickup radius")}${sw("haptics", "Phone vibration")}
+          ${sw("sound", "Sound & music")}${sw("shake", "Screen shake")}${sw("tips", "Control tips")}${sw("cutscenes", "Ultimate cutscenes")}${sw("autoPause", "Pause when tabbed out")}${sw("rumble", "Controller rumble")}${sw("cursor", "Big crest cursor")}${settings.cursor !== false ? cursorSliderHTML() : ""}${sw("minimap", "Minimap")}${settings.minimap ? mapSliderHTML() : ""}${sw("pointers", "Arrows to altars & chests")}${sw("dps", "DPS meter")}${sw("pickup", "Show pickup radius")}${sw("haptics", "Phone vibration")}
         </div>
       </div>
       <div style="display:grid;gap:14px">
@@ -1631,7 +1639,7 @@ function resumeGame() { game?.resume(); }
 overlay.addEventListener("input", e => {
   const r = (e.target as HTMLElement).closest<HTMLInputElement>("[data-a11ys]");
   if (!r) return;
-  const k = r.dataset.a11ys as "music" | "sfx" | "ui" | "uiScale" | "cursorSize";
+  const k = r.dataset.a11ys as "music" | "sfx" | "ui" | "uiScale" | "cursorSize" | "mapSize";
   a11y[k] = Number(r.value);
   const v = overlay.querySelector(`[data-a11yv="${k}"]`); if (v) v.textContent = `${a11y[k]}%`;
   if (k !== "uiScale") applyA11y();

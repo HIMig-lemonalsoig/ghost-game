@@ -4096,7 +4096,7 @@ export class GhostGame {
   /** NAV: edge arrows to off-screen altars / chests / items / boss, and the minimap (Settings). */
   showPointers = true;
   showMinimap = true;
-  showCursor = true; cursorInside = true; cursorT = 0; cursorSpin = 0; cursorKick = 0; cursorScale = 1;
+  showCursor = true; cursorInside = true; cursorT = 0; cursorSpin = 0; cursorKick = 0; cursorScale = 1; minimapScale = 1;
   /** WARDROBE: the player's equipped cosmetics (set by the UI before a run; null = classic look). */
   look: Look | null = null;
   private lookPrev = { x: 0, y: 0, sway: 0 };

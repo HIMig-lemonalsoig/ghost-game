@@ -12,6 +12,17 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.6", date: "2026-11-27", title: "A Real Map", kanji: "図",
+    summary: "The minimap now shows the actual arena, and you can make it bigger or smaller.",
+    lines: [
+      ["new", "The minimap is painted from the arena itself: ground colour, rocks, bamboo, pines, ice, embers, lanterns and flagstones all show as little map symbols, with the fence around the edge."],
+      ["new", "Incoming boss and enemy attacks (slams, bombs, bolts) flash as red circles on the map."],
+      ["change", "Enemies have dark outlines so they stand out on every biome, elites are bigger purple dots, and the boss shows a 鬼 marker."],
+      ["change", "Chests, altars and items have clearer icons, your arrow is bigger, and the map shows a 北 north mark and the biome name."],
+      ["new", "Minimap size slider (60%–200%) under the Minimap switch in Settings and in Accessibility. Arrows and the DPS meter move out of its way."],
+    ],
+  },
+  {
     version: "3.5", date: "2026-11-27", title: "Tomoe Cursor", kanji: "巴",
     summary: "A big, easy-to-find aiming cursor in the shape of a tomoe clan crest, with a size slider.",
     lines: [

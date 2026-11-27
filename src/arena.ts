@@ -107,6 +107,69 @@ export class Arena {
 
   edgeColor() { return this.pal.edge; }
 
+  // ── Minimap terrain (v3.6) ──────────────────────────────────────────────
+  // A small painted map of this arena: ground tone, soft patches, every prop
+  // as a tiny map symbol and the fence. Cached until the biome / size changes.
+  private mm: HTMLCanvasElement | null = null;
+  private mmKey = "";
+  minimapImage(pw: number, ph: number): HTMLCanvasElement | null {
+    if (!this.w || !this.h || typeof document === "undefined") return null;
+    const dpr = Math.min(2, (typeof devicePixelRatio === "number" ? devicePixelRatio : 1) || 1);
+    const W = Math.max(1, Math.round(pw * dpr)), H = Math.max(1, Math.round(ph * dpr));
+    const key = `${this.biome}|${this.w}|${this.h}|${W}|${H}`;
+    if (this.mm && this.mmKey === key) return this.mm;
+    const c = this.mm ?? document.createElement("canvas");
+    c.width = W; c.height = H;
+    const g = c.getContext("2d");
+    if (!g) return null;
+    const kx = W / this.w, ky = H / this.h, k = Math.min(kx, ky);
+    g.fillStyle = this.pal.base; g.fillRect(0, 0, W, H);
+    // soft ground patches
+    const r = rng(this.w * 7 + this.h * 3 + this.biome.length * 59);
+    for (let i = 0; i < 60; i++) {
+      const t = this.pal.blotch[i % this.pal.blotch.length];
+      const x = r() * W, y = r() * H, rad = (0.04 + r() * 0.1) * Math.max(W, H);
+      const gr = g.createRadialGradient(x, y, 0, x, y, rad);
+      gr.addColorStop(0, hsl(t, 0.8)); gr.addColorStop(1, hsl(t, 0));
+      g.fillStyle = gr; g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+    }
+    // fine texture flecks
+    for (let i = 0; i < 900; i++) {
+      const t = this.pal.strokes[i % this.pal.strokes.length];
+      g.fillStyle = hsl(t, 0.35);
+      g.fillRect(r() * W, r() * H, Math.max(1, dpr), Math.max(1, dpr));
+    }
+    // props as map symbols (scaled with the map, never smaller than ~1.5px)
+    const u = Math.max(3.2 * dpr, 70 * k);
+    for (const p of this.props) {
+      const x = p.x * kx, y = p.y * ky, s = u * (0.55 + p.s * 0.35);
+      g.save(); g.translate(x, y);
+      switch (p.kind) {
+        case "rock": g.fillStyle = this.biome === "snowfield" ? "hsl(215, 12%, 46%)" : "hsl(30, 6%, 30%)"; g.beginPath(); g.ellipse(0, 0, s * 0.55, s * 0.4, p.r, 0, Math.PI * 2); g.fill(); break;
+        case "tuft": g.strokeStyle = "hsla(80, 40%, 26%, .8)"; g.lineWidth = Math.max(1, s * 0.18); g.beginPath(); g.moveTo(-s * 0.3, s * 0.2); g.lineTo(0, -s * 0.3); g.lineTo(s * 0.3, s * 0.2); g.stroke(); break;
+        case "lily": g.fillStyle = "hsla(120, 30%, 30%, .85)"; g.beginPath(); g.arc(0, 0, s * 0.38, 0, Math.PI * 2); g.fill(); g.fillStyle = "hsl(330, 60%, 78%)"; g.fillRect(-s * 0.1, -s * 0.1, s * 0.2, s * 0.2); break;
+        case "stump": g.fillStyle = "hsl(26, 32%, 24%)"; g.beginPath(); g.arc(0, 0, s * 0.35, 0, Math.PI * 2); g.fill(); break;
+        case "bamboo": g.strokeStyle = "hsl(95, 40%, 36%)"; g.lineWidth = Math.max(1, s * 0.16); for (let j = -1; j <= 1; j++) { g.beginPath(); g.moveTo(j * s * 0.25, s * 0.45); g.lineTo(j * s * 0.25, -s * 0.45); g.stroke(); } break;
+        case "pine": g.fillStyle = "hsl(160, 30%, 22%)"; g.beginPath(); g.moveTo(0, -s * 0.6); g.lineTo(s * 0.45, s * 0.4); g.lineTo(-s * 0.45, s * 0.4); g.closePath(); g.fill(); break;
+        case "ice": g.fillStyle = "hsl(195, 70%, 88%)"; g.rotate(Math.PI / 4); g.fillRect(-s * 0.28, -s * 0.28, s * 0.56, s * 0.56); break;
+        case "ember": g.fillStyle = "hsl(22, 95%, 55%)"; g.beginPath(); g.arc(0, 0, s * 0.3, 0, Math.PI * 2); g.fill(); g.fillStyle = "hsla(22, 95%, 55%, .25)"; g.beginPath(); g.arc(0, 0, s * 0.7, 0, Math.PI * 2); g.fill(); break;
+        case "lantern": g.fillStyle = "hsl(44, 90%, 62%)"; g.fillRect(-s * 0.2, -s * 0.3, s * 0.4, s * 0.6); break;
+        case "flagstone": g.fillStyle = "hsla(36, 10%, 56%, .7)"; g.rotate(p.r); g.fillRect(-s * 0.5, -s * 0.35, s, s * 0.7); break;
+      }
+      g.restore();
+    }
+    // spawn clearing + fence
+    g.strokeStyle = "rgba(0,0,0,.18)"; g.lineWidth = dpr;
+    g.beginPath(); g.arc(W / 2, H / 2, 140 * k, 0, Math.PI * 2); g.stroke();
+    const vg = g.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.72);
+    vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,.35)");
+    g.fillStyle = vg; g.fillRect(0, 0, W, H);
+    g.strokeStyle = this.pal.border; g.lineWidth = Math.max(2, 2 * dpr);
+    g.strokeRect(g.lineWidth / 2, g.lineWidth / 2, W - g.lineWidth, H - g.lineWidth);
+    this.mm = c; this.mmKey = key;
+    return c;
+  }
+
   private makePattern(ctx: CanvasRenderingContext2D): CanvasPattern | null {
     const c = document.createElement("canvas");
     c.width = TILE; c.height = TILE;
