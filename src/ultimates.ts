@@ -37,6 +37,12 @@ export const ULT_STYLES: Record<ClassId, UltStyle> = {
   kappa:      { pose: "cast",   motif: "water",     line: "The river takes all." },
   tengu:      { pose: "spin",   motif: "wind",      line: "Ride the divine wind!" },
   kabuki:     { pose: "guard",  motif: "spotlight", line: "The curtain falls on you." },
+  teppo:      { pose: "aim",    motif: "embers",    line: "First rank, fire!" },
+  takajo:     { pose: "raise",  motif: "wind",      line: "Hunt, my hawks." },
+  karakuri:   { pose: "plant",  motif: "gold",      line: "Wind them up. Let them loose." },
+  bakuto:     { pose: "cast",   motif: "petals",    line: "Let the dice decide." },
+  rikishi:    { pose: "slam",   motif: "earth",     line: "Out of my ring!" },
+  sumie:      { pose: "cast",   motif: "smoke",     line: "What I paint, lives." },
 };
 
 // Pose keyframes for the cutscene. k runs 0 → 1; the strike lands at STRIKE.

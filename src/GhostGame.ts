@@ -3,6 +3,7 @@ import { Fx, hueOf } from "./fx";
 import { updateUltTrail, drawUltUnder, drawUltOver } from "./ultvfx";
 import { drawBack, drawBody } from "./cosmeticdraw";
 import { drawPointers, drawMinimap } from "./navui";
+import { startNewClass, castNewUlt, newUltActive, fortuneActive, updateNewClasses, onShotNewClass, onHitNewClass, onDashNewClass, onWaveStartNewClass, drawNewClasses, resetNewClasses } from "./newclasses";
 import { spawnNewEnemy, updateNewEnemy, updateNewHazards, drawNewHazards, drawNewTelegraphs, drawNewEnemy, onNewEnemyKilled, newEnemyWeights, newEnemySlowMul, NEW_ENEMY_LABEL, NEW_ENEMY_TIPS2 } from "./newenemies";
 import type { Look } from "./cosmeticdraw";
 import { Arena } from "./arena";
@@ -58,7 +59,9 @@ export type ClassId =
   | "ashigaru"
   | "kappa"
   | "tengu"
-  | "kabuki";
+  | "kabuki"
+  // ===== STEP 5 (src/newclasses.ts) =====
+  | "teppo" | "takajo" | "karakuri" | "bakuto" | "rikishi" | "sumie";
 
 export interface ClassDef {
   id: ClassId;
@@ -349,6 +352,48 @@ export const CLASSES: ClassDef[] = [
     ultKanji: "幕",
     ultDesc: "For 5s every hit is a critical hit, under a blazing spotlight.",
     accent: "hsl(335, 80%, 65%)",
+  },
+  {
+    id: "teppo", kanji: "砲", name: "Teppō", role: "Matchlock Gunner",
+    bonuses: ["+10% critical hit chance", "Every 4th shot is a matchlock blast: 3× damage and pierces"],
+    ultName: "Three Ranks Fire", ultKanji: "斉",
+    ultDesc: "A rank of ghost gunners appears behind you and fires three volleys down a lane in front of you.",
+    accent: "hsl(28, 80%, 58%)",
+  },
+  {
+    id: "takajo", kanji: "鷹", name: "Takajō", role: "Falconer",
+    bonuses: ["+5% movement speed", "A hunting hawk dives on a nearby foe every 3s"],
+    ultName: "Sky Hunt", ultKanji: "狩",
+    ultDesc: "Five hawks fill the sky for 6s, diving on foes all around you.",
+    accent: "hsl(38, 60%, 62%)",
+  },
+  {
+    id: "karakuri", kanji: "機", name: "Karakuri-shi", role: "Clockwork Puppeteer",
+    bonuses: ["+10 max HP", "Every 12s, sets down a wind-up turret that shoots foes for 6s"],
+    ultName: "Clockwork Battalion", ultKanji: "繰",
+    ultDesc: "Deploy three clockwork turrets around you that rapid-fire for 8s.",
+    accent: "hsl(190, 50%, 58%)",
+  },
+  {
+    id: "bakuto", kanji: "賽", name: "Bakuto", role: "Dice Gambler",
+    bonuses: ["+20% luck", "Each wave starts with a lucky die roll: a random buff for that wave"],
+    ultName: "Roll of Fate", ultKanji: "運",
+    ultDesc: "Roll two dice. Low: lightning strikes every nearby foe twice. Middle: 6s where every hit crits. High: a golden jackpot blast and a purse of coins.",
+    accent: "hsl(330, 65%, 62%)",
+  },
+  {
+    id: "rikishi", kanji: "力", name: "Rikishi", role: "Sumo Wrestler",
+    bonuses: ["+40 max HP, +30% knockback, −6% speed", "Dashing shoves foes aside and stuns them"],
+    ultName: "Dohyō Stomp", ultKanji: "土",
+    ultDesc: "Draw a sumo ring and stomp three times: each stomp drags foes in, then slams and stuns them.",
+    accent: "hsl(15, 60%, 56%)",
+  },
+  {
+    id: "sumie", kanji: "墨", name: "Sumi-e Painter", role: "Ink Painter",
+    bonuses: ["Abilities recover 10% faster", "Every 5th hit paints an ink pool that slows foes"],
+    ultName: "Living Ink", ultKanji: "虎",
+    ultDesc: "Paint an ink tiger that leaps from foe to foe for 6s, leaving slowing ink everywhere it strikes.",
+    accent: "hsl(265, 30%, 72%)",
   },
 ];
 
@@ -745,6 +790,12 @@ export const CLASS_WEAPON_OPTIONS: Record<ClassId, SecondaryId[]> = {
   kappa:      ["katana", "kusarigama", "blowgun", "tessen"],
   tengu:      ["katana", "shuriken_wheel", "tessen", "kunai"],
   kabuki:     ["katana", "tessen", "twin_sai", "odachi"],
+  teppo:      ["crossbow", "yumi", "katana", "kunai"],
+  takajo:     ["yumi", "kunai", "katana", "shuriken_wheel"],
+  karakuri:   ["tetsubishi", "crossbow", "katana", "tate"],
+  bakuto:     ["kunai", "katana", "tessen", "shuriken_wheel"],
+  rikishi:    ["tate", "ono", "katana", "tetsubishi"],
+  sumie:      ["tessen", "blowgun", "katana", "kunai"],
 };
 
 // Back-compat alias. Old call sites take a tuple of two; new code uses
@@ -3583,6 +3634,12 @@ const CLASS_META: Record<ClassId, {
   kappa:      { name: "Kappa",           kanji: "河",  ultName: "Tidal Surge",           ultKanji: "潮" },
   tengu:      { name: "Tengu",           kanji: "天",  ultName: "Divine Wind",           ultKanji: "風" },
   kabuki:     { name: "Kabuki",          kanji: "歌",  ultName: "Grand Finale",          ultKanji: "幕" },
+  teppo:      { name: "Teppō",           kanji: "砲",  ultName: "Three Ranks Fire",      ultKanji: "斉" },
+  takajo:     { name: "Takajō",          kanji: "鷹",  ultName: "Sky Hunt",              ultKanji: "狩" },
+  karakuri:   { name: "Karakuri-shi",    kanji: "機",  ultName: "Clockwork Battalion",   ultKanji: "繰" },
+  bakuto:     { name: "Bakuto",          kanji: "賽",  ultName: "Roll of Fate",          ultKanji: "運" },
+  rikishi:    { name: "Rikishi",         kanji: "力",  ultName: "Dohyō Stomp",           ultKanji: "土" },
+  sumie:      { name: "Sumi-e Painter",  kanji: "墨",  ultName: "Living Ink",            ultKanji: "虎" },
 };
 
 export const SLASH_HUE: Partial<Record<SecondaryId, number>> = {
@@ -4503,6 +4560,10 @@ export class GhostGame {
         break;
       case "kabuki":
         this.perks.critChance += 0.15;
+        break;
+      case "teppo": case "takajo": case "karakuri": case "bakuto": case "rikishi": case "sumie":
+        resetNewClasses(this);
+        startNewClass(this, this.stats.classId);   // STEP 5
         break;
       case "sohei":
         this.perks.maxHpBonus += 35;
@@ -5799,6 +5860,7 @@ export class GhostGame {
       this.stats.ultCharge = this.stats.ultMax * ULT_CHARGE.carryBetweenWaves;
       this.stats.ultReady = false;
     }
+    onWaveStartNewClass(this, wave);   // STEP 5: Bakuto lucky die
     // OMEN: announce it (and Elite Hunt's chest); ARENA SHRINE: maybe place one.
     const om = this.omenDef;
     if (om) {
@@ -7129,6 +7191,7 @@ export class GhostGame {
       p.dashAng = ang;
       p.dashTimer = BASE.DASH_DURATION;
       if (this.perks.hawkEye) this.hawkEyeT = 2;   // CRIT STEP: Hawk's Eye
+      onDashNewClass(this, ang);   // STEP 5: Rikishi shove
       this.playerRoot = 0;   // dashing breaks an Onryō root
       this.run.dashes++;
       p.dashCooldown = BASE.DASH_COOLDOWN * (this.stats.classId === "tengu" ? 0.6 : 1) * this.perks.dashCdMul * (this.ultWindTimer > 0 ? 0.15 : 1);
@@ -7776,7 +7839,7 @@ export class GhostGame {
     let isCrit = false;
     const critChance = critFromPoints(this.perks.critChance + (this.stats.buffLuckRemaining > 0 ? 0.4 : 0) + (this.hawkEyeT > 0 ? 0.05 : 0));
     if (e.critMarkUntil !== undefined && e.critMarkUntil > this.elapsed) dmg *= 1.1;   // CRIT STEP: Heaven's Eye mark
-    if (this.forceCrit || this.ultFinaleTimer > 0 || (critChance > 0 && Math.random() < critChance)) {
+    if (this.forceCrit || this.ultFinaleTimer > 0 || fortuneActive(this) || (critChance > 0 && Math.random() < critChance)) {
       dmg *= this.critMultiplier();
       isCrit = true;
       if (this.perks.critMark) e.critMarkUntil = this.elapsed + 3;
@@ -7876,6 +7939,7 @@ export class GhostGame {
     if (this.stats.classId === "yukionna") {
       e.slowRemaining = Math.max(e.slowRemaining, 1.5);
     }
+    onHitNewClass(this, e);   // STEP 5: Sumi-e ink
     if (this.stats.classId === "kappa" && !this.kappaSplashing) {
       this.kappaHitChain++;
       if (this.kappaHitChain >= 4) {
@@ -10099,6 +10163,7 @@ export class GhostGame {
     if (this.devShowHitboxes) this.drawDevHitboxes();
 
     this.drawPickupRadius();
+    drawNewClasses(this, ctx);   // STEP 5: hawks, turrets, tiger, ink, volleys
     drawUltUnder(this, ctx);   // ult visual pass 2: signature ground effects
     this.drawUltAura();
     this.drawPlayer();
@@ -12293,6 +12358,7 @@ export class GhostGame {
       if (e.webbedRemaining > 0) e.webbedRemaining = Math.max(0, e.webbedRemaining - dt);
     }
     updateUltTrail(this, dt);   // ult visual pass 2
+    updateNewClasses(this, dt);   // STEP 5
     this.hawkEyeT = Math.max(0, this.hawkEyeT - dt);
     this.resolveBlossoms();
     if (this.ultBloodRageTimer > 0) this.ultBloodRageTimer = Math.max(0, this.ultBloodRageTimer - dt);
@@ -12512,7 +12578,8 @@ export class GhostGame {
         !this.tideWave &&
         !this.roninDebt &&
         this.ultWindTimer <= 0 &&
-        this.ultFinaleTimer <= 0) {
+        this.ultFinaleTimer <= 0 &&
+        !newUltActive(this)) {   // STEP 5
       this.stats.ultActive = false;
       if (this.hasUltPerk("ult_after_l")) this.ultAftershock();   // ULTPERK Aftershock
       if (this.stats.ultCharge >= this.stats.ultMax) this.stats.ultReady = true;
@@ -13465,7 +13532,7 @@ export class GhostGame {
     const on =
       this.ultBloodRageTimer > 0 || this.ultShadowStepTimer > 0 || this.ultShadowConsumeTimer > 0 ||
       this.ultFinaleTimer > 0 || this.ultBannerActive || this.ultBlizzardTimer > 0 ||
-      this.ultMountainTimer > 0 || this.ultWindTimer > 0;
+      this.ultMountainTimer > 0 || this.ultWindTimer > 0 || fortuneActive(this);
     return on ? k : 0;
   }
 
@@ -13782,6 +13849,9 @@ export class GhostGame {
         this.player.invuln = Math.max(this.player.invuln, 0.5);
         break;
       }
+      case "teppo": case "takajo": case "karakuri": case "bakuto": case "rikishi": case "sumie":
+        castNewUlt(this, this.stats.classId);   // STEP 5
+        break;
       case "kabuki": {
         this.ultFinaleTimer = this.hasUltPerk("ultc_kabuki") ? 7 : 5;
         this.player.invuln = Math.max(this.player.invuln, 0.6);
@@ -14329,6 +14399,7 @@ export class GhostGame {
       };
       if (this.isClass("arashi") && !proj.pierce) proj.pierceLeft = SIG.arashiPierce;   // SIGNATURE Tailwind
       if (!proj.pierce && this.perks.pierceBonus > 0 && kind !== "hook") proj.pierceLeft = (proj.pierceLeft ?? 0) + this.perks.pierceBonus;   // STEP 3
+      onShotNewClass(this, proj);   // STEP 5: Teppō matchlock
       if (kind === "shuriken") {
         proj.bouncesLeft = 4;
         proj.returning = false;

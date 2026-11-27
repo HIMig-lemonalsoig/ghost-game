@@ -20,10 +20,13 @@ export const ULT_CLASS_MUL: Partial<Record<ClassId, number>> = {
   miko: 0.22, kunoichi: 0.13, onmyoji: 0.23, tsuchigumo: 0.33, kitsune: 0.36,
   ashigaru: 1.3, arashi: 0.6, dokkaebi: 0.53, onna: 0.54, kappa: 0.64,
   kensei: 0.95, sohei: 1.24, raijin: 1.36, ronin: 1.55, tetsubo: 2.6, samurai: 3.4,
+  // STEP 5 starting values (tuned with the budget harness)
+  teppo: 1, takajo: 6.5, karakuri: 4, bakuto: 1, rikishi: 0.7, sumie: 5.5,
 };
 
 /** Bonus ult damage (ultDmg base) added to each weapon hit while a power-up ult runs. */
 export const ULT_EMPOWER: Partial<Record<ClassId, number>> = {
   berserker: 4.1, shinobi: 13, kagebushi: 4.8, kabuki: 4.1, hatamoto: 3.8,
   yukionna: 9.4, yamabushi: 7, tengu: 3.4,
+  bakuto: 4.5,   // STEP 5: Fortune's Edge face
 };

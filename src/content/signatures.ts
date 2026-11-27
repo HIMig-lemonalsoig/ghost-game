@@ -33,6 +33,12 @@ export const SIGNATURES: Record<ClassId, Signature> = {
   sohei:      { name: "Thorns",          kanji: "僧", desc: "Attackers take 60% of the damage they deal you." },
   kappa:      { name: "Splash",          kanji: "河", desc: "Every 4th hit splashes nearby foes for 60% damage." },
   kabuki:     { name: "Showstopper",     kanji: "歌", desc: "Critical hits heal 1 HP (once every 0.5s)." },
+  teppo:      { name: "Matchlock",       kanji: "砲", desc: "Every 4th shot is a matchlock blast: 3× damage and it pierces." },
+  takajo:     { name: "Hunting Hawk",    kanji: "鷹", desc: "Your hawk dives on the nearest foe every 3s." },
+  karakuri:   { name: "Wind-up Turret",  kanji: "機", desc: "Every 12s you set down a turret that shoots nearby foes for 6s." },
+  bakuto:     { name: "Lucky Die",       kanji: "賽", desc: "Each wave starts with a die roll: +damage, +crit, +speed, +defense, coins or ult charge for that wave." },
+  rikishi:    { name: "Shove",           kanji: "力", desc: "Dashing shoves foes out of your path and stuns them for 0.5s." },
+  sumie:      { name: "Ink Brush",       kanji: "墨", desc: "Every 5th hit paints an ink pool that slows foes inside it." },
 };
 
 export const SIG = {

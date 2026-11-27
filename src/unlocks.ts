@@ -48,6 +48,12 @@ export const CLASS_REQS: Partial<Record<ClassId, Req>> = {
   kappa:      count("Get a duo perk", 1, c => sum(c.duosBy)),
   tengu:      anyWave(15),
   kabuki:     count("Win a run (beat the Final Boss)", 1, c => totalWins(c)),
+  teppo:      classWave("arashi", 10),
+  takajo:     count("Kill 1,500 enemies", 1500, c => c.kills),
+  karakuri:   count("Open 25 Spirit Chests", 25, c => c.chests),
+  bakuto:     anyWave(18),
+  rikishi:    classWave("tetsubo", 10),
+  sumie:      classWave("onmyoji", 10),
 };
 export const WEAPON_REQS: Partial<Record<SecondaryId, Req>> = {
   tessen:         anyWave(5),

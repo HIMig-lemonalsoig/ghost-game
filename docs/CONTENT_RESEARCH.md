@@ -245,3 +245,18 @@ Measured (4,000 rolls per wave):
 | 25 | 20 | 18% | +5% / 0% |
 
 Bot check (all 8 spawned around a standing player for 12 s): no errors; charge, aim, surfacing, drumming, splitting, poison trail, frost rings and mimic chest drop all work.
+
+
+## Step 5 done: new classes (2026-11-27)
+Built in `src/newclasses.ts` (state in `g.nc`), wired into class select, signatures, ult styles, ult perks and unlocks.
+
+| Class | Signature | Ult | Unlock | Ult budget (target 60, band 42–78) |
+|---|---|---|---|---|
+| Teppō | every 4th shot ×3, pierces | Three Ranks Fire | Arashi wave 10 | 63 |
+| Takajō | hawk dive every 3s | Sky Hunt (5 hawks) | 1,500 kills | 61 |
+| Karakuri-shi | turret every 12s | Clockwork Battalion (3 turrets) | 25 chests | 57 |
+| Bakuto | per-wave lucky die | Roll of Fate (2d6) | any class wave 18 | 53 (avg of 6 rolls) |
+| Rikishi | dash shove + stun | Dohyō Stomp ×3 | Tetsubō wave 10 | 65 |
+| Sumi-e Painter | ink pool every 5th hit | Living Ink (ink tiger) | Onmyōji wave 10 | 61 |
+
+Class multipliers in `content/ultbalance.ts`: takajo 6.5, karakuri 4, sumie 5.5 (pets/pools started at 9–15), bakuto empower 4.5. Checked by bot and screenshots only, not real play.

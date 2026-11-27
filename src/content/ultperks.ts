@@ -52,6 +52,12 @@ export const CLASS_ULT_PERKS: UltPerk[] = ([
   { id: "ultc_kappa",      cls: "kappa",      kanji: "波", name: "Riptide",         desc: "Tidal Surge is 45% wider and its final crash hits twice as hard." },
   { id: "ultc_tengu",      cls: "tengu",      kanji: "風", name: "Gale Lord",       desc: "Divine Wind lasts 2s longer." },
   { id: "ultc_kabuki",     cls: "kabuki",     kanji: "幕", name: "Encore",          desc: "The Grand Finale lasts 2s longer." },
+  { id: "ultc_teppo",      cls: "teppo",      kanji: "斉", name: "Fourth Rank",     desc: "Three Ranks Fire fires a fourth volley." },
+  { id: "ultc_takajo",     cls: "takajo",     kanji: "狩", name: "Full Mews",       desc: "Sky Hunt calls seven hawks instead of five." },
+  { id: "ultc_karakuri",   cls: "karakuri",   kanji: "繰", name: "Tightly Wound",   desc: "Clockwork Battalion turrets run for 11s." },
+  { id: "ultc_bakuto",     cls: "bakuto",     kanji: "運", name: "Loaded Dice",     desc: "Fortune's Edge lasts 8s instead of 6s." },
+  { id: "ultc_rikishi",    cls: "rikishi",    kanji: "土", name: "Yokozuna",        desc: "Dohyō Stomp stomps four times." },
+  { id: "ultc_sumie",      cls: "sumie",      kanji: "虎", name: "Masterwork",      desc: "The ink tiger lives 8s instead of 6s." },
 ] as Omit<UltPerk, "rarity" | "unique">[]).map(p => ({ ...p, rarity: "rare" as const, unique: true }));
 
 export const ULT_PERKS: UltPerk[] = [...GENERAL_ULT_PERKS, ...CLASS_ULT_PERKS];

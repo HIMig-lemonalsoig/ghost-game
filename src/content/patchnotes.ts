@@ -12,6 +12,19 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.4", date: "2026-11-27", title: "Six New Classes", kanji: "六",
+    summary: "Six new classes, each with its own signature, ultimate and unlock challenge.",
+    lines: [
+      ["new", "Teppō (gunner): every 4th shot is a matchlock blast (3× damage, pierces). Ult Three Ranks Fire: rolling volleys down a line. Unlock: reach wave 10 as Arashi."],
+      ["new", "Takajō (falconer): a hawk dives on the nearest foe every 3s. Ult Sky Hunt: five hawks hunt for 6s. Unlock: 1,500 total kills."],
+      ["new", "Karakuri-shi (tinkerer): sets down a wind-up turret every 12s. Ult Clockwork Battalion: three turrets for 8s. Unlock: open 25 chests."],
+      ["new", "Bakuto (gambler): each wave starts with a lucky die (damage, crit, speed, defense, coins or ult charge). Ult Roll of Fate: 2d6, from thunder strikes to Fortune's Edge (guaranteed crits) to a jackpot blast with coins. Unlock: reach wave 18 with any class."],
+      ["new", "Rikishi (sumo): dashing shoves foes aside and stuns them. Ult Dohyō Stomp: three huge stomps that pull foes in. Unlock: reach wave 10 as Tetsubō."],
+      ["new", "Sumi-e Painter: every 5th hit paints an ink pool that slows foes. Ult Living Ink: a painted tiger hunts for 6s. Unlock: reach wave 10 as Onmyōji."],
+      ["change", "All six ultimates are tuned to the same damage budget as the existing classes (measured 53–65, target 60), and each has its own ult perk card."],
+    ],
+  },
+  {
     version: "3.3", date: "2026-11-27", title: "New Yokai", kanji: "妖",
     summary: "Eight new enemies, each with one clear job, fill out waves 11–19.",
     lines: [
