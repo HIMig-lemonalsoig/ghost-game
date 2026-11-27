@@ -2625,6 +2625,8 @@ export type EnemyArchetype =
   | "mirror";
 
 export type BossKind = "oni" | "kitsune" | "gasha" | "raijin";
+/** Spawn table: plain grunts always keep at least this share of regular spawns. */
+const SPAWN_MIN_NORMAL = 0.15;
 
 /** Balance-tracking events (see src/telemetry.ts). */
 export type GameEvent =
@@ -5600,18 +5602,21 @@ export class GhostGame {
     const lanternChance = wave >= 4 ? Math.min(0.12, (wave - 3) * 0.02) : 0;
     const bomberChance = wave >= 5 ? Math.min(0.12, (wave - 4) * 0.02) : 0;
     const priestChance = wave >= 7 ? Math.min(0.08, (wave - 6) * 0.015) : 0;
-    let cum = 0;
-    if (r < (cum += newEnemyChance("onryo", wave))) return "onryo";
-    if (r < (cum += newEnemyChance("nue", wave))) return "nue";
-    if (r < (cum += newEnemyChance("mirror", wave))) return "mirror";
-    if (r < (cum += priestChance)) return "priest";
-    if (r < (cum += bomberChance)) return "bomber";
-    if (r < (cum += lanternChance)) return "lantern";
-    if (r < (cum += wispChance)) return "wisp";
-    if (r < (cum += shieldedChance)) return "shielded";
-    if (r < (cum += archerChance)) return "archer";
-    if (r < (cum += assassinChance)) return "assassin";
-    if (r < (cum += heavyChance)) return "heavy";
+    // Spawn-table fix (2026-11-27): these used to be rolled in a fixed order, and
+    // from wave 10 they add up to over 100%, so the types at the end of the list
+    // (heavy, assassin) and plain grunts stopped spawning at all. Now they're
+    // weights: plain grunts always keep at least SPAWN_MIN_NORMAL of the mix and
+    // everything else shares the rest in proportion. Waves where the chances add
+    // up to less than that are exactly as before.
+    const table: [EnemyArchetype, number][] = [
+      ["onryo", newEnemyChance("onryo", wave)], ["nue", newEnemyChance("nue", wave)], ["mirror", newEnemyChance("mirror", wave)],
+      ["priest", priestChance], ["bomber", bomberChance], ["lantern", lanternChance], ["wisp", wispChance],
+      ["shielded", shieldedChance], ["archer", archerChance], ["assassin", assassinChance], ["heavy", heavyChance],
+    ];
+    const special = table.reduce((a, [, w]) => a + w, 0);
+    const normalW = Math.max(1 - special, (special * SPAWN_MIN_NORMAL) / (1 - SPAWN_MIN_NORMAL));   // grunts end up >= SPAWN_MIN_NORMAL of the mix
+    let pick = r * (special + normalW);
+    for (const [kind, w] of table) { if (pick < w) return kind; pick -= w; }
     return "normal";
   }
 

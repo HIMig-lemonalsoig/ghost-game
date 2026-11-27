@@ -12,6 +12,15 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.0.2", date: "2026-11-27", title: "Spawn Table Fix", kanji: "群",
+    summary: "Late waves had stopped spawning some enemy types entirely.",
+    lines: [
+      ["fix", "From wave 10 the enemy chances added up to over 100%, so the last types in the list were squeezed out: heavies vanished after wave ~13, assassins after ~16, and plain grunts after wave 10."],
+      ["change", "Enemy types now share the spawns by weight, so every unlocked type keeps appearing, and plain grunts always make up about 15% of regular spawns."],
+      ["nerf", "Late waves are slightly tougher: at wave 20 the average enemy has about 3% more HP and hits about 5% harder, because heavies and assassins are back."],
+    ],
+  },
+  {
     version: "3.0.1", date: "2026-11-27", title: "The Split Returns", kanji: "斬",
     summary: "Back to the sword cut that splits the screen open.",
     lines: [

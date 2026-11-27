@@ -216,3 +216,16 @@ Each new class's ult reuses a mechanic we've already measured with the ult budge
 3. **Zero-source stats**: area, projectiles, luck, XP, pickup, frost (about 14 cards + 6 shop items), each with the soft caps above, plus **family weighting**.
 4. **New enemies** in waves 11–19 (one at a time, bot-checked).
 5. **New classes** (one at a time, ult budget measured).
+
+### C5d follow-up: spawn bug fixed (2026-11-27)
+`pickRollKind()` now uses normalized weights with plain grunts kept at ≥15% (`SPAWN_MIN_NORMAL`). Measured in-game (4,000 rolls per wave):
+
+| Wave | Heavy | Assassin | Grunts | Types spawning | Avg enemy HP / damage vs before |
+|---|---|---|---|---|---|
+| 8 | 35% (same) | 0 | 22% | 9 | unchanged |
+| 10 | 29% | 2% | 15% (was 0) | 11 | −4% / −3% |
+| 12 | 24% (was 7%) | 5% | 14% | 12 | +5% / +2% |
+| 15 | 20% (was 0) | 8% (was 2%) | 15% | 12 | +1% / +4% |
+| 20 | 21% (was 0) | 9% (was 0) | 14% | 12 | +3% / +5% |
+
+New enemies can now be added as weights without pushing anything out.
