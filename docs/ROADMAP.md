@@ -603,3 +603,12 @@ All 25 classes now measure 44–73 grunts' worth (target 60, band 42–78), aver
 - **Bought:** Traveler's Indigo, Mountain Hermit, Clan Lacquer Armor, Red Hachimaki, Straw Kasa, Oni Mask, Moonlit Edge, Crimson Lacquer, Sakura Blade, Red Sash, Indigo Cape, Petal Scarf.
 - **Earned (achievements / challenges):** Iron Lord's Armor (10 bosses), Phantom Garb (50 stealth kills), Swordmaster's Kimono (wave 25), Fox Shrine Robe (beat the Nine-Tailed Witch), Storm Sentinel (beat the Thunder General), Golden Temple Armor (win a run), Ghost Hood (Silent Blade), Fox Spirit Mask (20 Spirit Chests), Crescent Kabuto (wave 20), Antlered Kabuto (50 elites), Tengu Mask and Ghost White Cloth (wave 15 on Hard/Death), Black Water (2,000 kills), Storm Edge (3 Thunder Generals), Gold Leaf (Wave 20 achievement), Golden Cord (25 bosses).
 - Live preview: hover a piece to try it on. Sword kits also recolor your slash trail. Sashes, capes and headband tails stream behind you and flutter faster when you move.
+
+### Playtest fix: boss slams and blasts dodgeable up close (2026-11-26)
+User report: the slam is too big to leave even with the warning; orb blasts can't be dodged up close.
+Cause: the slam's damage ring rolled out to 260 px but you can walk ~130 px in the 0.6 s warning (and dash has a 2.4 s cooldown); volleys fired 9–15 orbs from the boss's centre at full speed, so up close the gaps were narrower than you; Raijin's 3-dash charge had no warning at all.
+Fix:
+- Slam hits **once, inside the drawn 150 px circle**, after a 0.75 s wind-up (0.6 s in the last phase). Walk or dash out.
+- Orb volleys: 7 / 9 / 11 orbs (was 9 / 12 / 15), leave from the boss's edge and **start slow, then speed up** over 0.5 s. Kitsune's foxfire fan does the same and has fewer, wider-spaced orbs.
+- Boss charge (Raijin, Oni phase 3): each dash shows a **danger lane for 0.4 s**, aimed where you stood; step sideways.
+Bot check (60 s at melee range, simple dodging): Oni 0 hits, Gashadokuro 0, Nine-Tailed Witch 3, Thunder General 3. Without dodging the Thunder General still lands 22, so dodging is the skill.

@@ -2741,6 +2741,7 @@ interface Enemy {
   bossPatternStep: number;     // final boss: step counter inside a pattern
   bossPatternCd: number;       // final boss: cooldown between patterns
   bossRecover?: number;        // melee pass: boss is winded after a pattern (stands still)
+  dashWind?: number;           // dodge pass: seconds left on a boss charge's aim line
   blinkX?: number; blinkY?: number;   // Kitsune: where her blink will land (shown in advance)
   lastBossPattern?: number;
   // Class-driven debuffs / status:
@@ -2924,7 +2925,11 @@ interface EnemyProjectile {
   // Visual style: arrow (slim shaft) or orb (boss volley)
   kind: "arrow" | "orb" | "talisman";
   trail: { x: number; y: number }[];
+  /** Boss volley orbs start slow and speed up (0→1), so you can step between them up close. */
+  ramp?: number;
 }
+/** Boss ground slam: one blast of this radius when it lands (matches the drawn danger circle). */
+const BOSS_SLAM_R = 150;
 
 // ===== Phase 3: Secondary weapon entities =====
 
@@ -7885,13 +7890,16 @@ export class GhostGame {
     for (let i = 0; i < count; i++) {
       const a = baseAng + (i / count) * Math.PI * 2;
       this.enemyProjectiles.push({
-        pos: { x: e.pos.x, y: e.pos.y },
+        // Dodge pass: orbs leave from the boss's edge and start slow, so the gaps
+        // between them are wide enough to step into even when you're up close.
+        pos: { x: e.pos.x + Math.cos(a) * (e.size + 4), y: e.pos.y + Math.sin(a) * (e.size + 4) },
         vel: { x: Math.cos(a) * speed, y: Math.sin(a) * speed },
-        life: 2.6, maxLife: 2.6,
+        life: 2.8, maxLife: 2.8,
         damage: Math.round(e.damage * 0.7),
         size: 9,
         kind: "orb",
         trail: [],
+        ramp: 0,
       });
     }
     audio.play("bombBoom");
@@ -7907,8 +7915,10 @@ export class GhostGame {
       ep.life -= dt;
       ep.trail.push({ x: ep.pos.x, y: ep.pos.y });
       if (ep.trail.length > 8) ep.trail.shift();
-      ep.pos.x += ep.vel.x * dt;
-      ep.pos.y += ep.vel.y * dt;
+      let spd = 1;
+      if (ep.ramp !== undefined) { ep.ramp = Math.min(1, ep.ramp + dt / 0.5); spd = 0.35 + 0.65 * ep.ramp * ep.ramp; }
+      ep.pos.x += ep.vel.x * dt * spd;
+      ep.pos.y += ep.vel.y * dt * spd;
       // Out of world bounds → kill
       if (ep.pos.x < -20 || ep.pos.y < -20 || ep.pos.x > this.worldW + 20 || ep.pos.y > this.worldH + 20) {
         ep.life = 0;
@@ -8101,15 +8111,16 @@ export class GhostGame {
     const pulse = 0.5 + 0.5 * Math.sin(this.elapsed * 18);
     if (e.bossPatternTimer > 0 && e.bossPatternStep === 0 && e.bossPattern === 1) {
       // Ground slam: the danger ring fills in until the slam lands.
-      const k = Math.max(0, Math.min(1, (1.25 - e.bossPatternTimer) / 0.6));
+      const start = e.bossPhase >= 3 ? 1.25 : 1.4;
+      const k = Math.max(0, Math.min(1, (start - e.bossPatternTimer) / (start - 0.65)));
       ctx.save();
-      ctx.strokeStyle = `hsla(${this.dangerHue}, 90%, 60%, ${0.35 + 0.4 * pulse})`;
+      ctx.strokeStyle = `hsla(${this.dangerHue}, 90%, 60%, ${0.45 + 0.4 * pulse})`;
       ctx.lineWidth = 3;
       ctx.setLineDash([10, 8]);
-      ctx.beginPath(); ctx.arc(e.pos.x, e.pos.y, 260, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(e.pos.x, e.pos.y, BOSS_SLAM_R, 0, Math.PI * 2); ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = `hsla(${this.dangerHue}, 90%, 55%, ${0.12 + 0.1 * k})`;
-      ctx.beginPath(); ctx.arc(e.pos.x, e.pos.y, 260 * k, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `hsla(${this.dangerHue}, 90%, 55%, ${0.14 + 0.14 * k})`;
+      ctx.beginPath(); ctx.arc(e.pos.x, e.pos.y, BOSS_SLAM_R * k, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = `hsla(${this.dangerHue}, 95%, 70%, 0.95)`;
       ctx.font = "bold 22px serif"; ctx.textAlign = "center";
       ctx.fillText("!", e.pos.x, e.pos.y - e.size - 30);
@@ -8137,6 +8148,17 @@ export class GhostGame {
       ctx.setLineDash([]);
       ctx.fillStyle = `hsla(24, 95%, 55%, ${0.15 + 0.2 * k})`;
       ctx.beginPath(); ctx.arc(e.blinkX, e.blinkY!, e.size * k, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    } else if (e.bossPatternTimer > 0 && e.bossPattern === 2 && (e.dashWind ?? 0) > 0) {
+      // Charge: a danger lane along the locked aim (the boss's width), filling in.
+      const k = 1 - (e.dashWind ?? 0) / 0.4, L = 520 * 0.22 + 30, w = e.size + BASE.PLAYER_RADIUS;
+      ctx.save();
+      ctx.translate(e.pos.x, e.pos.y); ctx.rotate(e.dashAng);
+      ctx.fillStyle = `hsla(${this.dangerHue}, 90%, 55%, ${0.12 + 0.18 * k})`;
+      ctx.fillRect(0, -w, L * k, w * 2);
+      ctx.strokeStyle = `hsla(${this.dangerHue}, 95%, 62%, ${0.5 + 0.4 * pulse})`;
+      ctx.lineWidth = 2; ctx.setLineDash([8, 6]);
+      ctx.strokeRect(0, -w, L, w * 2);
       ctx.restore();
     } else if ((e.bossRecover ?? 0) > 0) {
       // Winded: a little "breath" puff over its head — your opening.
@@ -8189,24 +8211,19 @@ export class GhostGame {
         const burstAt = stepCount - Math.floor((e.bossPatternTimer) / stepInterval);
         if (burstAt > e.bossPatternStep) {
           e.bossPatternStep = burstAt;
-          const count = 6 + e.bossPhase * 3;
+          const count = 5 + e.bossPhase * 2;   // dodge pass: 7 / 9 / 11 (was 9 / 12 / 15)
           this.fireBossVolley(e, count, Math.random() * Math.PI * 2, 240);
         }
       } else if (e.bossPattern === 1) {
         // Ground slam — small windup then a shockwave (uses existing shockwaves[]).
-        if (e.bossPatternStep === 0 && e.bossPatternTimer < 0.65) {   // windup = 1.25 - 0.65 = 0.6s (was 0.2s)
+        if (e.bossPatternStep === 0 && e.bossPatternTimer < 0.65) {   // windup 0.75s (0.6s in the last phase)
           e.bossPatternStep = 1;
-          this.shockwaves.push({
-            pos: { x: e.pos.x, y: e.pos.y },
-            radius: 20,
-            maxRadius: 260,
-            life: 0.7,
-            damage: Math.round(e.damage * 0.9),
-            // Pre-mark the boss as already "hit" so its own slam can never
-            // damage or launch it (the ring still hits everything else).
-            hitSet: new Set([e.id]),
-            ownerEnemyId: e.id,
-          });
+          // Dodge pass: the slam hits once, inside the circle that was drawn
+          // (150 px). The old ring rolled out to 260 px, too far to walk out of.
+          const dp = Math.hypot(this.player.pos.x - e.pos.x, this.player.pos.y - e.pos.y);
+          if (dp <= BOSS_SLAM_R + BASE.PLAYER_RADIUS * 0.5 && this.player.invuln <= 0) this.applyEnemyHit(e, Math.round(e.damage * 0.9));
+          this.fx.shockwave(e.pos.x, e.pos.y, BOSS_SLAM_R, { hue: this.dangerHue, light: 60, life: 0.45, width: 14, lines: 14 });
+          this.fx.ground(e.pos.x, e.pos.y, BOSS_SLAM_R * 0.8, 20, 1.2);
           this.cameraShake = Math.max(this.cameraShake, 0.55);
           audio.play("bombBoom");
         }
@@ -8222,12 +8239,18 @@ export class GhostGame {
             this.applyEnemyHit(e, e.damage);
             e.dashTimer = 0;
           }
-        } else if (e.bossPatternStep < 3 && e.bossPatternTimer < 1.4 - e.bossPatternStep * 0.45) {
+        } else if ((e.dashWind ?? 0) > 0) {
+          // Dodge pass: a visible aim line, locked where you stood, before each charge.
+          e.dashWind = (e.dashWind ?? 0) - dt;
+          if (e.dashWind <= 0) {
+            e.dashTimer = 0.22;
+            e.dashInvuln = 0.18;
+            audio.play("smokeWoosh");
+          }
+        } else if (e.bossPatternStep < 3 && e.bossPatternTimer < 1.75 - e.bossPatternStep * 0.55) {
           e.bossPatternStep++;
           e.dashAng = angToPlayer;
-          e.dashTimer = 0.22;
-          e.dashInvuln = 0.18;
-          audio.play("smokeWoosh");
+          e.dashWind = 0.4;
         }
       }
       else if (e.bossPattern === 3) {
@@ -8251,12 +8274,12 @@ export class GhostGame {
         } else if (e.bossPatternStep === 2 && e.bossPatternTimer < 0.3) {
           e.bossPatternStep = 3;
           e.blinkX = e.blinkY = undefined;
-          const n = 3 + e.bossPhase * 2;
+          const n = 3 + e.bossPhase;   // dodge pass: 4 / 5 / 6 (was 5 / 7 / 9), wider gaps
           for (let i = 0; i < n; i++) {
-            const a = angToPlayer + (i / (n - 1) - 0.5) * 0.9;
+            const a = angToPlayer + (i / (n - 1) - 0.5) * 1.0;
             this.enemyProjectiles.push({
               pos: { x: e.pos.x, y: e.pos.y }, vel: { x: Math.cos(a) * 300, y: Math.sin(a) * 300 },
-              life: 2.2, maxLife: 2.2, damage: Math.round(e.damage * 0.6), size: 9, kind: "orb", trail: [],
+              life: 2.4, maxLife: 2.4, damage: Math.round(e.damage * 0.6), size: 9, kind: "orb", trail: [], ramp: 0,
             });
           }
           audio.play("bombBoom");
@@ -8320,6 +8343,7 @@ export class GhostGame {
         // (stands still) for the first part of it, so you can get in and hit.
         e.bossPatternCd = 2.0 - e.bossPhase * 0.25;
         e.bossPatternStep = 0;
+        e.dashWind = 0;
         e.bossRecover = 1.0 - (e.bossPhase - 1) * 0.15;
         if (e.bossPattern === 3) e.bossRecover += 0.6;   // dazed after a blink: your chance to hit her
         e.lastBossPattern = e.bossPattern;
@@ -8364,11 +8388,11 @@ export class GhostGame {
       e.bossPatternStep = 0;
       e.bossPatternTimer =
         e.bossPattern === 0 ? 0.6 + (e.bossPhase === 1 ? 1 : e.bossPhase === 2 ? 2 : 3) * 0.35 :
-        e.bossPattern === 1 ? 1.25 :
+        e.bossPattern === 1 ? (e.bossPhase >= 3 ? 1.25 : 1.4) :
         e.bossPattern === 3 ? 1.3 :
         e.bossPattern === 4 ? 0.6 :
         e.bossPattern === 5 ? 1.6 :
-        e.bossPattern === 6 ? 1.2 : 1.5;
+        e.bossPattern === 6 ? 1.2 : 2.0;   // dash sweep: room for three 0.4s aim lines
       e.attackAnim = 0.001;
     }
   }
