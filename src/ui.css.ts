@@ -869,6 +869,9 @@ body.in-menu #menu-bg { display: block; }
 #menu .rack-nav { background: rgba(14, 18, 44, .7); }
 #menu .controls-strip { color: #e7d8c4; text-shadow: 0 1px 4px rgba(0,0,0,.7); }
 
+/* Intro → menu: the world behind the sword cut settles into place */
+@keyframes menuReveal { from { transform: scale(1.07); filter: brightness(.5) saturate(.7); } }
+body.intro-reveal #menu-bg, body.intro-reveal #menu .menu-wrap { animation: menuReveal 1.35s cubic-bezier(.2,.8,.2,1) both; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }

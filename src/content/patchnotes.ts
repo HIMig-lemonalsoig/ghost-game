@@ -12,6 +12,15 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "2.9", date: "2026-11-27", title: "Cut Into the World", kanji: "斬",
+    summary: "The intro's sword cut now opens straight into the game.",
+    lines: [
+      ["new", "When the blade cuts through 幽剣, the whole intro screen splits along the slash and the two halves slide apart, revealing the menu behind it."],
+      ["new", "A second spray of embers bursts from the tear, and the menu settles into place as it's uncovered."],
+      ["change", "The tagline appears before the cut, and the intro is about a second shorter (about 5.7 s)."],
+    ],
+  },
+  {
     version: "2.8", date: "2026-11-27", title: "Dusk at the Dojo", kanji: "暮",
     summary: "The main menu got colour: a living ukiyo-e sunset.",
     lines: [

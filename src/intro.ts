@@ -65,7 +65,8 @@ void main(){vec2 uv=gl_FragCoord.xy/u_s.xy;vec2 p=(gl_FragCoord.xy-.5*u_s.xy)/mi
  col+=(gh(gl_FragCoord.xy+vec2(17.,31.))-.5)*.042;gl_FragColor=vec4(clamp(col,0.,1.),1.);}`;
 
 function createSmoke(canvas: HTMLCanvasElement) {
-  const gl = canvas.getContext("webgl", { antialias: false, premultipliedAlpha: false });
+  // preserveDrawingBuffer: the slash snapshots the smoke into the two halves of the screen.
+  const gl = canvas.getContext("webgl", { antialias: false, premultipliedAlpha: false, preserveDrawingBuffer: true });
   if (!gl) return null;
   const sh = (type: number, src: string) => { const s = gl.createShader(type)!; gl.shaderSource(s, src); gl.compileShader(s); return s; };
   const prog = gl.createProgram()!;
@@ -257,7 +258,9 @@ const CSS = `
 #intro .intro-sub { position: absolute; left: 0; right: 0; top: calc(50% + min(30vmin, 228px)); display: grid; justify-items: center; gap: 10px; }
 #intro .intro-tag { font: 14px/1.4 ${SERIF}; color: #a89c84; letter-spacing: .14em; opacity: 0; transform: translateY(6px); transition: opacity .8s ease, transform .8s ease; text-align: center; padding: 0 16px; }
 #intro .intro-tag.show { opacity: 1; transform: none; }
+#intro .intro-scene { position: absolute; inset: 0; }
 #intro .intro-split { position: absolute; inset: 0; pointer-events: none; will-change: transform; }
+#intro.opening { background: transparent; }
 #intro .intro-slash { position: absolute; left: -10vw; top: 50%; width: 120vw; height: 3px; transform-origin: 0 50%; pointer-events: none; opacity: 0;
   background: linear-gradient(90deg, rgba(255,255,255,0), #fff 18%, #fff6dc 70%, ${GOLD}); box-shadow: 0 0 18px 4px rgba(255, 236, 190, .75), 0 0 60px 10px rgba(240, 120, 70, .35); }
 #intro .intro-flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
@@ -305,7 +308,10 @@ export function playIntro(): Promise<void> {
     skip.type = "button";
     skip.textContent = "Skip ›";
     stage.append(center, sub);
-    root.append(smokeCv, stage, slash, flash, sparkCv, skip);
+    const scene = document.createElement("div");
+    scene.className = "intro-scene";
+    scene.append(smokeCv, stage);
+    root.append(scene, slash, flash, sparkCv, skip);
     document.body.append(root);
 
     let smoke: ReturnType<typeof createSmoke> = null;
@@ -340,7 +346,7 @@ export function playIntro(): Promise<void> {
       } catch (err) { console.warn("[intro]", err); finish(); return; }
 
       // Timeline (seconds)
-      const T_INK = 0.45, T_KANJI = 1.25, T_LATIN = 2.55, T_SLASH = 4.35, T_END = 6.7;
+      const T_INK = 0.45, T_KANJI = 1.25, T_LATIN = 2.55, T_SLASH = 4.35, T_END = T_SLASH + 1.35;
       const sparks: Spark[] = [];
       const sctx = sparkCv.getContext("2d");
       let split: HTMLElement[] = [];
@@ -352,21 +358,30 @@ export function playIntro(): Promise<void> {
         slashed = true;
         const W = root.clientWidth, H = root.clientHeight;
         slashAng = -0.2;
-        // Snapshot the title into two halves cut along the slash line, then hide the original.
+        // Cut the WHOLE screen in two along the slash: each half is a clone of the
+        // scene (smoke frozen into a 2D snapshot, title, moon) clipped to its side.
         const cy = H / 2 - 0.02 * H;
+        const yl = cy + Math.tan(slashAng) * (0 - W / 2), yr = cy + Math.tan(slashAng) * (W - W / 2);
         const mkHalf = (upper: boolean) => {
-          const c = stage.cloneNode(true) as HTMLElement;
+          const c = scene.cloneNode(true) as HTMLElement;
           const sfx = upper ? "-cu" : "-cl";
           c.innerHTML = c.innerHTML.replace(/id="([^"]+)"/g, `id="$1${sfx}"`).replace(/url\(#([^)]+)\)/g, `url(#$1${sfx})`);
           c.classList.add("intro-split");
-          // Line through (W/2, cy) at slashAng: y = cy + tan(a)(x - W/2)
-          const yl = cy + Math.tan(slashAng) * (0 - W / 2), yr = cy + Math.tan(slashAng) * (W - W / 2);
+          if (smoke) {   // swap the cloned (blank) WebGL canvas for a still of the current smoke
+            const snap = document.createElement("canvas");
+            snap.width = smokeCv.width; snap.height = smokeCv.height;
+            snap.className = smokeCv.className;
+            try { snap.getContext("2d")?.drawImage(smokeCv, 0, 0); } catch { /* tainted/lost: leave it dark */ }
+            snap.style.background = INK;
+            c.querySelector("canvas.intro-smoke")?.replaceWith(snap);
+          }
           c.style.clipPath = upper ? `polygon(0 0, ${W}px 0, ${W}px ${yr}px, 0 ${yl}px)` : `polygon(0 ${yl}px, ${W}px ${yr}px, ${W}px ${H}px, 0 ${H}px)`;
+          c.style.background = INK;
           root.insertBefore(c, slash);
           return c;
         };
         split = [mkHalf(true), mkHalf(false)];
-        stage.style.visibility = "hidden";
+        scene.style.visibility = "hidden";
         slash.style.top = `${cy + Math.tan(slashAng) * (-0.1 * W - W / 2)}px`;   // the blade line passes through the cut at screen centre
         slash.style.transform = `rotate(${slashAng}rad) scaleX(0)`;
         // Embers along the cut.
@@ -388,6 +403,7 @@ export function playIntro(): Promise<void> {
         moon.update(clamp01((time - T_INK) / 1.5), clamp01((time - T_INK - 1.2) / 1.1));
         kanji.update(time - T_KANJI, dt);
         latin.update(time - T_LATIN, dt);
+        if (time > T_LATIN + 1.1) tag.classList.add("show");
         if (!slashed && time >= T_SLASH) doSlash();
         if (slashed) {
           const s = time - T_SLASH;
@@ -395,15 +411,30 @@ export function playIntro(): Promise<void> {
           slash.style.opacity = String(s < 0.12 ? 1 : Math.max(0, 1 - (s - 0.12) / 0.45));
           slash.style.transform = `rotate(${slashAng}rad) scaleX(${easeOut(s / 0.12)})`;
           flash.style.opacity = String(s < 0.12 ? 0 : Math.max(0, 0.45 - (s - 0.12) * 1.6));
-          // Halves part along the cut, hang a beat, then seal back.
-          const part = s < 0.12 ? 0 : s < 0.5 ? easeOut((s - 0.12) / 0.2) : 1 - easeInOut((s - 0.5) / 0.55);
-          const nx = -Math.sin(slashAng), ny = Math.cos(slashAng), along = 14 * part;
+          // The cut glows for a beat, then the two halves of the world slide apart
+          // along it and the menu (already behind the intro) is revealed in the gap.
+          const W2 = root.clientWidth, H2 = root.clientHeight;
+          const hold = s < 0.12 ? 0 : easeOut(Math.min(1, (s - 0.12) / 0.15)) * 6;
+          const k = s < 0.34 ? 0 : Math.min(1, (s - 0.34) / 0.95);
+          const open = k * k * k * Math.hypot(W2, H2) * 0.62 + hold;       // ease-in: slow start, then a rush
+          const nx = -Math.sin(slashAng), ny = Math.cos(slashAng);
+          const tx = Math.cos(slashAng), ty = Math.sin(slashAng), shear = 40 * k * k;
+          const rot = 3.2 * k * k;
           if (split.length) {
-            split[0].style.transform = `translate(${(-nx * 9 * part - along).toFixed(2)}px, ${(-ny * 9 * part).toFixed(2)}px)`;
-            split[1].style.transform = `translate(${(nx * 9 * part + along).toFixed(2)}px, ${(ny * 9 * part).toFixed(2)}px)`;
+            split[0].style.transform = `translate(${(-nx * open - tx * shear).toFixed(1)}px, ${(-ny * open - ty * shear).toFixed(1)}px) rotate(${-rot}deg)`;
+            split[1].style.transform = `translate(${(nx * open + tx * shear).toFixed(1)}px, ${(ny * open + ty * shear).toFixed(1)}px) rotate(${rot}deg)`;
           }
-          if (s > 1.1 && split.length) { split.forEach(c => c.remove()); split = []; stage.style.visibility = ""; }
-          if (s > 0.35) tag.classList.add("show");
+          if (s > 0.3 && !root.classList.contains("opening")) {
+            root.classList.add("opening");
+            document.body.classList.add("intro-reveal");
+            setTimeout(() => document.body.classList.remove("intro-reveal"), 1600);
+            // a second, smaller spray as the halves tear apart
+            for (let i = 0; i < 50; i++) {
+              const u = Math.random(), x = W2 * u, y = H2 / 2 - 0.02 * H2 + Math.tan(slashAng) * (x - W2 / 2);
+              const side = Math.random() < 0.5 ? -1 : 1, sp = 60 + Math.random() * 220;
+              sparks.push({ x, y, vx: nx * side * sp + (Math.random() - 0.5) * 80, vy: ny * side * sp, life: 0, max: 0.5 + Math.random() * 0.8, hue: 25 + Math.random() * 25 });
+            }
+          }
         }
         // Embers
         if (sctx) {
