@@ -1,4 +1,5 @@
 // Consolidated game engine and supporting systems. No React dependencies.
+import { drawCrestCursor } from "./cursor";
 import { Fx, hueOf } from "./fx";
 import { updateUltTrail, drawUltUnder, drawUltOver } from "./ultvfx";
 import { drawBack, drawBody } from "./cosmeticdraw";
@@ -4095,6 +4096,7 @@ export class GhostGame {
   /** NAV: edge arrows to off-screen altars / chests / items / boss, and the minimap (Settings). */
   showPointers = true;
   showMinimap = true;
+  showCursor = true; cursorInside = true; cursorT = 0; cursorSpin = 0; cursorKick = 0;
   /** WARDROBE: the player's equipped cosmetics (set by the UI before a run; null = classic look). */
   look: Look | null = null;
   private lookPrev = { x: 0, y: 0, sway: 0 };
@@ -5992,7 +5994,7 @@ export class GhostGame {
     Object.assign(this.input, partial);
   }
 
-  triggerAttack() { this.input.attackPressed = true; this.input.attack = true; }
+  triggerAttack() { this.input.attackPressed = true; this.input.attack = true; this.cursorKick = 1; }
   // Shift / RMB / mobile "guard" button — now triggers Dash instead of Parry.
   // Method name preserved so React + TouchControls bindings keep working.
   triggerParry() { this.input.parryPressed = true; this.input.parry = true; }
@@ -10476,6 +10478,7 @@ export class GhostGame {
     if (this.showMinimap && !this.ultCutscene && !(this.cinematicTimer > 0)) drawMinimap(this, ctx, W, H);
     this.fx.drawScreen(ctx, W, H);
     if (this.ultCutscene) this.drawUltCutscene(ctx, W, H);
+    drawCrestCursor(this, ctx);
   }
 
   drawPlayer() {

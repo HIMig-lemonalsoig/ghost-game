@@ -45,8 +45,8 @@ const SETTINGS_KEY = "ghostgame.settings.v1";
 const BEST_KEY = "ghostgame.best.v1";
 const LAST_KEY = "ghostgame.last.v1";
 
-interface Settings { sound: boolean; shake: boolean; tips: boolean; autoPause: boolean; cutscenes: boolean; rumble: boolean; dps: boolean; pickup: boolean; haptics: boolean; minimap: boolean; pointers: boolean; difficulty: Difficulty; }
-type ToggleKey = "sound" | "shake" | "tips" | "autoPause" | "cutscenes" | "rumble" | "dps" | "pickup" | "haptics" | "minimap" | "pointers";
+interface Settings { sound: boolean; shake: boolean; tips: boolean; autoPause: boolean; cutscenes: boolean; rumble: boolean; dps: boolean; pickup: boolean; haptics: boolean; minimap: boolean; pointers: boolean; cursor: boolean; difficulty: Difficulty; }
+type ToggleKey = "sound" | "shake" | "tips" | "autoPause" | "cutscenes" | "rumble" | "dps" | "pickup" | "haptics" | "minimap" | "pointers" | "cursor";
 interface LastPick { classId: ClassId; weapons: SecondaryId[]; }
 
 function readJSON<T>(key: string, fallback: T): T {
@@ -59,7 +59,7 @@ function writeJSON(key: string, value: unknown) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage blocked */ }
 }
 
-const settings: Settings = readJSON(SETTINGS_KEY, { sound: true, shake: true, tips: true, autoPause: true, cutscenes: true, rumble: true, dps: false, pickup: false, haptics: true, minimap: true, pointers: true, difficulty: "normal" as Difficulty });
+const settings: Settings = readJSON(SETTINGS_KEY, { sound: true, shake: true, tips: true, autoPause: true, cutscenes: true, rumble: true, dps: false, pickup: false, haptics: true, minimap: true, pointers: true, cursor: true, difficulty: "normal" as Difficulty });
 if (!(settings.difficulty in DIFFICULTIES)) settings.difficulty = "normal";
 // Best wave per class and difficulty (Normal keeps the original un-suffixed key).
 const bestKey = (cls: string, d: Difficulty) => (d === "normal" ? cls : `${cls}@${d}`);
@@ -717,11 +717,13 @@ function applySettings() {
     };
     dpsEl.hidden = !settings.dps;
     game.showMinimap = settings.minimap;
+    game.showCursor = settings.cursor !== false;
     game.showPointers = settings.pointers;
     game.shakeScale = settings.shake ? 1 : 0.15;
     game.ultCutscenes = settings.cutscenes;
   }
   document.body.classList.toggle("minimap-on", settings.minimap);
+  document.body.classList.toggle("crest-cursor", settings.cursor !== false);
   writeJSON(SETTINGS_KEY, settings);
 }
 
@@ -1424,6 +1426,7 @@ function syncOverlay(s: GameStats) {
   if (s.state === "swap") key += s.pendingAbilityId;
   if (s.state === "shop") key += s.shopOffer.map(i => i.id + (i.locked ? "L" : "")).join(",") + "|" + s.shopPurchasedIds.join(",") + "|" + s.mon;
   if (s.state === "paused") key += "|" + JSON.stringify(settings) + JSON.stringify(keys) + capturing;
+  document.body.classList.toggle("in-play", s.state === "playing");
   if (key === overlayKey) return;
   overlayKey = key;
   if (s.state === "playing") { overlay.classList.remove("show"); overlay.innerHTML = ""; return; }
@@ -1536,7 +1539,7 @@ function renderPause(s: GameStats) {
         <button class="btn" data-act="a11y">Accessibility</button>
         <div class="pane" style="margin-top:6px">
           <h4>Settings</h4>
-          ${sw("sound", "Sound & music")}${sw("shake", "Screen shake")}${sw("tips", "Control tips")}${sw("cutscenes", "Ultimate cutscenes")}${sw("autoPause", "Pause when tabbed out")}${sw("rumble", "Controller rumble")}${sw("minimap", "Minimap")}${sw("pointers", "Arrows to altars & chests")}${sw("dps", "DPS meter")}${sw("pickup", "Show pickup radius")}${sw("haptics", "Phone vibration")}
+          ${sw("sound", "Sound & music")}${sw("shake", "Screen shake")}${sw("tips", "Control tips")}${sw("cutscenes", "Ultimate cutscenes")}${sw("autoPause", "Pause when tabbed out")}${sw("rumble", "Controller rumble")}${sw("cursor", "Big crest cursor")}${sw("minimap", "Minimap")}${sw("pointers", "Arrows to altars & chests")}${sw("dps", "DPS meter")}${sw("pickup", "Show pickup radius")}${sw("haptics", "Phone vibration")}
         </div>
       </div>
       <div style="display:grid;gap:14px">
@@ -1858,8 +1861,10 @@ window.addEventListener("keyup", e => {
   if (act === "block") { blockHeld = false; game.setInput({ blockHeld: false }); }
 });
 
+canvas.addEventListener("mouseleave", () => { if (game) game.cursorInside = false; });
 canvas.addEventListener("mousemove", e => {
   if (!game) return;
+  game.cursorInside = true;
   game.setInput({ mouseAim: true, mouseX: e.clientX, mouseY: e.clientY });
 });
 canvas.addEventListener("mousedown", e => {
