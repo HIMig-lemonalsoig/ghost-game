@@ -258,7 +258,7 @@ const CSS = `
 #intro .intro-sub { position: absolute; left: 0; right: 0; top: calc(50% + min(30vmin, 228px)); display: grid; justify-items: center; gap: 10px; }
 #intro .intro-tag { font: 14px/1.4 ${SERIF}; color: #a89c84; letter-spacing: .14em; opacity: 0; transform: translateY(6px); transition: opacity .8s ease, transform .8s ease; text-align: center; padding: 0 16px; }
 #intro .intro-tag.show { opacity: 1; transform: none; }
-#intro .intro-scene { position: absolute; inset: 0; will-change: transform; }
+#intro .intro-scene { position: absolute; inset: 0; }
 #intro .intro-split { position: absolute; inset: 0; pointer-events: none; will-change: transform; }
 #intro.opening { background: transparent; }
 #intro .intro-slash { position: absolute; left: -10vw; top: 50%; width: 120vw; height: 3px; transform-origin: 0 50%; pointer-events: none; opacity: 0;
@@ -303,8 +303,6 @@ export function playIntro(): Promise<void> {
     flash.className = "intro-flash";
     const sparkCv = document.createElement("canvas");
     sparkCv.setAttribute("aria-hidden", "true");
-    const inkCv = document.createElement("canvas");   // the ink drop, flood and bloom
-    inkCv.setAttribute("aria-hidden", "true");
     const skip = document.createElement("button");
     skip.className = "intro-skip";
     skip.type = "button";
@@ -313,7 +311,7 @@ export function playIntro(): Promise<void> {
     const scene = document.createElement("div");
     scene.className = "intro-scene";
     scene.append(smokeCv, stage);
-    root.append(scene, inkCv, slash, flash, sparkCv, skip);
+    root.append(scene, slash, flash, sparkCv, skip);
     document.body.append(root);
 
     let smoke: ReturnType<typeof createSmoke> = null;
@@ -348,12 +346,10 @@ export function playIntro(): Promise<void> {
       } catch (err) { console.warn("[intro]", err); finish(); return; }
 
       // Timeline (seconds)
-      const T_INK = 0.45, T_KANJI = 1.25, T_LATIN = 2.55, T_SLASH = 4.35, T_END = T_SLASH + 2.05;
+      const T_INK = 0.45, T_KANJI = 1.25, T_LATIN = 2.55, T_SLASH = 4.35, T_END = T_SLASH + 1.35;
       const sparks: Spark[] = [];
       const sctx = sparkCv.getContext("2d");
-      const ictx = inkCv.getContext("2d");
-      let impX = 0, impY = 0, cutY = 0;
-      const splat: { x: number; y: number; vx: number; vy: number; r: number; life: number }[] = [];
+      let split: HTMLElement[] = [];
       let slashAng = 0, slashed = false;
       let time = 0;
       let last = performance.now();
@@ -362,9 +358,30 @@ export function playIntro(): Promise<void> {
         slashed = true;
         const W = root.clientWidth, H = root.clientHeight;
         slashAng = -0.2;
-        // Where the ink will fall: it beads on the cut at screen centre and drops.
+        // Cut the WHOLE screen in two along the slash: each half is a clone of the
+        // scene (smoke frozen into a 2D snapshot, title, moon) clipped to its side.
         const cy = H / 2 - 0.02 * H;
-        cutY = cy; impX = W / 2; impY = cy + Math.min(0.24 * H, 210);
+        const yl = cy + Math.tan(slashAng) * (0 - W / 2), yr = cy + Math.tan(slashAng) * (W - W / 2);
+        const mkHalf = (upper: boolean) => {
+          const c = scene.cloneNode(true) as HTMLElement;
+          const sfx = upper ? "-cu" : "-cl";
+          c.innerHTML = c.innerHTML.replace(/id="([^"]+)"/g, `id="$1${sfx}"`).replace(/url\(#([^)]+)\)/g, `url(#$1${sfx})`);
+          c.classList.add("intro-split");
+          if (smoke) {   // swap the cloned (blank) WebGL canvas for a still of the current smoke
+            const snap = document.createElement("canvas");
+            snap.width = smokeCv.width; snap.height = smokeCv.height;
+            snap.className = smokeCv.className;
+            try { snap.getContext("2d")?.drawImage(smokeCv, 0, 0); } catch { /* tainted/lost: leave it dark */ }
+            snap.style.background = INK;
+            c.querySelector("canvas.intro-smoke")?.replaceWith(snap);
+          }
+          c.style.clipPath = upper ? `polygon(0 0, ${W}px 0, ${W}px ${yr}px, 0 ${yl}px)` : `polygon(0 ${yl}px, ${W}px ${yr}px, ${W}px ${H}px, 0 ${H}px)`;
+          c.style.background = INK;
+          root.insertBefore(c, slash);
+          return c;
+        };
+        split = [mkHalf(true), mkHalf(false)];
+        scene.style.visibility = "hidden";
         slash.style.top = `${cy + Math.tan(slashAng) * (-0.1 * W - W / 2)}px`;   // the blade line passes through the cut at screen centre
         slash.style.transform = `rotate(${slashAng}rad) scaleX(0)`;
         // Embers along the cut.
@@ -373,104 +390,6 @@ export function playIntro(): Promise<void> {
           const a = slashAng + (Math.random() < 0.5 ? -1 : 1) * (Math.PI / 2) * (0.4 + Math.random() * 0.6) + (Math.random() - 0.5) * 0.6;
           const sp = 80 + Math.random() * 380;
           sparks.push({ x, y, vx: Math.cos(a) * sp + 120, vy: Math.sin(a) * sp, life: 0, max: 0.6 + Math.random() * 0.9, hue: 18 + Math.random() * 30 });
-        }
-      };
-
-      // ── Ink drop → splash → flood (diving in) → bloom open into the menu ──
-      const blot = (g: CanvasRenderingContext2D, x: number, y: number, R: number, t: number, outline = false) => {
-        g.beginPath();
-        for (let i = 0; i <= 72; i++) {
-          const a = (i / 72) * Math.PI * 2;
-          const w = 1 + 0.06 * Math.sin(5 * a + t * 3) + 0.04 * Math.sin(11 * a - t * 5) + 0.03 * Math.sin(17 * a + 1.3) + 0.02 * Math.sin(29 * a + t);
-          const px = x + Math.cos(a) * R * w, py = y + Math.sin(a) * R * w;
-          if (i) g.lineTo(px, py); else g.moveTo(px, py);
-        }
-        g.closePath();
-        if (!outline) g.fill();
-      };
-      const inkStep = (s: number) => {
-        if (!ictx) return;
-        const W = root.clientWidth, H = root.clientHeight, dpr = Math.min(window.devicePixelRatio || 1, 2);
-        if (inkCv.width !== Math.round(W * dpr)) { inkCv.width = Math.round(W * dpr); inkCv.height = Math.round(H * dpr); }
-        ictx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ictx.clearRect(0, 0, W, H);
-        const INKC = "#0a0706", diag = Math.hypot(W, H);
-        const T_BEAD = 0.28, T_DROP = 0.52, G = 2600;
-        const fallT = Math.sqrt((2 * (impY - cutY)) / G), T_HIT = T_DROP + fallT;
-        const T_FULL = T_HIT + 0.5, T_OPEN = T_FULL + 0.08;
-        ictx.fillStyle = INKC;
-        // 1. a bead swells on the cut, stretches, and lets go
-        if (s >= T_BEAD && s < T_HIT) {
-          const swell = clamp01((s - T_BEAD) / (T_DROP - T_BEAD));
-          let y = cutY + 4, stretch = 1 + swell * 0.6, r = 4 + swell * 10;
-          if (s >= T_DROP) { const f = s - T_DROP; y = cutY + 4 + 0.5 * G * f * f; stretch = 1.7; r = 14; }
-          ictx.save(); ictx.translate(impX, y);
-          ictx.beginPath();
-          ictx.moveTo(0, -r * 1.6 * stretch);
-          ictx.bezierCurveTo(r * 0.9, -r * 0.4, r, r * 0.9, 0, r);
-          ictx.bezierCurveTo(-r, r * 0.9, -r * 0.9, -r * 0.4, 0, -r * 1.6 * stretch);
-          ictx.fill();
-          ictx.fillStyle = "rgba(255,255,255,.35)";   // a glint on the drop
-          ictx.beginPath(); ictx.arc(-r * 0.35, -r * 0.1, r * 0.22, 0, Math.PI * 2); ictx.fill();
-          ictx.restore();
-        }
-        // 2. impact: rings + splatter
-        if (s >= T_HIT && !root.dataset.hit) {
-          root.dataset.hit = "1";
-          for (let i = 0; i < 26; i++) {
-            const a = Math.random() * Math.PI * 2, sp = 120 + Math.random() * 420;
-            splat.push({ x: impX, y: impY, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.6 - 120, r: 2 + Math.random() * 5, life: 0 });
-          }
-        }
-        if (s >= T_HIT) {
-          const f = s - T_HIT;
-          for (let k = 0; k < 2; k++) {
-            const rr = (f - k * 0.08) * 380;
-            if (rr <= 0) continue;
-            ictx.strokeStyle = `rgba(10,7,6,${Math.max(0, 0.55 - f)})`; ictx.lineWidth = 2.5;
-            ictx.beginPath(); ictx.ellipse(impX, impY, rr, rr * 0.35, 0, 0, Math.PI * 2); ictx.stroke();
-          }
-          ictx.fillStyle = INKC;
-          for (const p of splat) {
-            p.life += 1 / 60; p.vy += 900 / 60; p.x += p.vx / 60; p.y += p.vy / 60;
-            ictx.beginPath(); ictx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ictx.fill();
-          }
-        }
-        // 3. the ink floods outward while we dive into it
-        if (s >= T_HIT && s < T_OPEN) {
-          const k = clamp01((s - T_HIT) / (T_FULL - T_HIT));
-          const R = Math.pow(k, 2.2) * diag * 1.15 + 6;
-          ictx.fillStyle = INKC;
-          blot(ictx, impX, impY, R, s);
-          ictx.strokeStyle = `rgba(179, 32, 28, ${0.55 * (1 - k)})`; ictx.lineWidth = 10;   // crimson bleeding at the edge
-          blot(ictx, impX, impY, R, s, true); ictx.stroke();
-          const z = 1 + Math.pow(k, 2) * 0.9;
-          scene.style.transformOrigin = `${impX}px ${impY}px`;
-          scene.style.transform = `scale(${z.toFixed(3)})`;
-          scene.style.filter = `blur(${(k * 3).toFixed(1)}px)`;
-        }
-        // 4. the ink blooms open from the same spot, and the menu is underneath
-        if (s >= T_OPEN) {
-          if (!root.classList.contains("opening")) {
-            root.classList.add("opening");
-            scene.style.visibility = "hidden";
-            document.body.classList.add("intro-reveal");
-            setTimeout(() => document.body.classList.remove("intro-reveal"), 1600);
-          }
-          const k = clamp01((s - T_OPEN) / (T_END - T_SLASH - T_OPEN - 0.05));
-          const R = Math.pow(k, 1.6) * diag * 1.2;
-          ictx.fillStyle = INKC;
-          ictx.beginPath(); ictx.rect(0, 0, W, H);
-          for (let i = 0; i <= 72; i++) {   // ragged hole (even-odd) so the menu shows through
-            const a = (i / 72) * Math.PI * 2;
-            const w = 1 + 0.08 * Math.sin(6 * a + s * 4) + 0.05 * Math.sin(13 * a - s * 6) + 0.03 * Math.sin(23 * a + 2.1);
-            const px = impX + Math.cos(a) * R * w, py = impY + Math.sin(a) * R * w;
-            if (i) ictx.lineTo(px, py); else ictx.moveTo(px, py);
-          }
-          ictx.closePath();
-          ictx.fill("evenodd");
-          ictx.strokeStyle = `rgba(200, 50, 36, ${0.8 * (1 - k)})`; ictx.lineWidth = 8;   // wet crimson rim
-          blot(ictx, impX, impY, R, s, true); ictx.stroke();
         }
       };
 
@@ -492,7 +411,30 @@ export function playIntro(): Promise<void> {
           slash.style.opacity = String(s < 0.12 ? 1 : Math.max(0, 1 - (s - 0.12) / 0.45));
           slash.style.transform = `rotate(${slashAng}rad) scaleX(${easeOut(s / 0.12)})`;
           flash.style.opacity = String(s < 0.12 ? 0 : Math.max(0, 0.45 - (s - 0.12) * 1.6));
-          inkStep(s);
+          // The cut glows for a beat, then the two halves of the world slide apart
+          // along it and the menu (already behind the intro) is revealed in the gap.
+          const W2 = root.clientWidth, H2 = root.clientHeight;
+          const hold = s < 0.12 ? 0 : easeOut(Math.min(1, (s - 0.12) / 0.15)) * 6;
+          const k = s < 0.34 ? 0 : Math.min(1, (s - 0.34) / 0.95);
+          const open = k * k * k * Math.hypot(W2, H2) * 0.62 + hold;       // ease-in: slow start, then a rush
+          const nx = -Math.sin(slashAng), ny = Math.cos(slashAng);
+          const tx = Math.cos(slashAng), ty = Math.sin(slashAng), shear = 40 * k * k;
+          const rot = 3.2 * k * k;
+          if (split.length) {
+            split[0].style.transform = `translate(${(-nx * open - tx * shear).toFixed(1)}px, ${(-ny * open - ty * shear).toFixed(1)}px) rotate(${-rot}deg)`;
+            split[1].style.transform = `translate(${(nx * open + tx * shear).toFixed(1)}px, ${(ny * open + ty * shear).toFixed(1)}px) rotate(${rot}deg)`;
+          }
+          if (s > 0.3 && !root.classList.contains("opening")) {
+            root.classList.add("opening");
+            document.body.classList.add("intro-reveal");
+            setTimeout(() => document.body.classList.remove("intro-reveal"), 1600);
+            // a second, smaller spray as the halves tear apart
+            for (let i = 0; i < 50; i++) {
+              const u = Math.random(), x = W2 * u, y = H2 / 2 - 0.02 * H2 + Math.tan(slashAng) * (x - W2 / 2);
+              const side = Math.random() < 0.5 ? -1 : 1, sp = 60 + Math.random() * 220;
+              sparks.push({ x, y, vx: nx * side * sp + (Math.random() - 0.5) * 80, vy: ny * side * sp, life: 0, max: 0.5 + Math.random() * 0.8, hue: 25 + Math.random() * 25 });
+            }
+          }
         }
         // Embers
         if (sctx) {

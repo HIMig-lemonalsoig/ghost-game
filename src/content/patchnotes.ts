@@ -12,6 +12,13 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.0.1", date: "2026-11-27", title: "The Split Returns", kanji: "斬",
+    summary: "Back to the sword cut that splits the screen open.",
+    lines: [
+      ["change", "The intro's sword cut splits the screen in two again and the halves slide apart into the menu (the v2.9 ending). The ink-drop ending from v3.0 is retired."],
+    ],
+  },
+  {
     version: "3.0", date: "2026-11-27", title: "A Drop of Ink", kanji: "墨",
     summary: "A new way into the game: the cut bleeds a single drop of ink.",
     lines: [
