@@ -3,6 +3,7 @@ import { Fx, hueOf } from "./fx";
 import { updateUltTrail, drawUltUnder, drawUltOver } from "./ultvfx";
 import { drawBack, drawBody } from "./cosmeticdraw";
 import { drawPointers, drawMinimap } from "./navui";
+import { spawnNewEnemy, updateNewEnemy, updateNewHazards, drawNewHazards, drawNewTelegraphs, drawNewEnemy, onNewEnemyKilled, newEnemyWeights, newEnemySlowMul, NEW_ENEMY_LABEL, NEW_ENEMY_TIPS2 } from "./newenemies";
 import type { Look } from "./cosmeticdraw";
 import { Arena } from "./arena";
 import { ULT_STYLES, poseFrame, drawMotif, STRIKE } from "./ultimates";
@@ -2637,7 +2638,9 @@ export type EnemyArchetype =
   // Phase 4: controller / summoner / anti-ranged
   | "onryo"
   | "nue"
-  | "mirror";
+  | "mirror"
+  // STEP 4 (src/newenemies.ts)
+  | "inoshishi" | "kappa_raid" | "taiko" | "tsukumo" | "tsukumo_small" | "sniper" | "mukade" | "yukiwarashi" | "mimic";
 
 export type BossKind = "oni" | "kitsune" | "gasha" | "raijin";
 /** STEP 3: perk families for family weighting (owning one makes the rest 1.5× likelier). */
@@ -2803,6 +2806,10 @@ interface Enemy {
   chillUntil?: number;         // STEP 3: chilled (slowed) until
   chillHits?: number;          // STEP 3: Deep Freeze counter
   frozenUntil?: number;        // STEP 3: frozen solid until
+  // STEP 4 enemy state (src/newenemies.ts)
+  drumUntil?: number; submerged?: boolean; disguised?: boolean; segs?: { x: number; y: number }[];
+  windT?: number; chargeT?: number; chargeAng?: number; chargeHit?: boolean; burstT?: number; drumT?: number;
+  aimT?: number; aimAng?: number; trailCd?: number; biteT?: number; biteCd?: number;
   // Smoke Bomb disorient — wander randomly, cannot attack.
   disorientRemaining: number;
   disorientAng: number;        // current wander direction
@@ -4807,14 +4814,14 @@ export class GhostGame {
         this.seenAffixes.add("tip:boss");
         this.flash("Boss tip: big attacks glow before they land. Dash through them (you're invulnerable while dashing), then punish.");
       }
-      const tip = NEW_ENEMY_TIPS[e.archetype];
+      const tip = NEW_ENEMY_TIPS[e.archetype] ?? NEW_ENEMY_TIPS2[e.archetype];
       if (tip && !this.seenAffixes.has(`enemy:${e.archetype}`)) { this.seenAffixes.add(`enemy:${e.archetype}`); this.flash(tip); }
       if (e.isBoss) {
         // Hard and Death bosses carry one affix.
         // Hard/Death bosses carry one affix; VOW Boss Fury adds up to two on any difficulty.
         const n = Math.max(this.difficulty === "hard" || this.difficulty === "death" ? 1 : 0, this.vr("boss_fury"));
         if (n) this.makeElite(e, rollAffixes(n, true), true);
-      } else if (e.archetype !== "wisp" && Math.random() < ELITE.chanceAt(wave) * Math.pow(1.5, this.vr("elite_blood")) * (this.omenDef?.elite ?? 1)) {
+      } else if (e.archetype !== "wisp" && e.archetype !== "mimic" && e.archetype !== "tsukumo_small" && e.archetype !== "kappa_raid" && Math.random() < ELITE.chanceAt(wave) * Math.pow(1.5, this.vr("elite_blood")) * (this.omenDef?.elite ?? 1)) {
         const count = wave >= ELITE.doubleFromWave && Math.random() < ELITE.doubleChance ? 2 : 1;
         this.makeElite(e, rollAffixes(count));
       }
@@ -5488,6 +5495,10 @@ export class GhostGame {
     const speedScale = (1 + Math.min(0.25, (wave - 1) * 0.015)) * D.speed;
     const isBigSpawn = kind === "boss" || kind === "final";
     const s = this.pickSpawnAwayFromPlayer(isBigSpawn ? 460 : 360);
+    (this as unknown as Record<string, number>).lastHpScale = hpScale;
+    (this as unknown as Record<string, number>).lastDmgScale = dmgScale;
+    (this as unknown as Record<string, number>).lastSpdScale = speedScale;
+    if (spawnNewEnemy(this, kind, s, hpScale, dmgScale, speedScale, tier)) return;   // STEP 4
 
     if (kind === "final") {
       // Final boss — spawned alone at wave 25+ (every 10 waves after).
@@ -5698,6 +5709,7 @@ export class GhostGame {
       ["onryo", newEnemyChance("onryo", wave)], ["nue", newEnemyChance("nue", wave)], ["mirror", newEnemyChance("mirror", wave)],
       ["priest", priestChance], ["bomber", bomberChance], ["lantern", lanternChance], ["wisp", wispChance],
       ["shielded", shieldedChance], ["archer", archerChance], ["assassin", assassinChance], ["heavy", heavyChance],
+      ...newEnemyWeights(wave),   // STEP 4: new enemies share by weight
     ];
     const special = table.reduce((a, [, w]) => a + w, 0);
     const normalW = Math.max(1 - special, (special * SPAWN_MIN_NORMAL) / (1 - SPAWN_MIN_NORMAL));   // grunts end up >= SPAWN_MIN_NORMAL of the mix
@@ -6850,6 +6862,7 @@ export class GhostGame {
     this.ultTakenBucket = Math.min(ULT_CHARGE.takenBurst, this.ultTakenBucket + ULT_CHARGE.takenRatePerSec * dt);
     this.updateEvo(dt);
     this.updateInk(dt);
+    updateNewHazards(this, dt);   // STEP 4
     this.updateParticles(dt);
     this.updatePetals(dtRaw);
     this.updateAbilities(dt);
@@ -7005,7 +7018,7 @@ export class GhostGame {
     // While mid-swing the player keeps most of their momentum (87%) instead
     // of grinding to a near-stop — feels much better when chaining attacks.
     if (this.isClass("tetsubo")) this.playerRoot = 0;   // SIGNATURE Unstoppable
-    const ctrlSlow = this.isClass("tetsubo") ? 1 : this.frostSlowMul() * this.inkSlowMul() * (this.playerRoot > 0 ? 0 : 1);
+    const ctrlSlow = this.isClass("tetsubo") ? 1 : this.frostSlowMul() * this.inkSlowMul() * newEnemySlowMul(this) * (this.playerRoot > 0 ? 0 : 1);
     const slow = ((!dashing && p.attackAnim > 0) ? 0.87 : 1) * (dashing ? 1 : ctrlSlow) * (1 + this.tailwindStacks * SIG.arashiStack);
     this.updateSignatures(dt, mag > 0.05, dashing);
     // Hard cap on player speed bonuses from all sources (perks + class + items).
@@ -7297,6 +7310,7 @@ export class GhostGame {
   killEnemy(e: Enemy, type: "honor" | "ghost") {
     if (e.state === "dead") return;
     e.state = "dead";
+    onNewEnemyKilled(this, e);   // STEP 4: splitter / mimic
     if (!this.sweeping) this.trackKill(e);
     if (!this.sweeping && this.isClass("arashi") && e.lastSrc && e.lastSrc !== "katana" && e.lastSrc !== "other" &&
         !isMeleeSecondary(e.lastSrc as SecondaryId)) {   // SIGNATURE Tailwind
@@ -9397,6 +9411,7 @@ export class GhostGame {
       const telegraph = 0.5 * DIFFICULTIES[this.difficulty].tele * (1 - 0.15 * this.vr("quick_death"));   // VOW Quick Death
 
       let speedMul = this.timeSlowRemaining > 0 ? 0.25 : 1;
+      if ((e.drumUntil ?? 0) > this.elapsed) speedMul *= 1.35;   // STEP 4: Taiko drummer buff
       const tough = e.isBoss || e.archetype === "final";
       if (e.slowRemaining > 0) speedMul *= tough ? 0.8 : 0.55;
       if (e.warHornSlowRemaining > 0) speedMul *= e.warHornSlowFactor;
@@ -9704,6 +9719,7 @@ export class GhostGame {
         continue;
       }
 
+      if (updateNewEnemy(this, e, dt, dist, angToPlayer, speedMul)) continue;   // STEP 4
       if (e.archetype === "final" || e.archetype === "boss") {
         // Final + regular bosses — phased multi-pattern AI (see updateFinalBoss).
         this.updateFinalBoss(e, dt, dist, angToPlayer, speedMul);
@@ -10071,10 +10087,12 @@ export class GhostGame {
     for (const e of this.enemies) if (e.state === "dead") this.drawEnemy(e, true);
     for (const p of this.particles) if (p.kind === "blood") this.drawParticle(p);
     this.drawInk();
+    drawNewHazards(this, ctx);   // STEP 4
     this.drawEliteGround();
     this.drawArenaShrine();
     this.drawEvo();
     for (const e of this.enemies) if (e.state !== "dead") this.drawEnemy(e, false);
+    for (const e of this.enemies) if (e.state !== "dead") drawNewTelegraphs(this, ctx, e);   // STEP 4
     this.drawEliteTags();
     this.drawSignatures();
     this.drawSearchMarkers();
@@ -11031,6 +11049,7 @@ export class GhostGame {
   // Bodies for the newer roles. Drawn unrotated around the enemy's position.
   private drawSpecialEnemy(e: Enemy): boolean {
     const ctx = this.ctx;
+    if (drawNewEnemy(this, ctx, e)) return true;   // STEP 4
     const t = this.elapsed + e.id;
     const flash = e.hitFlash > 0;
     switch (e.archetype) {

@@ -12,6 +12,23 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.3", date: "2026-11-27", title: "New Yokai", kanji: "妖",
+    summary: "Eight new enemies, each with one clear job, fill out waves 11–19.",
+    lines: [
+      ["new", "Boar Spirit (wave 11): paws the ground, shows a red lane, then charges. Hits a wall and stuns itself."],
+      ["new", "Mimic Chest (wave 12, rare): looks like a Spirit Chest and bites when you get close. Kill it and it drops a real one."],
+      ["new", "Kappa Raider (wave 13): creeps up as a ripple and bursts out of the water when you're close."],
+      ["new", "Taiko Drummer (wave 14): its drumbeats make nearby foes 35% faster. Kill it first."],
+      ["new", "Tsukumogami (wave 16): a haunted one-eyed umbrella that splits into two little ones when killed."],
+      ["new", "Yumi Sniper (wave 17): draws a long red aim line, locks on, then fires a very fast arrow."],
+      ["new", "Mukade (wave 18): a giant centipede that leaves a poison trail."],
+      ["new", "Yuki-warashi (wave 19): drops frost rings on you that slow you if you don't step out."],
+      ["change", "New enemies take their share of spawns by weight: by wave 19, 20 enemy types appear instead of 11, and plain grunts stay at about 15%."],
+      ["nerf", "Waves 12–20 are a little tougher: the average enemy has about 4–8% more HP (damage almost unchanged)."],
+      ["new", "All eight are in the Bestiary with tips and lore, and each shows a one-time tip the first time you meet it."],
+    ],
+  },
+  {
     version: "3.2", date: "2026-11-27", title: "Every Stat Has a Path", kanji: "道",
     summary: "Six stats that had no perks or items now have full lines, and builds come together faster.",
     lines: [

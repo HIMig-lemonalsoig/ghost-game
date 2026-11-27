@@ -229,3 +229,19 @@ Each new class's ult reuses a mechanic we've already measured with the ult budge
 | 20 | 21% (was 0) | 9% (was 0) | 14% | 12 | +3% / +5% |
 
 New enemies can now be added as weights without pushing anything out.
+
+## Step 4 done: new enemies (2026-11-27)
+Built in `src/newenemies.ts`: Boar Spirit (11), Mimic (12, rare), Kappa Raider (13), Taiko Drummer (14), Tsukumogami (16), Yumi Sniper (17), Mukade (18), Yuki-warashi (19). Spawn weights, telegraphs, bestiary, tips; mimic / submerged kappa / small umbrellas can't be elites.
+
+Measured (4,000 rolls per wave):
+
+| Wave | Types spawning | New-enemy share | Avg enemy HP / damage vs. after the spawn fix |
+|---|---|---|---|
+| 11 | 12 | 1% | +0% |
+| 12 | 14 | 2% | +4% / +0% |
+| 15 | 16 | 8% | +8% / +2% |
+| 19 | 20 | 15% | — |
+| 20 | 20 | 16% | +7% / +1% |
+| 25 | 20 | 18% | +5% / 0% |
+
+Bot check (all 8 spawned around a standing player for 12 s): no errors; charge, aim, surfacing, drumming, splitting, poison trail, frost rings and mimic chest drop all work.
