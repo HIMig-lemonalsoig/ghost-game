@@ -2,6 +2,7 @@
 import { Fx, hueOf } from "./fx";
 import { updateUltTrail, drawUltUnder, drawUltOver } from "./ultvfx";
 import { drawBack, drawBody } from "./cosmeticdraw";
+import { drawPointers, drawMinimap } from "./navui";
 import type { Look } from "./cosmeticdraw";
 import { Arena } from "./arena";
 import { ULT_STYLES, poseFrame, drawMotif, STRIKE } from "./ultimates";
@@ -3947,6 +3948,9 @@ export class GhostGame {
   parallax = new ParallaxLayer();
   cameraZoom = new CameraZoom();
   katanaTrail = new KatanaTrail();
+  /** NAV: edge arrows to off-screen altars / chests / items / boss, and the minimap (Settings). */
+  showPointers = true;
+  showMinimap = true;
   /** WARDROBE: the player's equipped cosmetics (set by the UI before a run; null = classic look). */
   look: Look | null = null;
   private lookPrev = { x: 0, y: 0, sway: 0 };
@@ -10173,6 +10177,8 @@ export class GhostGame {
     }
 
     ctx.restore();
+    if (this.showPointers && !this.ultCutscene && !(this.cinematicTimer > 0)) drawPointers(this, ctx, W, H);
+    if (this.showMinimap && !this.ultCutscene && !(this.cinematicTimer > 0)) drawMinimap(this, ctx, W, H);
     this.fx.drawScreen(ctx, W, H);
     if (this.ultCutscene) this.drawUltCutscene(ctx, W, H);
   }

@@ -56,6 +56,7 @@ function basics(): string {
       <li>Survive each wave until its timer runs out. Every 5th wave is a <b>boss</b>.</li>
       <li>Kills drop XP orbs and coins. <b>Level-ups are banked</b> and you pick them when the wave ends.</li>
       <li>After each wave the <b>merchant</b> sells upgrades. Reroll for new items.</li>
+      <li>The <b>minimap</b> (top right) shows the whole arena. <b>Arrows</b> at the screen edge point to off-screen altars 祭, Spirit Chests 宝, items 品 and the boss 鬼, with the distance. Both can be turned off in Settings.</li>
       <li>Your best wave, career stats and achievements are saved in this browser.</li>
     </ul></div>
     <div class="g-card"><h5>Your kit</h5><ul>

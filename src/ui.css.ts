@@ -435,6 +435,8 @@ kbd {
 #dps-meter b { display: block; font-size: 20px; color: var(--gold); letter-spacing: 0; }
 #dps-meter i { display: block; font-style: normal; font-size: 10.5px; color: var(--muted); letter-spacing: 0; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 body:not(.playing) #dps-meter { display: none; }
+body.minimap-on #dps-meter { top: 232px; }
+@media (max-width: 760px) { body.minimap-on #dps-meter { top: 190px; } }
 .omen-pick { margin-top: 18px; }
 .omen-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
 .omen { display: flex; align-items: center; gap: 12px; text-align: left; width: 300px; padding: 12px 14px; border-radius: 12px; cursor: pointer; font: inherit; color: var(--bone);
