@@ -1,5 +1,6 @@
 // Consolidated game engine and supporting systems. No React dependencies.
 import { Fx, hueOf } from "./fx";
+import { updateUltTrail, drawUltUnder, drawUltOver } from "./ultvfx";
 import { Arena } from "./arena";
 import { ULT_STYLES, poseFrame, drawMotif, STRIKE } from "./ultimates";
 import type { UltMotif } from "./ultimates";
@@ -3672,7 +3673,8 @@ export class GhostGame {
   // Pending starting weapons (set by start(); applied during stat init).
   pendingStartingWeapons: SecondaryId[] = [];
   // Ultimate visual / control state
-  ultThousandCutsTimer = 0;   // Onna ult — spinning AoE active duration
+  ultThousandCutsTimer = 0;
+  kitsuneTailsT = 0;           // ult visual pass 2: Nine Tails fan-out on cast   // Onna ult — spinning AoE active duration
   ultThousandTickAccum = 0;
   ultBloodRageTimer = 0;      // Berserker ult duration
   ultShadowStepTimer = 0;     // Shinobi ult duration (also implies invuln+invis)
@@ -9682,7 +9684,7 @@ export class GhostGame {
         : "42, 78%, 58%";
       const visionRange = e.isBoss ? BASE.ENEMY_VISION_RANGE * 1.4 : BASE.ENEMY_VISION_RANGE;
       const coneGrad = ctx.createRadialGradient(0, 0, 10, 0, 0, visionRange);
-      coneGrad.addColorStop(0, `hsla(${alertColor}, 0.25)`);
+      coneGrad.addColorStop(0, `hsla(${alertColor}, ${this.stats.ultActive ? 0.06 : 0.25})`);   // dim during ults
       coneGrad.addColorStop(1, `hsla(${alertColor}, 0)`);
       ctx.fillStyle = coneGrad;
       ctx.beginPath();
@@ -9708,8 +9710,10 @@ export class GhostGame {
     if (this.devShowHitboxes) this.drawDevHitboxes();
 
     this.drawPickupRadius();
+    drawUltUnder(this, ctx);   // ult visual pass 2: signature ground effects
     this.drawUltAura();
     this.drawPlayer();
+    drawUltOver(this, ctx);    // ult visual pass 2: signature effects on top
     this.drawA11yCues();
     this.drawPhantomDance();
     this.drawClassEntities();
@@ -11435,8 +11439,23 @@ export class GhostGame {
       ctx.restore();
     }
 
-    // Clones — like the player, with a faint blue ink tint.
+    // Clones — a glowing ink double, tied to you by a shadow thread.
     for (const c of this.clones) {
+      ctx.save();
+      const pulse = 0.5 + 0.5 * Math.sin(this.elapsed * 6 + c.pos.x);
+      ctx.strokeStyle = `hsla(215, 80%, 65%, ${0.25 + 0.2 * pulse})`;
+      ctx.lineWidth = 2; ctx.setLineDash([4, 6]); ctx.lineDashOffset = -this.elapsed * 30;
+      ctx.beginPath(); ctx.moveTo(this.player.pos.x, this.player.pos.y); ctx.lineTo(c.pos.x, c.pos.y); ctx.stroke();
+      ctx.setLineDash([]);
+      const cg = ctx.createRadialGradient(c.pos.x, c.pos.y, 4, c.pos.x, c.pos.y, BASE.PLAYER_RADIUS + 22);
+      cg.addColorStop(0, "hsla(215, 90%, 60%, 0.45)");
+      cg.addColorStop(1, "hsla(215, 90%, 50%, 0)");
+      ctx.fillStyle = cg;
+      ctx.beginPath(); ctx.arc(c.pos.x, c.pos.y, BASE.PLAYER_RADIUS + 22, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `hsla(215, 90%, 75%, ${0.6 + 0.3 * pulse})`;
+      ctx.font = "bold 14px serif"; ctx.textAlign = "center";
+      ctx.fillText("影", c.pos.x, c.pos.y - BASE.PLAYER_RADIUS - 10);
+      ctx.restore();
       ctx.save();
       ctx.globalAlpha = 0.85;
       ctx.translate(c.pos.x, c.pos.y);
@@ -11449,11 +11468,14 @@ export class GhostGame {
       ctx.beginPath();
       ctx.arc(0, 0, BASE.PLAYER_RADIUS, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = "hsl(220, 60%, 60%)";
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = "hsl(215, 85%, 70%)";
+      ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.arc(0, 0, BASE.PLAYER_RADIUS - 1, -Math.PI / 4, Math.PI / 4);
+      ctx.arc(0, 0, BASE.PLAYER_RADIUS, 0, Math.PI * 2);
       ctx.stroke();
+      ctx.strokeStyle = "hsl(210, 30%, 88%)";   // its katana
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(BASE.PLAYER_RADIUS - 2, 4); ctx.lineTo(BASE.PLAYER_RADIUS + 26, 10); ctx.stroke();
       ctx.restore();
     }
 
@@ -11597,26 +11619,51 @@ export class GhostGame {
       ctx.beginPath(); ctx.arc(x, y, r, this.elapsed * 3, this.elapsed * 3 + 4.5); ctx.stroke();
       ctx.restore();
     }
-    // Spear Wall (Ashigaru)
+    // Spear Wall (Ashigaru) — a palisade of spears with war banners at each end.
     if (this.spearWall) {
       const w = this.spearWall;
       const ux = Math.cos(w.ang), uy = Math.sin(w.ang);
       const fade = Math.min(1, w.t / 0.5);
+      const rise = Math.min(1, (7 - w.t) / 0.25 + 0.05);   // spears spring up on cast
+      const nx = Math.cos(w.ang - Math.PI / 2), ny = Math.sin(w.ang - Math.PI / 2);   // facing out
+      const ax = w.x - ux * w.len / 2, ay = w.y - uy * w.len / 2, bx = w.x + ux * w.len / 2, by = w.y + uy * w.len / 2;
       ctx.save();
       ctx.globalAlpha = fade;
-      ctx.strokeStyle = "hsl(20, 40%, 28%)";
-      ctx.lineWidth = 3;
-      for (let i = -7; i <= 7; i++) {
-        const bx = w.x + ux * (i / 7) * w.len / 2, by = w.y + uy * (i / 7) * w.len / 2;
-        const tilt = w.ang - Math.PI / 2 + (i % 2 ? 0.25 : -0.25);
-        const tx = bx + Math.cos(tilt) * 34, ty = by + Math.sin(tilt) * 34;
-        ctx.beginPath(); ctx.moveTo(bx - Math.cos(tilt) * 10, by - Math.sin(tilt) * 10); ctx.lineTo(tx, ty); ctx.stroke();
-        ctx.fillStyle = "hsl(20, 80%, 60%)";
-        ctx.beginPath(); ctx.arc(tx, ty, 3.5, 0, Math.PI * 2); ctx.fill();
+      // glowing ground line (danger edge)
+      ctx.strokeStyle = "hsla(28, 95%, 58%, 0.35)"; ctx.lineWidth = 14; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+      // wooden rail
+      ctx.strokeStyle = "hsl(25, 45%, 30%)"; ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+      const n = Math.round(w.len / 20);
+      for (let i = 0; i <= n; i++) {
+        const k = i / n;
+        const sx = ax + (bx - ax) * k, sy = ay + (by - ay) * k;
+        const tilt = (i % 2 ? 0.22 : -0.22);
+        const dx = nx * Math.cos(tilt) - ny * Math.sin(tilt), dy = nx * Math.sin(tilt) + ny * Math.cos(tilt);
+        const L = 46 * rise;
+        const tx = sx + dx * L, ty = sy + dy * L;
+        ctx.strokeStyle = "hsl(28, 40%, 34%)"; ctx.lineWidth = 3.5;
+        ctx.beginPath(); ctx.moveTo(sx - dx * 8, sy - dy * 8); ctx.lineTo(tx, ty); ctx.stroke();
+        // steel tip
+        ctx.fillStyle = "hsl(210, 15%, 85%)";
+        ctx.beginPath();
+        ctx.moveTo(tx + dx * 12, ty + dy * 12);
+        ctx.lineTo(tx - dy * 4, ty + dx * 4);
+        ctx.lineTo(tx + dy * 4, ty - dx * 4);
+        ctx.closePath(); ctx.fill();
       }
-      ctx.strokeStyle = "hsla(20, 90%, 60%, 0.45)";
-      ctx.lineWidth = 6;
-      ctx.beginPath(); ctx.moveTo(w.x - ux * w.len / 2, w.y - uy * w.len / 2); ctx.lineTo(w.x + ux * w.len / 2, w.y + uy * w.len / 2); ctx.stroke();
+      // nobori war banners at both ends
+      for (const [px, py] of [[ax, ay], [bx, by]]) {
+        const sway = Math.sin(this.elapsed * 4 + px) * 4;
+        ctx.strokeStyle = "hsl(25, 35%, 22%)"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px, py - 70); ctx.stroke();
+        ctx.fillStyle = "hsl(355, 70%, 42%)";
+        ctx.beginPath(); ctx.moveTo(px, py - 68); ctx.lineTo(px + 22 + sway, py - 66); ctx.lineTo(px + 20 + sway, py - 24); ctx.lineTo(px, py - 26); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "hsl(45, 80%, 85%)";
+        ctx.font = "bold 13px serif"; ctx.textAlign = "center";
+        ctx.fillText("槍", px + 11 + sway * 0.5, py - 42);
+      }
       ctx.restore();
     }
     // Tidal Surge wave (Kappa)
@@ -11815,6 +11862,7 @@ export class GhostGame {
       // Tsuchigumo web timer
       if (e.webbedRemaining > 0) e.webbedRemaining = Math.max(0, e.webbedRemaining - dt);
     }
+    updateUltTrail(this, dt);   // ult visual pass 2
     if (this.ultBloodRageTimer > 0) this.ultBloodRageTimer = Math.max(0, this.ultBloodRageTimer - dt);
     if (this.ultShadowStepTimer > 0) this.ultShadowStepTimer = Math.max(0, this.ultShadowStepTimer - dt);
     if (this.ultMountainTimer > 0) this.ultMountainTimer = Math.max(0, this.ultMountainTimer - dt);
@@ -13277,6 +13325,7 @@ export class GhostGame {
       }
       case "kitsune": {
         // Nine Tails: nine homing foxfires hunt foes down one by one.
+        this.kitsuneTailsT = 1.6;
         for (let i = 0, n = this.hasUltPerk("ultc_kitsune") ? 14 : 9; i < n; i++) {
           this.spawnFoxfire(this.player.pos.x, this.player.pos.y, this.ultDmg(9), (i / n) * Math.PI * 2);
         }

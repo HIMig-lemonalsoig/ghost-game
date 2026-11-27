@@ -563,3 +563,34 @@ Fix (Brotato/Hades-style: risk modifiers pay a modest bonus, not a multiplier on
 - Blood Moon: ×2 → **+30% coins per kill** (with the extra enemies, roughly +30–60% per wave in bot runs).
 - Iron Tide: +60% → **+35% coins**.
 - Skipping a level-up card: 15 × wave → **10 × wave** coins (at wave 13: 195 → 130, about one common item instead of a rare).
+
+### Ult tier list + visual pass 2 + power re-tune (2026-11-26)
+**Tier list (screenshots of all 25 ults mid-cast, wave 25 bot):** the power-up ults (Berserker, Kabuki, Yamabushi, Shinobi, Tengu, Kagebushi, Kagemusha, Ashigaru) all looked like the same red glow — that glow was actually 14 enemy vision cones stacked on the player.
+
+**Visuals (`src/ultvfx.ts`, new):** every weak-looking ult got its own signature —
+- Berserker: crimson flame tongues, heartbeat ring, smouldering footprints, 狂 mark
+- Kabuki: stage spotlight (rest of screen dims), red/white kumadori ring, confetti
+- Yamabushi: stone mandala with mountain peaks + orbiting rock plates, 岳 mark
+- Shinobi: violet afterimages + smoke wisps
+- Tengu: whirlwind arcs, falling feathers, speed streaks
+- Kagebushi: wobbling void with tendrils grabbing nearby foes
+- Kagemusha: glowing blue ink clone with its own katana, 影 mark, shadow thread to you
+- Ashigaru: palisade of steel-tipped spears that spring up, nobori banners at both ends
+- Raijin: ring of 8 taiko drums with lightning arcing between them
+- Kitsune: nine fire tails fanning out on cast
+- Samurai: golden slash path linking every Iai blink
+- Enemy vision cones are dimmed while any ult runs.
+
+**Power (`src/content/ultbalance.ts`), Hades II / Overwatch approach — keep each ult's identity, tune numbers per character:**
+| Class | Before | After | Change |
+|---|---|---|---|
+| Berserker | 148 | 71 | per-hit bonus 9.7 → 4.1 |
+| Kabuki | 143 | 73 | 9.3 → 4.1 |
+| Yamabushi | 133 | 67 | 15 → 7 |
+| Hatamoto | 111 | 68 | 7 → 3.8 |
+| Kagebushi | 111 | 72 | 8.2 → 4.8 |
+| Tetsubo | 32 | 61 | damage ×1.62 → ×2.6 |
+| Ashigaru | 18 | 48 | ×0.38 → ×1.3 |
+| Tengu | 17 | 44 | per-hit bonus 1 → 3.4 (bot now dashes like a Tengu player) |
+| Kunoichi | 35 | 45 | ×0.09 → ×0.13 |
+All 25 classes now measure 44–73 grunts' worth (target 60, band 42–78), average of 2 bot runs each.
