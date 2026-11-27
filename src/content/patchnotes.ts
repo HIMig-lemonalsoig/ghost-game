@@ -13,11 +13,12 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 export const PATCH_NOTES: PatchNote[] = [
   {
     version: "3.5", date: "2026-11-27", title: "Tomoe Cursor", kanji: "巴",
-    summary: "A big, easy-to-find aiming cursor in the shape of a tomoe clan crest.",
+    summary: "A big, easy-to-find aiming cursor in the shape of a tomoe clan crest, with a size slider.",
     lines: [
       ["new", "The thin crosshair is replaced by a gold Tomoe crest with a dark outline, so it stands out on grass, Blood Moon red and snow alike."],
       ["new", "It spins faster and gets a bright pulsing ring when your ultimate is ready, and kicks inward every time you attack."],
       ["change", "Turn it off under Settings → Big crest cursor to go back to the old crosshair. Menus still use the normal pointer."],
+      ["new", "Cursor size slider (50%–200%) right under the toggle in Settings and in Accessibility, with a live spinning preview. Your size is saved."],
     ],
   },
   {

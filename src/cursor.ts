@@ -16,11 +16,18 @@ export function drawCrestCursor(g: GhostGame, ctx: CanvasRenderingContext2D) {
   const ready = g.stats.ultReady && !g.stats.ultActive;
   g.cursorSpin = (g.cursorSpin || 0) + dt * (ready ? 4.2 : 1.1);
   g.cursorKick = Math.max(0, (g.cursorKick || 0) - dt * 6);
-  const k = g.cursorKick;
-  const r = 18 * (1 - k * 0.22);
   ctx.save();
   ctx.setTransform(devicePixelRatio || 1, 0, 0, devicePixelRatio || 1, 0, 0);
-  ctx.translate(inp.mouseX, inp.mouseY);
+  drawCrest(ctx, inp.mouseX, inp.mouseY, 18 * (g.cursorScale || 1), g.cursorSpin, g.cursorKick, ready, now);
+  ctx.restore();
+}
+
+// The crest itself, also used by the size preview in Settings.
+export function drawCrest(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, spin: number, k: number, ready: boolean, now: number) {
+  const r = 18 * (1 - k * 0.22);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(size / 18, size / 18);   // outlines grow and shrink with the crest
   ctx.lineCap = "round"; ctx.lineJoin = "round";
   if (ready) {
     ctx.beginPath(); ctx.arc(0, 0, r + 7, 0, Math.PI * 2);
@@ -29,7 +36,7 @@ export function drawCrestCursor(g: GhostGame, ctx: CanvasRenderingContext2D) {
     ctx.strokeStyle = "#fff1c8"; ctx.lineWidth = 2.5; ctx.stroke();
     ctx.globalAlpha = 1;
   }
-  ctx.rotate(g.cursorSpin + k * 1.2);
+  ctx.rotate(spin + k * 1.2);
   // Outer ring: ink outline, then gold.
   ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2);
   ctx.strokeStyle = INK; ctx.lineWidth = 5.5; ctx.stroke();

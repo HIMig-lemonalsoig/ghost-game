@@ -476,6 +476,12 @@ body.minimap-on #dps-meter { top: 232px; }
 .a11y-slider { display: grid; grid-template-columns: 8.5em 1fr 3.2em; gap: 10px; align-items: center; margin: 10px 0; font-size: 13.5px; }
 .a11y-slider input { width: 100%; accent-color: var(--gold); min-height: 28px; }
 .a11y-slider b { text-align: right; font-size: 13px; }
+.cursor-slider { grid-template-columns: 1fr auto 52px; row-gap: 4px; }
+.cursor-slider > span { grid-row: 1; grid-column: 1; }
+.cursor-slider > b { grid-row: 1; grid-column: 2; }
+.cursor-slider > canvas { grid-row: 1 / span 2; grid-column: 3; }
+.cursor-slider > input { grid-row: 2; grid-column: 1 / 3; }
+.cursor-prev { width: 52px; height: 52px; border-radius: 10px; border: 1px solid var(--line); display: block; }
 .a11y-seg > span { display: block; font-size: 13.5px; margin-bottom: 6px; }
 .a11y-seg > div { display: flex; gap: 6px; flex-wrap: wrap; }
 .a11y-sub { display: block; font-style: normal; font-size: 11.5px; color: var(--dim); margin-top: 2px; }
