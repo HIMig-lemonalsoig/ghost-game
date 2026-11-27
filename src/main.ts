@@ -447,6 +447,9 @@ function guideCtx(): GuideCtx {
     highestWave: c.highestWave || 0,
     mastery: g ? { ...g.perks.weaponMastery } : {},
     killsByKind: liveCareer(g && !g.devMode ? g : null).killsByKind ?? {},
+    cosmetics: COSMETICS.map(k => ({ kanji: k.kanji, name: k.name, slot: SLOTS.find(t => t.id === k.slot)!.name, owned: isOwned(k.id),
+      how: k.cost ? `Buy for ${k.cost} 花 Flowers.` : k.unlock ? `Earn it: ${unlockText(k)}.` : "Free: you start with it." })),
+    flowers: flowers(),
   };
 }
 function showGuide(tab: GuideTab = guideTab) {

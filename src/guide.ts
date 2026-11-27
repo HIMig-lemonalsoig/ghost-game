@@ -13,7 +13,7 @@ import { SIGNATURES } from "./content/signatures";
 import { OMENS, ARENA_SHRINES } from "./content/choices";
 import { CLASS_REQS, WEAPON_REQS, reqText, classUnlocked, weaponUnlocked } from "./unlocks";
 
-export type GuideTab = "basics" | "duos" | "evolutions" | "ultperks" | "elites" | "enemies" | "vows" | "classes" | "unlocks" | "choices";
+export type GuideTab = "basics" | "duos" | "evolutions" | "ultperks" | "elites" | "enemies" | "vows" | "classes" | "unlocks" | "choices" | "wardrobe";
 export const GUIDE_TABS: { id: GuideTab; label: string; kanji: string }[] = [
   { id: "basics", label: "Basics", kanji: "基" },
   { id: "duos", label: "Duo perks", kanji: "双" },
@@ -25,6 +25,7 @@ export const GUIDE_TABS: { id: GuideTab; label: string; kanji: string }[] = [
   { id: "classes", label: "Signatures", kanji: "印" },
   { id: "choices", label: "Omens & altars", kanji: "兆" },
   { id: "unlocks", label: "Unlocks & Shrine", kanji: "祖" },
+  { id: "wardrobe", label: "Wardrobe & Flowers", kanji: "装" },
 ];
 
 export interface GuideCtx {
@@ -38,6 +39,9 @@ export interface GuideCtx {
   highestWave: number;
   mastery: Record<string, number>;
   killsByKind: Record<string, number>;   // BESTIARY lifetime kills per enemy type
+  /** WARDROBE: every cosmetic with how to get it (built by the UI from cosmetics.ts). */
+  cosmetics?: { kanji: string; name: string; slot: string; how: string; owned: boolean }[];
+  flowers?: number;
 }
 
 const perkName = (id: string) => PERK_POOL.find(p => p.id === id)?.name
@@ -66,6 +70,12 @@ function basics(): string {
       <li><b>Shields</b> (Tate etc.) block while you hold F until the block meter empties.</li>
       <li>Watch for <b>telegraphs</b>: red wind-ups, circles on the ground and glowing outlines all warn you before a hit.</li>
     </ul></div>
+    <div class="g-card"><h5>Fighting bosses</h5><ul>
+      <li>Every boss attack has a <b>wind-up</b>: a dashed danger ring fills in before a ground slam, and energy gathers on the boss before an orb volley. Dash through it.</li>
+      <li>After each attack the boss is <b>winded</b> for about a second and shows <b>隙 opening</b>. That's your moment, <b>even for melee</b>: get in and hit it.</li>
+      <li>The <b>Nine-Tailed Witch</b> marks where she'll teleport with <b>orange foxfire</b>. Run there, then hit her while she's dazed after her fireball fan.</li>
+      <li>One ult can take at most a small slice of a boss's HP, so bosses are won with your build, not a single button.</li>
+    </ul></div>
     <div class="g-card"><h5>Stealth</h5><ul>
       <li>Invisibility, smoke pellets and standing in smoke make enemies <b>lose track of you</b> (they show a "?").</li>
       <li>Hit an enemy that has lost you, or one that hasn't noticed you, for an instant <b>stealth kill</b>.</li>
@@ -78,6 +88,7 @@ function basics(): string {
     <div class="g-card"><h5>Unlocks</h5><ul>
       <li>Reach wave ${VOW_UNLOCK_WAVE} to unlock <b>Vows</b> for extra challenge and coins.</li>
       <li>Achievements range from Common to Mythic. Check them on the menu.</li>
+      <li>Every run also earns <b>Flowers 花</b> for the <b>Wardrobe</b>: outfits, masks, sword kits and sashes (see the Wardrobe tab).</li>
     </ul></div>
   </div>`;
 }
@@ -231,8 +242,28 @@ function unlocks(): string {
   <h5 class="g-h">Weapons</h5><div class="g-list">${wpn}</div>`;
 }
 
+function wardrobe(c: GuideCtx): string {
+  const items = c.cosmetics ?? [];
+  const slots = [...new Set(items.map(i => i.slot))];
+  const lists = slots.map(sl => `<h5 class="g-h">${sl}</h5><div class="g-list">${items.filter(i => i.slot === sl).map(i =>
+    `<div class="g-row${i.owned ? "" : " dim"}"><span class="g-k kanji">${i.kanji}</span><div class="g-t"><b>${i.name}</b> ${i.owned ? `<span class="g-badge">Owned</span>` : ""}<p>${i.how}</p></div></div>`).join("")}</div>`).join("");
+  return `
+  <div class="g-card g-how"><h5>How to get Flowers 花</h5><ol class="g-steps">
+    ${step(1, "Every run gives Flowers when it ends: <b>2 per wave reached</b>, <b>5 per boss</b> and <b>1 per 40 kills</b>. The end screen shows how many you got.")}
+    ${step(2, "Flowers only buy <b>looks</b>, never power, so they don't compete with Spirit Embers at the Shrine.")}
+    ${step(3, `When the Wardrobe was added, your save got a one-time gift of Flowers (up to 400) for the runs you had already played.${c.flowers !== undefined ? ` You have <b>${c.flowers} 花</b> now.` : ""}`)}
+  </ol></div>
+  <div class="g-card g-how"><h5>Using the Wardrobe 装</h5><ol class="g-steps">
+    ${step(1, "Open <b>装 Wardrobe</b> on the main menu. There are four slots: <b>Outfit</b>, <b>Headgear</b>, <b>Sword Kit</b> and <b>Sash</b>.")}
+    ${step(2, "<b>Hover or tap</b> a piece to try it on in the preview, then <b>Buy</b> it with Flowers or <b>Equip</b> one you own.")}
+    ${step(3, "Some pieces can't be bought: they're <b>earned</b> from achievements and challenges (bosses, waves, stealth kills…). You get a pop-up the moment you earn one.")}
+    ${step(4, "Sword kits also change the <b>color of your slash</b>. Sashes, capes and headband tails flutter behind you, faster when you run.")}
+  </ol></div>
+  ${lists}`;
+}
+
 function classes(c: GuideCtx): string {
-  return `<p class="g-note">Every class has one signature passive that changes how it plays. Its ultimate perk is on the Ultimate perks tab.</p>
+  return `<p class="g-note">Every class has one signature passive that changes how it plays. Its ultimate perk is on the Ultimate perks tab. Every ultimate has its own look, so you can always tell which one is running (for example Kabuki's stage spotlight or Raijin's ring of thunder drums). Kagemusha's shadow clones fight like real swordsmen: they guard you, pick their own targets, wind up, lunge and sidestep attacks.</p>
   <div class="g-list">${CLASSES.map(k => {
     const s = SIGNATURES[k.id];
     return `<div class="g-row${k.id === c.classId ? " mine" : ""}"><span class="g-k kanji" style="color:${k.accent}">${k.kanji}</span><div class="g-t"><b>${k.name}: ${s.name}</b><p>${s.desc}</p></div></div>`;
@@ -242,7 +273,7 @@ function classes(c: GuideCtx): string {
 export function guideHTML(tab: GuideTab, c: GuideCtx): string {
   const body = tab === "basics" ? basics() : tab === "duos" ? duos(c) : tab === "evolutions" ? evolutions(c)
     : tab === "ultperks" ? ultPerks(c) : tab === "elites" ? elites() : tab === "enemies" ? enemies(c)
-    : tab === "vows" ? vows(c) : tab === "unlocks" ? unlocks() : tab === "choices" ? choices() : classes(c);
+    : tab === "vows" ? vows(c) : tab === "unlocks" ? unlocks() : tab === "choices" ? choices() : tab === "wardrobe" ? wardrobe(c) : classes(c);
   return `<div class="panel guide" style="text-align:left">
     <div class="panel-title" style="text-align:center">道 GUIDE</div>
     <div class="g-tabs" role="tablist">${GUIDE_TABS.map(t => `<button class="g-tab${t.id === tab ? " on" : ""}" role="tab" aria-selected="${t.id === tab}" data-guide="${t.id}"><span class="kanji">${t.kanji}</span>${t.label}</button>`).join("")}</div>
