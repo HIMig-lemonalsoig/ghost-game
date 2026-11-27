@@ -594,3 +594,12 @@ Fix (Brotato/Hades-style: risk modifiers pay a modest bonus, not a multiplier on
 | Tengu | 17 | 44 | per-hit bonus 1 → 3.4 (bot now dashes like a Tengu player) |
 | Kunoichi | 35 | 45 | ×0.09 → ×0.13 |
 All 25 classes now measure 44–73 grunts' worth (target 60, band 42–78), average of 2 bot runs each.
+
+### Human-like clones + Wardrobe cosmetics (2026-11-26)
+**Clones (`updateClone` in GhostGame.ts):** Kagemusha's Twin Shadows clones used to slide straight at you and damage the nearest enemy on a timer. Now each clone is a second swordsman: momentum-based steering, picks a target near you (two clones spread out), curved approach, wind-up → lunge → recover, circles its target between swings, sometimes sidesteps enemy wind-ups, walks at your shoulder when idle, and visibly swings its katana. Same damage per cycle as before. Kagebushi's echo clone now has a silhouette and a visible delayed swing.
+
+**Wardrobe (`src/cosmetics.ts`, `src/cosmeticdraw.ts`), inspired by Ghost of Tsushima's armor / headgear / sword kits / dyes:** four slots (Outfit, Headgear, Sword Kit, Sash), 32 pieces, looks only.
+- **Flowers (花)**, a cosmetic-only currency (Tsushima buys dyes with flowers; Hades keeps cosmetics on a separate currency from power upgrades): 2 per wave, 5 per boss, 1 per 40 kills. Existing saves get up to 400 Flowers back for past runs.
+- **Bought:** Traveler's Indigo, Mountain Hermit, Clan Lacquer Armor, Red Hachimaki, Straw Kasa, Oni Mask, Moonlit Edge, Crimson Lacquer, Sakura Blade, Red Sash, Indigo Cape, Petal Scarf.
+- **Earned (achievements / challenges):** Iron Lord's Armor (10 bosses), Phantom Garb (50 stealth kills), Swordmaster's Kimono (wave 25), Fox Shrine Robe (beat the Nine-Tailed Witch), Storm Sentinel (beat the Thunder General), Golden Temple Armor (win a run), Ghost Hood (Silent Blade), Fox Spirit Mask (20 Spirit Chests), Crescent Kabuto (wave 20), Antlered Kabuto (50 elites), Tengu Mask and Ghost White Cloth (wave 15 on Hard/Death), Black Water (2,000 kills), Storm Edge (3 Thunder Generals), Gold Leaf (Wave 20 achievement), Golden Cord (25 bosses).
+- Live preview: hover a piece to try it on. Sword kits also recolor your slash trail. Sashes, capes and headband tails stream behind you and flutter faster when you move.

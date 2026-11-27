@@ -1,6 +1,8 @@
 // Consolidated game engine and supporting systems. No React dependencies.
 import { Fx, hueOf } from "./fx";
 import { updateUltTrail, drawUltUnder, drawUltOver } from "./ultvfx";
+import { drawBack, drawBody } from "./cosmeticdraw";
+import type { Look } from "./cosmeticdraw";
 import { Arena } from "./arena";
 import { ULT_STYLES, poseFrame, drawMotif, STRIKE } from "./ultimates";
 import type { UltMotif } from "./ultimates";
@@ -1981,6 +1983,8 @@ export class KatanaTrail {
   private now = 0;
   // Default lifespan in seconds (120ms)
   lifespan = 0.12;
+  /** WARDROBE: slash color from the equipped sword kit. */
+  rgb: [number, number, number] = [180, 20, 20];
   reset() { this.samples.length = 0; }
   push(x: number, y: number) {
     this.samples.push({ x, y, t: this.now });
@@ -2015,9 +2019,10 @@ export class KatanaTrail {
       const grad = ctx.createLinearGradient(
         this.samples[0].x, this.samples[0].y, last.x, last.y,
       );
-      grad.addColorStop(0, `rgba(180,20,20,0)`);
-      grad.addColorStop(0.7, `rgba(180,20,20,${pass === 0 ? 0.35 : 0.65})`);
-      grad.addColorStop(1, `rgba(220,40,40,${tipAlpha})`);
+      const [r, g, b] = this.rgb;
+      grad.addColorStop(0, `rgba(${r},${g},${b},0)`);
+      grad.addColorStop(0.7, `rgba(${r},${g},${b},${pass === 0 ? 0.35 : 0.65})`);
+      grad.addColorStop(1, `rgba(${Math.min(255, r + 40)},${Math.min(255, g + 20)},${Math.min(255, b + 20)},${tipAlpha})`);
       ctx.strokeStyle = grad;
       ctx.lineWidth = pass === 0 ? 16 : 6;
       ctx.globalAlpha = pass === 0 ? 0.55 : 0.95;
@@ -2864,6 +2869,16 @@ interface Clone {
   attackTimer: number;
   life: number;              // remaining seconds
   hitFlash: number;
+  // Human-like movement (clone AI rework)
+  vel?: Vec2;
+  mode?: "follow" | "approach" | "windup" | "strike" | "recover" | "circle" | "dodge";
+  modeT?: number;
+  targetId?: number | null;
+  swing?: number;            // 1 → 0 during a swing (drawn as a katana sweep)
+  swingDir?: number;
+  circleDir?: number;
+  dodgeCd?: number;
+  side?: number;             // which side of you it walks on when following
 }
 
 // Decoy entity — short-lived dummy that pulls enemy attention.
@@ -3927,6 +3942,9 @@ export class GhostGame {
   parallax = new ParallaxLayer();
   cameraZoom = new CameraZoom();
   katanaTrail = new KatanaTrail();
+  /** WARDROBE: the player's equipped cosmetics (set by the UI before a run; null = classic look). */
+  look: Look | null = null;
+  private lookPrev = { x: 0, y: 0, sway: 0 };
   // Brief screen-flash overlay (parry, phase transitions)
   whiteFlashTimer = 0;
   whiteFlashMax = 0;
@@ -7306,6 +7324,119 @@ export class GhostGame {
   }
 
   // Add charge to the ultimate gauge and update the `ultReady` flag.
+  /** Clone AI rework: one human-like swordsman tick. Same damage per cycle as before (~0.7s). */
+  private updateClone(c: Clone, ci: number, dt: number) {
+    const P = this.player.pos;
+    c.life -= dt;
+    c.hitFlash = Math.max(0, c.hitFlash - dt * 4);
+    c.vel ??= { x: 0, y: 0 };
+    c.mode ??= "follow";
+    c.modeT = (c.modeT ?? 0) - dt;
+    c.swing = Math.max(0, (c.swing ?? 0) - dt / 0.22);
+    c.dodgeCd = Math.max(0, (c.dodgeCd ?? 0) - dt);
+    c.side ??= ci % 2 ? -1 : 1;
+    c.circleDir ??= Math.random() < 0.5 ? -1 : 1;
+    // Target: an enemy near YOU (a bodyguard, not a wanderer), keep it while it lives.
+    let tgt = c.targetId != null ? this.enemies.find(e => e.id === c.targetId && e.state !== "dead") ?? null : null;
+    if (tgt && Math.hypot(tgt.pos.x - P.x, tgt.pos.y - P.y) > 380) tgt = null;
+    if (!tgt) {
+      let best = Infinity;
+      for (const e of this.enemies) {
+        if (e.state === "dead") continue;
+        const dp = Math.hypot(e.pos.x - P.x, e.pos.y - P.y);
+        if (dp > 320) continue;
+        const dc = Math.hypot(e.pos.x - c.pos.x, e.pos.y - c.pos.y);
+        const taken = this.clones.some(o => o !== c && o.targetId === e.id) ? 80 : 0;   // spread out
+        if (dc + taken < best) { best = dc + taken; tgt = e; }
+      }
+      c.targetId = tgt ? tgt.id : null;
+      if (tgt && c.mode === "follow") { c.mode = "approach"; c.modeT = 0; }
+    }
+    if (!tgt && c.mode !== "dodge") c.mode = "follow";
+    let goalX = P.x, goalY = P.y, maxSpd = 235, accel = 1100;
+    const face = (ang: number, rate: number) => {
+      const d = Math.atan2(Math.sin(ang - c.facing), Math.cos(ang - c.facing));
+      c.facing += d * Math.min(1, dt * rate);
+    };
+    if (c.mode === "follow") {
+      // Walk at your shoulder, a step behind, with a little idle sway.
+      const pf = this.player.facing;
+      goalX = P.x + Math.cos(pf + Math.PI / 2 * c.side) * 46 - Math.cos(pf) * 22 + Math.sin(this.elapsed * 1.3 + ci) * 6;
+      goalY = P.y + Math.sin(pf + Math.PI / 2 * c.side) * 46 - Math.sin(pf) * 22 + Math.cos(this.elapsed * 1.1 + ci) * 6;
+      maxSpd = 250;
+    } else if (tgt) {
+      const dx = tgt.pos.x - c.pos.x, dy = tgt.pos.y - c.pos.y, d = Math.hypot(dx, dy) || 1;
+      const ang = Math.atan2(dy, dx);
+      const reach = 58 + tgt.size;
+      // React to an enemy wind-up: sidestep (cooldown so it doesn't jitter).
+      if (tgt.attackTelegraph > 0 && d < reach + 30 && c.dodgeCd <= 0 && c.mode !== "strike" && (c.dodgeCd = 0.6, Math.random() < 0.6)) {
+        c.mode = "dodge"; c.modeT = 0.2; c.dodgeCd = 1.4;
+        const side = Math.random() < 0.5 ? -1 : 1;
+        c.vel.x = Math.cos(ang + side * 1.9) * 380; c.vel.y = Math.sin(ang + side * 1.9) * 380;
+        this.fx.smoke(c.pos.x, c.pos.y, 2, 14, 30, 215, 30);
+      }
+      if (c.mode === "approach") {
+        // Close in on a slight curve (people don't walk in perfect lines).
+        const weave = Math.sin(this.elapsed * 3 + ci * 2) * 0.35;
+        goalX = c.pos.x + Math.cos(ang + weave) * 100; goalY = c.pos.y + Math.sin(ang + weave) * 100;
+        face(ang, 10);
+        if (d < reach + 6 && c.attackTimer <= 0) { c.mode = "windup"; c.modeT = 0.16; }
+        else if (d < reach) { c.mode = "circle"; c.modeT = 0.2 + Math.random() * 0.25; }
+      } else if (c.mode === "windup") {
+        // Draw back: a small step away, blade raised.
+        goalX = c.pos.x - Math.cos(ang) * 30; goalY = c.pos.y - Math.sin(ang) * 30; maxSpd = 60;
+        face(ang, 16);
+        if (c.modeT <= 0) {
+          c.mode = "strike"; c.modeT = 0.12;
+          c.vel.x = Math.cos(ang) * 420; c.vel.y = Math.sin(ang) * 420;   // lunge
+          c.swing = 1; c.swingDir = -(c.swingDir ?? 1);
+          c.attackTimer = 0.7;
+          if (d < reach + 40) {
+            this.dmgSrcOverride = "Ultimate"; this.dealDamage(tgt, this.ultDmgRaw(7.5), ang, 40); this.dmgSrcOverride = null;   // Twin Shadows clone (7.5: scales like an ult)
+          }
+          this.fx.slash(c.pos.x, c.pos.y, ang, 56, Math.PI * 0.8, c.swingDir, { hue: 215, sat: 80, light: 72, width: 6, life: 0.2 });
+          audio.play("slash");
+        }
+      } else if (c.mode === "strike") {
+        goalX = tgt.pos.x; goalY = tgt.pos.y; maxSpd = 420; accel = 400;
+        if (c.modeT <= 0) { c.mode = "recover"; c.modeT = 0.2; }
+      } else if (c.mode === "recover") {
+        // Settle back out of reach.
+        goalX = c.pos.x - Math.cos(ang) * 40; goalY = c.pos.y - Math.sin(ang) * 40; maxSpd = 130;
+        face(ang, 8);
+        if (c.modeT <= 0) { c.mode = "circle"; c.modeT = 0.15 + Math.random() * 0.3; if (Math.random() < 0.3) c.circleDir = -c.circleDir; }
+      } else if (c.mode === "circle") {
+        // Strafe around the target at sword's length, looking for the next opening.
+        const ca = ang + Math.PI + c.circleDir * 0.9;
+        goalX = tgt.pos.x + Math.cos(ca) * (reach - 4); goalY = tgt.pos.y + Math.sin(ca) * (reach - 4); maxSpd = 170;
+        face(ang, 12);
+        if (c.modeT <= 0 && c.attackTimer <= 0) c.mode = "approach";
+      } else if (c.mode === "dodge") {
+        maxSpd = 400; accel = 300; goalX = c.pos.x + c.vel.x; goalY = c.pos.y + c.vel.y;
+        if (c.modeT <= 0) c.mode = "circle";
+      }
+    } else if (c.mode === "dodge" && c.modeT <= 0) c.mode = "follow";
+    c.attackTimer -= dt;
+    // Arrive steering: accelerate toward the goal, ease off when close.
+    const gx = goalX - c.pos.x, gy = goalY - c.pos.y, gd = Math.hypot(gx, gy);
+    const want = gd < 1 ? 0 : Math.min(maxSpd, gd * 6);
+    const tvx = gd < 1 ? 0 : (gx / gd) * want, tvy = gd < 1 ? 0 : (gy / gd) * want;
+    const ax = tvx - c.vel.x, ay = tvy - c.vel.y, al = Math.hypot(ax, ay), step = accel * dt;
+    if (al > step) { c.vel.x += (ax / al) * step; c.vel.y += (ay / al) * step; } else { c.vel.x = tvx; c.vel.y = tvy; }
+    // Keep personal space from you and the other clone.
+    for (const o of [this.player.pos, ...this.clones.filter(o => o !== c).map(o => o.pos)]) {
+      const sx = c.pos.x - o.x, sy = c.pos.y - o.y, sd = Math.hypot(sx, sy);
+      if (sd > 0 && sd < 36) { c.vel.x += (sx / sd) * 600 * dt; c.vel.y += (sy / sd) * 600 * dt; }
+    }
+    c.pos.x += c.vel.x * dt; c.pos.y += c.vel.y * dt;
+    c.pos.x = Math.max(20, Math.min(this.worldW - 20, c.pos.x));
+    c.pos.y = Math.max(20, Math.min(this.worldH - 20, c.pos.y));
+    if (c.mode === "follow" || (c.mode === "approach" && Math.hypot(c.vel.x, c.vel.y) > 40 && !tgt)) {
+      if (Math.hypot(c.vel.x, c.vel.y) > 30) face(Math.atan2(c.vel.y, c.vel.x), 7);
+      else face(this.player.facing, 3);
+    }
+  }
+
   // ===================== 7.6: Hades-style ult charging =====================
   /** Refilling allowance (in % of the bar) for charge from dealing damage. */
   private ultDealtBucket = ULT_CHARGE.dealtBurst;
@@ -10040,6 +10171,14 @@ export class GhostGame {
 
     ctx.rotate(p.facing);
 
+    // WARDROBE: sash / cape / headband tails stream behind you (faster when moving).
+    if (this.look) {
+      const mv = Math.hypot(p.pos.x - this.lookPrev.x, p.pos.y - this.lookPrev.y);
+      this.lookPrev.sway += (Math.min(1, mv / 5) - this.lookPrev.sway) * 0.15;
+      this.lookPrev.x = p.pos.x; this.lookPrev.y = p.pos.y;
+      drawBack(ctx, this.look, BASE.PLAYER_RADIUS, this.elapsed, this.lookPrev.sway);
+    }
+
     // ===== Weapon model + swing animation =====
     // Pick the active weapon (katana when swingWeaponId is null OR when not
     // mid-melee-secondary-swing). Each melee secondary gets its own per-weapon
@@ -10149,6 +10288,11 @@ export class GhostGame {
       this.katanaTrail.push(tipX, tipY);
     }
 
+    if (this.look) {   // WARDROBE: outfit + headgear
+      drawBody(ctx, this.look, BASE.PLAYER_RADIUS, p.hitFlash > 0 ? "hit" : p.invuln > 0 ? "invuln" : null);
+      ctx.restore();
+      return;
+    }
     ctx.fillStyle = p.hitFlash > 0 ? "hsl(358, 80%, 60%)"
       : p.invuln > 0 ? "hsl(36, 30%, 30%)"
       : "hsl(0, 0%, 8%)";
@@ -10183,7 +10327,8 @@ export class GhostGame {
       const bladeStart = r0 + 3;
       const curve = -Math.max(2, (tip - bladeStart) * 0.06);
       ctx.lineCap = "round";
-      ctx.fillStyle = "hsl(210, 12%, 82%)";
+      const kit = this.look?.blade;   // WARDROBE: sword kit colors
+      ctx.fillStyle = kit?.bladeCol ?? "hsl(210, 12%, 82%)";
       ctx.beginPath();
       ctx.moveTo(bladeStart, -1.6);
       ctx.quadraticCurveTo((bladeStart + tip) / 2, -1.6 + curve, tip, curve * 0.9);
@@ -10191,17 +10336,17 @@ export class GhostGame {
       ctx.quadraticCurveTo((bladeStart + tip) / 2, 1.8 + curve * 0.6, bladeStart, 1.8);
       ctx.closePath();
       ctx.fill();
-      ctx.strokeStyle = "hsla(200, 60%, 96%, 0.9)";
+      ctx.strokeStyle = kit?.edgeCol ?? "hsla(200, 60%, 96%, 0.9)";
       ctx.lineWidth = 0.9;
       ctx.beginPath();
       ctx.moveTo(bladeStart + 2, 1.2);
       ctx.quadraticCurveTo((bladeStart + tip) / 2, 1.2 + curve * 0.6, tip - 5, curve * 0.3 + 1);
       ctx.stroke();
-      ctx.fillStyle = "hsl(42, 65%, 45%)";
+      ctx.fillStyle = kit?.guardCol ?? "hsl(42, 65%, 45%)";
       ctx.beginPath();
       ctx.ellipse(r0 + 1, 0, 1.8, 4.5, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = "hsl(0, 60%, 28%)";
+      ctx.strokeStyle = kit?.wrapCol ?? "hsl(0, 60%, 28%)";
       ctx.lineWidth = 4;
       ctx.beginPath(); ctx.moveTo(-3, 0); ctx.lineTo(r0, 0); ctx.stroke();
       ctx.strokeStyle = "hsl(36, 40%, 80%)";
@@ -11458,7 +11603,9 @@ export class GhostGame {
       ctx.restore();
       ctx.save();
       ctx.globalAlpha = 0.85;
-      ctx.translate(c.pos.x, c.pos.y);
+      const spd = Math.hypot(c.vel?.x ?? 0, c.vel?.y ?? 0);
+      const bob = Math.sin(this.elapsed * (spd > 40 ? 14 : 3) + c.pos.x * 0.01) * (spd > 40 ? 1.6 : 0.7);   // footsteps / breathing
+      ctx.translate(c.pos.x, c.pos.y + bob);
       ctx.fillStyle = "hsla(0, 0%, 0%, 0.5)";
       ctx.beginPath();
       ctx.ellipse(0, BASE.PLAYER_RADIUS - 2, BASE.PLAYER_RADIUS, BASE.PLAYER_RADIUS * 0.4, 0, 0, Math.PI * 2);
@@ -11473,9 +11620,17 @@ export class GhostGame {
       ctx.beginPath();
       ctx.arc(0, 0, BASE.PLAYER_RADIUS, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.strokeStyle = "hsl(210, 30%, 88%)";   // its katana
-      ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.moveTo(BASE.PLAYER_RADIUS - 2, 4); ctx.lineTo(BASE.PLAYER_RADIUS + 26, 10); ctx.stroke();
+      // Its katana: held low at rest, raised in the wind-up, swept through a strike.
+      const sw = c.swing ?? 0, sd = c.swingDir ?? 1;
+      const bladeAng = sw > 0 ? sd * (-1.1 + (1 - sw) * 2.2) : c.mode === "windup" ? -sd * 1.3 : 0.55;
+      ctx.save();
+      ctx.rotate(bladeAng);
+      ctx.strokeStyle = "hsl(210, 30%, 88%)";
+      ctx.lineWidth = 3; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(BASE.PLAYER_RADIUS - 4, 0); ctx.lineTo(BASE.PLAYER_RADIUS + (sw > 0 ? 34 : 24), -2); ctx.stroke();
+      ctx.fillStyle = "hsl(42, 65%, 50%)";
+      ctx.beginPath(); ctx.arc(BASE.PLAYER_RADIUS - 3, 0, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
       ctx.restore();
     }
 
@@ -11734,10 +11889,24 @@ export class GhostGame {
     }
     // Kagebushi shadow clone
     if (this.shadowClone) {
+      // A violet silhouette that echoes your moves half a second late, sword and all.
+      const sc = this.shadowClone;
       ctx.save();
-      ctx.globalAlpha = 0.55;
-      ctx.fillStyle = "hsl(250, 30%, 12%)";
-      ctx.beginPath(); ctx.arc(this.shadowClone.pos.x, this.shadowClone.pos.y, BASE.PLAYER_RADIUS, 0, Math.PI * 2); ctx.fill();
+      ctx.translate(sc.pos.x, sc.pos.y + Math.sin(this.elapsed * 3) * 0.8);
+      ctx.globalAlpha = 0.6;
+      ctx.fillStyle = "hsla(260, 60%, 30%, 0.35)";
+      ctx.beginPath(); ctx.arc(0, 0, BASE.PLAYER_RADIUS + 7, 0, Math.PI * 2); ctx.fill();
+      ctx.rotate(sc.facing);
+      const k = sc.attackTimer > 0 ? 1 - sc.attackTimer / 0.5 : 0;   // swing plays as the echo lands
+      const ba = sc.attackTimer > 0 && k > 0.6 ? -1 + ((k - 0.6) / 0.4) * 2 : sc.attackTimer > 0 ? -1.2 : 0.5;
+      ctx.save(); ctx.rotate(ba);
+      ctx.strokeStyle = "hsla(270, 70%, 75%, 0.9)"; ctx.lineWidth = 2.5; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(BASE.PLAYER_RADIUS - 4, 0); ctx.lineTo(BASE.PLAYER_RADIUS + 28, -2); ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = "hsl(255, 35%, 12%)";
+      ctx.beginPath(); ctx.arc(0, 0, BASE.PLAYER_RADIUS, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "hsla(275, 80%, 65%, 0.8)"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(0, 0, BASE.PLAYER_RADIUS, 0, Math.PI * 2); ctx.stroke();
       ctx.restore();
     }
     // Shadow Consume aura
@@ -12503,33 +12672,10 @@ export class GhostGame {
     for (const d of this.decoys) d.life -= dt;
     this.decoys = this.decoys.filter(d => d.life > 0);
 
-    // Kagemusha clones (ult) — mirror player, draw aggro, attack nearest enemy.
-    for (const c of this.clones) {
-      c.life -= dt;
-      c.hitFlash = Math.max(0, c.hitFlash - dt * 4);
-      // Drift toward player (mirroring with offset)
-      const dxp = this.player.pos.x - c.pos.x;
-      const dyp = this.player.pos.y - c.pos.y;
-      const dp = Math.hypot(dxp, dyp);
-      if (dp > 60) {
-        c.pos.x += (dxp / dp) * 180 * dt;
-        c.pos.y += (dyp / dp) * 180 * dt;
-      }
-      // Find nearest enemy and attack
-      let nearest: Enemy | null = null;
-      let nd = Infinity;
-      for (const e of this.enemies) {
-        if (e.state === "dead") continue;
-        const d = Math.hypot(e.pos.x - c.pos.x, e.pos.y - c.pos.y);
-        if (d < nd) { nd = d; nearest = e; }
-      }
-      c.attackTimer -= dt;
-      if (nearest && nd < 90 && c.attackTimer <= 0) {
-        c.attackTimer = 0.7;
-        c.facing = Math.atan2(nearest.pos.y - c.pos.y, nearest.pos.x - c.pos.x);
-        this.dmgSrcOverride = "Ultimate"; this.dealDamage(nearest, this.ultDmgRaw(7.5), c.facing, 40); this.dmgSrcOverride = null;   // Twin Shadows clone (7.5: scales like an ult)
-      }
-    }
+    // Kagemusha clones (ult) — fight like a second swordsman: steer with momentum,
+    // pick a target near you, wind up → lunge → recover, circle between swings,
+    // sidestep enemy wind-ups, and fall back to your side when nothing's close.
+    this.clones.forEach((c, ci) => this.updateClone(c, ci, dt));
     // Explode any clones whose life ran out (or were "destroyed")
     for (const c of this.clones) {
       if (c.life <= 0) {

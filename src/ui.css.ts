@@ -268,6 +268,30 @@ kbd {
 .sh-ver.on { border-color: var(--gold); background: rgba(232,183,90,.1); color: var(--bone); cursor: default; }
 .sh-ver:not(.on):hover { border-color: var(--line-strong); }
 .sh-buy { white-space: nowrap; min-height: 44px; }
+/* Wardrobe */
+.wd-panel { max-width: 760px; }
+.wd-top { display: grid; grid-template-columns: 180px 1fr; gap: 18px; align-items: center; margin: 8px 0 12px; }
+.wd-prev { width: 180px; height: 180px; border-radius: 16px; border: 1px solid var(--line); background: radial-gradient(circle at 50% 45%, rgba(232,183,90,.14), rgba(0,0,0,.25) 70%), var(--surface-2); }
+.wd-side .vow-total { margin: 0 0 4px; }
+.wd-owned { font-size: 12.5px; margin-bottom: 10px; }
+.wd-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.wd-tab { padding: 8px 12px; min-height: 40px; border-radius: 10px; border: 1px solid var(--line); background: rgba(0,0,0,.18); color: var(--muted); cursor: pointer; font: inherit; font-size: 13px; }
+.wd-tab .kanji { color: var(--gold); }
+.wd-tab.on { border-color: var(--gold); color: var(--bone); background: rgba(232,183,90,.1); }
+.wd-tab:not(.on):hover { border-color: var(--line-strong); color: var(--bone); }
+.wd-list { display: grid; gap: 8px; max-height: 46vh; overflow-y: auto; padding-right: 4px; }
+.wd-item { display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: center; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); cursor: pointer; transition: border-color .15s; }
+.wd-item:hover, .wd-item:focus-visible { border-color: var(--line-strong); outline: none; }
+.wd-item.on { border-color: color-mix(in srgb, var(--gold) 55%, transparent); }
+.wd-item.locked .wd-k { opacity: .45; }
+.wd-k { font-size: 24px; color: var(--gold); text-align: center; }
+.wd-t b { display: block; font-size: 14px; color: var(--bone); }
+.wd-t span { font-size: 12.5px; color: var(--muted); }
+.wd-btn { white-space: nowrap; min-height: 40px; }
+.wd-state { font-size: 12px; white-space: nowrap; }
+.wd-state.on { color: var(--gold); font-weight: 600; }
+.wd-state.lock { color: var(--muted); white-space: normal; max-width: 220px; text-align: right; }
+@media (max-width: 640px) { .wd-top { grid-template-columns: 1fr; justify-items: center; } .wd-item { grid-template-columns: 1fr; } .wd-k { display: none; } .wd-state.lock { text-align: left; max-width: none; } }
 @media (max-width: 640px) { .sh-row { grid-template-columns: 1fr; } .sh-row > .kanji { display: none; } .sh-vers { grid-template-columns: 1fr; } }
 .vow-total { display: flex; align-items: baseline; gap: 8px; justify-content: center; margin: 14px 0 6px; flex-wrap: wrap; }
 .vow-total b { font-size: 34px; color: var(--crimson); font-family: var(--font-display); }

@@ -10,6 +10,8 @@ import type { NodeId } from "./unlocks";
 import { hueOf } from "./fx";
 import type { ClassId, GameStats, SecondaryId, Difficulty } from "./GhostGame";
 import { UI_CSS } from "./ui.css";
+import { COSMETICS, SLOTS, flowers, flowersEarned, addFlowers, flowersFor, isOwned, buy as buyCosmetic, equip, equippedId, unlockText, newlyEarned, ownedCount, currentLook, drawPreview } from "./cosmetics";
+import type { Slot, Look, Cosmetic } from "./cosmetics";
 import { initDevMode } from "./devmode";
 import { playIntro } from "./intro";
 import { initTouch } from "./touch";
@@ -104,6 +106,9 @@ const vowsUnlocked = () => {
 const activeVows = (): VowSet => (vowsUnlocked() ? { ...vowSet } : {});
 let achOpen = false;
 let shrineOpen = false;
+let wardrobeOpen = false;
+let wardrobeTab: Slot = "attire";
+let wardrobeHover: string | null = null;   // preview an item before buying/equipping
 let histOpenId: number | null = null;
 let dailyOpen = false;
 const dailyRecorded = new WeakMap<GhostGame, number>();   // last wave recorded for this daily attempt
@@ -253,6 +258,82 @@ function shrineHTML(): string {
     <div class="panel-actions"><button class="btn primary" data-act="closeshrine">Done · Esc</button><button class="btn ghost" data-act="refundshrine" ${sh.spent ? "" : "disabled"}>Refund all</button></div>
   </div>`;
 }
+// ─── Wardrobe (cosmetics) ────────────────────────────────────────────────────
+function wardrobeLook(): Look {
+  const look = currentLook();
+  const h = wardrobeHover ? COSMETICS.find(c => c.id === wardrobeHover) : null;
+  if (h) (look as unknown as Record<Slot, Cosmetic>)[h.slot] = h;
+  return look;
+}
+function wardrobeHTML(): string {
+  const tabs = SLOTS.map(t => `<button class="wd-tab${t.id === wardrobeTab ? " on" : ""}" data-wtab="${t.id}"><span class="kanji">${t.kanji}</span> ${t.name}</button>`).join("");
+  const items = COSMETICS.filter(c => c.slot === wardrobeTab).map(c => {
+    const own = isOwned(c.id), on = equippedId(c.slot) === c.id;
+    const btn = on ? `<span class="wd-state on">Equipped</span>`
+      : own ? `<button class="btn wd-btn" data-wequip="${c.id}">Equip</button>`
+      : c.cost ? `<button class="btn wd-btn" data-wbuy="${c.id}" ${flowers() >= c.cost ? "" : "disabled"}>Buy · <span class="num">${c.cost}</span> 花</button>`
+      : `<span class="wd-state lock">🔒 ${unlockText(c)}</span>`;
+    return `<div class="wd-item${on ? " on" : ""}${own ? "" : " locked"}" data-wprev="${c.id}" tabindex="0">
+      <span class="kanji wd-k">${c.kanji}</span>
+      <div class="wd-t"><b>${c.name}</b><span>${c.desc}</span></div>
+      ${btn}
+    </div>`;
+  }).join("");
+  return `<div class="panel wd-panel" style="text-align:left">
+    <div class="panel-title" style="text-align:center">装 WARDROBE</div>
+    <div class="panel-sub" style="text-align:center">Change how your character looks. Buy pieces with Flowers, or earn them from achievements and challenges. Looks only: no stats.</div>
+    <div class="wd-top">
+      <canvas class="wd-prev" width="320" height="320" aria-label="Character preview"></canvas>
+      <div class="wd-side">
+        <div class="vow-total"><span>Flowers</span><b class="num">${flowers()}</b><span class="dim">花 · earned ${flowersEarned()}</span></div>
+        <div class="wd-owned dim">${ownedCount()} / ${COSMETICS.length} pieces owned</div>
+        <div class="wd-tabs">${tabs}</div>
+        <p class="hint">Hover or tap a piece to try it on. Earn Flowers every run: 2 per wave, 5 per boss, 1 per 40 kills.</p>
+      </div>
+    </div>
+    <div class="wd-list">${items}</div>
+    <div class="panel-actions"><button class="btn primary" data-act="closewardrobe">Done · Esc</button></div>
+  </div>`;
+}
+let wardrobeRaf = 0;
+function wardrobeLoop() {
+  const cv = overlay.querySelector<HTMLCanvasElement>(".wd-prev");
+  if (!wardrobeOpen || !cv) { wardrobeRaf = 0; return; }
+  const ctx = cv.getContext("2d");
+  if (ctx) drawPreview(ctx, wardrobeLook(), cv.width, performance.now() / 1000);
+  wardrobeRaf = requestAnimationFrame(wardrobeLoop);
+}
+function showWardrobeModal() {
+  wardrobeOpen = true;
+  overlay.classList.add("show", "top");
+  const y = overlay.querySelector(".wd-list")?.scrollTop ?? 0;
+  overlay.innerHTML = wardrobeHTML();
+  const list = overlay.querySelector(".wd-list"); if (list) list.scrollTop = y;
+  if (!wardrobeRaf) wardrobeRaf = requestAnimationFrame(wardrobeLoop);
+}
+function closeWardrobeModal() {
+  wardrobeOpen = false;
+  wardrobeHover = null;
+  overlay.classList.remove("show", "top");
+  overlay.innerHTML = "";
+  renderMenu();
+}
+/** Give this run's Flowers (only the part not given yet). */
+const flowersGiven = new WeakMap<GhostGame, number>();
+let lastFlowers = 0;
+function awardFlowers(g: GhostGame | null) {
+  if (!g || g.devMode) return;
+  const total = flowersFor(g.stats.wave, g.run.bossKills, g.run.kills);
+  const given = flowersGiven.get(g) ?? 0;
+  if (total > given) { addFlowers(total - given); flowersGiven.set(g, total); }
+  lastFlowers = total;
+}
+/** Put the equipped look on a fresh game. */
+function applyLook(g: GhostGame) {
+  g.look = currentLook();
+  if (g.look.blade.trail) g.katanaTrail.rgb = g.look.blade.trail;
+}
+
 // ─── Daily run (Phase 13) ────────────────────────────────────────────────────
 function showDailyModal() {
   dailyOpen = true;
@@ -322,6 +403,13 @@ function awardEmbers(g: GhostGame | null) {
   lastEmbers = total;
 }
 function showUnlockToasts() {
+  for (const c of newlyEarned()) {
+    const wrap = document.createElement("div");
+    wrap.innerHTML = `<div class="ach-toast" style="--tc:hsl(335 80% 72%)" role="status"><span class="ach-k kanji" aria-hidden="true">${c.kanji}</span><div><div class="ach-tl">Cosmetic earned · ${SLOTS.find(t => t.id === c.slot)!.name}</div><div class="ach-n">${c.name}</div><div class="ach-d">Wear it from the Wardrobe on the main menu.</div></div></div>`;
+    const el = wrap.firstElementChild as HTMLElement;
+    achToasts.append(el);
+    setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 220); }, 5500);
+  }
   for (const u of checkUnlocks(game && !game.devMode ? liveCareer(game) : getCareer())) {
     const wrap = document.createElement("div");
     wrap.innerHTML = unlockToastHTML(u);
@@ -668,7 +756,7 @@ function renderMenu() {
   <div class="menu-wrap">
     <div class="menu-top">
       <div class="logo"><span class="kanji">幽</span><div><h1>YŪKEN</h1><p>Survive the waves. Forge your legend.</p></div></div>
-      <div class="menu-actions">${continueBtn}<button class="btn ghost" data-act="guide"><span class="kanji" style="color:var(--gold)">道</span> Guide</button><button class="btn ghost" data-act="ach">Achievements <span class="num" style="opacity:.7">${unlockedCount()}/${ACHIEVEMENTS.length}</span></button><button class="btn ghost" data-act="career">Career</button><button class="btn ghost" data-act="daily"><span class="kanji" style="color:var(--gold)">日</span> Daily${dailyDay() ? "" : ` <span class="dl-new">NEW</span>`}</button><button class="btn ghost" data-act="shrine"><span class="kanji" style="color:var(--gold)">祖</span> Shrine <span class="num" style="opacity:.7">${getShrine().embers} 火</span></button><button class="btn ghost" data-act="controls">Controls</button><button class="btn ghost" data-act="a11y">Accessibility</button><button class="btn ghost" data-act="random">Random class</button></div>
+      <div class="menu-actions">${continueBtn}<button class="btn ghost" data-act="guide"><span class="kanji" style="color:var(--gold)">道</span> Guide</button><button class="btn ghost" data-act="ach">Achievements <span class="num" style="opacity:.7">${unlockedCount()}/${ACHIEVEMENTS.length}</span></button><button class="btn ghost" data-act="career">Career</button><button class="btn ghost" data-act="daily"><span class="kanji" style="color:var(--gold)">日</span> Daily${dailyDay() ? "" : ` <span class="dl-new">NEW</span>`}</button><button class="btn ghost" data-act="shrine"><span class="kanji" style="color:var(--gold)">祖</span> Shrine <span class="num" style="opacity:.7">${getShrine().embers} 火</span></button><button class="btn ghost" data-act="wardrobe"><span class="kanji" style="color:var(--gold)">装</span> Wardrobe <span class="num" style="opacity:.7">${flowers()} 花</span></button><button class="btn ghost" data-act="controls">Controls</button><button class="btn ghost" data-act="a11y">Accessibility</button><button class="btn ghost" data-act="random">Random class</button></div>
     </div>
     <div class="menu-body">
       <div class="class-grid" role="listbox" aria-label="Classes">${cards}</div>
@@ -776,6 +864,7 @@ menu.addEventListener("click", e => {
   else if (act === "guide") showGuide("basics");
   else if (act === "vows") showVowsModal();
   else if (act === "shrine") showShrineModal();
+  else if (act === "wardrobe") showWardrobeModal();
   else if (act === "daily") showDailyModal();
   else if (act === "a11y") showA11yModal();
   else if (act === "random") {
@@ -823,6 +912,7 @@ function bootGame(): GhostGame {
   if (touch.active) g.setInput({ mouseAim: false, aimAssist: true });
   applySettings();
   applyA11y();
+  applyLook(g);   // WARDROBE
   return g;
 }
 
@@ -1385,6 +1475,7 @@ function renderEnd(s: GameStats) {
     </div>
     ${game?.daily && !game.devMode ? (recordDaily(game), `<div class="daily-end">日 Daily ${game.daily} · best wave ${dailyDay(game.daily)?.best ?? s.wave} · first try ${dailyDay(game.daily)?.first || "–"} <button class="btn ghost" data-act="copydailyend">Copy result</button></div>`) : ""}
     ${game && !game.devMode ? (awardEmbers(game), `<div class="embers-earned"><span class="kanji">火</span> +${lastEmbers} Spirit Embers <span class="dim">· spend them at the Shrine</span></div>`) : ""}
+    ${game && !game.devMode ? (awardFlowers(game), `<div class="embers-earned"><span class="kanji">花</span> +${lastFlowers} Flowers <span class="dim">· spend them in the Wardrobe</span></div>`) : ""}
     ${game ? recapHTML(game, won) : ""}
     <div class="panel-actions">
       ${won ? `<button class="btn primary" data-act="endless">∞ Continue (Endless) · <kbd>Enter</kbd></button>
@@ -1425,6 +1516,17 @@ overlay.addEventListener("change", e => {
   if ((e.target as HTMLElement).closest('[data-a11ys="uiScale"]')) applyA11y();
   if ((e.target as HTMLElement).closest('[data-a11ys="ui"]')) audio.playUi("monPing");
 });
+// WARDROBE: hovering a piece tries it on in the preview.
+overlay.addEventListener("mouseover", e => {
+  if (!wardrobeOpen) return;
+  const wp = (e.target as HTMLElement).closest<HTMLElement>("[data-wprev]");
+  wardrobeHover = wp ? wp.dataset.wprev! : null;
+});
+overlay.addEventListener("focusin", e => {
+  if (!wardrobeOpen) return;
+  const wp = (e.target as HTMLElement).closest<HTMLElement>("[data-wprev]");
+  if (wp) wardrobeHover = wp.dataset.wprev!;
+});
 overlay.addEventListener("click", e => {
   const t = e.target as HTMLElement;
   const bind = t.closest<HTMLElement>("[data-bind]");
@@ -1443,6 +1545,17 @@ overlay.addEventListener("click", e => {
   if (gt && guideOpen) { showGuide(gt.dataset.guide as GuideTab); overlay.scrollTop = 0; return; }
   if (cact === "closevows") { closeVowsModal(); return; }
   if (cact === "closeshrine") { closeShrineModal(); return; }
+  if (cact === "closewardrobe") { closeWardrobeModal(); return; }
+  if (wardrobeOpen) {
+    const wt = t.closest<HTMLElement>("[data-wtab]");
+    if (wt) { wardrobeTab = wt.dataset.wtab as Slot; wardrobeHover = null; showWardrobeModal(); overlay.querySelector(".wd-list")!.scrollTop = 0; return; }
+    const wb = t.closest<HTMLElement>("[data-wbuy]");
+    if (wb) { const id = wb.dataset.wbuy!; if (buyCosmetic(id)) { equip(id); try { audio.play("monPing"); } catch { /* audio off */ } } wardrobeHover = null; showWardrobeModal(); return; }
+    const we = t.closest<HTMLElement>("[data-wequip]");
+    if (we) { equip(we.dataset.wequip!); wardrobeHover = null; try { audio.play("hit"); } catch { /* audio off */ } showWardrobeModal(); return; }
+    const wp = t.closest<HTMLElement>("[data-wprev]");
+    if (wp) { wardrobeHover = wp.dataset.wprev!; return; }
+  }
   if (cact === "closedaily") { closeDailyModal(); return; }
   if (cact === "a11y") { showA11yModal(); return; }
   if (cact === "closea11y") { closeA11yModal(); return; }
@@ -1597,6 +1710,7 @@ window.addEventListener("keydown", e => {
   if (achOpen) { if (e.code === "Escape") closeAchModal(); return; }
   if (vowsOpen) { if (e.code === "Escape") closeVowsModal(); return; }
   if (shrineOpen) { if (e.code === "Escape") closeShrineModal(); return; }
+  if (wardrobeOpen) { if (e.code === "Escape") closeWardrobeModal(); return; }
   if (a11yOpen) { if (e.code === "Escape") closeA11yModal(); return; }
   if (dailyOpen) { if (e.code === "Escape") closeDailyModal(); else if (e.code === "Enter") { e.preventDefault(); startDaily(); } return; }
   if (guideOpen) { if (e.code === "Escape") closeGuide(); return; }

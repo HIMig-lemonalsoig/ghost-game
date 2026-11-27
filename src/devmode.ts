@@ -7,6 +7,7 @@ import {
 } from "./GhostGame";
 import type { GhostGame, SecondaryId, ConsumableId, EnemyArchetype, BossKind } from "./GhostGame";
 import { setUnlockAll, unlockAllOn, addEmbers } from "./unlocks";
+import { addFlowers } from "./cosmetics";
 import { reportHTML, getTelemetry, resetTelemetry } from "./telemetry";
 import { AFFIXES } from "./content/elites";
 import { DUOS } from "./content/duos";
@@ -142,7 +143,7 @@ export function initDevMode(getGame: () => GhostGame | null) {
       <h4>Balance data</h4>
       <div class="row"><button data-dev="report">Balance report</button><button data-dev="copyjson">Copy JSON</button></div>
       <div class="row"><button data-dev="vowsunlock">Toggle Vows unlock</button><button data-dev="unlockall">Toggle unlock all</button></div>
-      <div class="row"><button data-dev="embers">+100 Spirit Embers</button></div>
+      <div class="row"><button data-dev="embers">+100 Spirit Embers</button><button data-dev="flowers">+200 Flowers</button></div>
     </section>
     <section>
       <h4>Toggles</h4>
@@ -267,6 +268,7 @@ export function initDevMode(getGame: () => GhostGame | null) {
     }
     if (act === "unlockall") { setUnlockAll(!unlockAllOn()); notify(unlockAllOn() ? "All classes & weapons unlocked (dev) — reopen the menu" : "Unlock-all off"); return; }
     if (act === "embers") { addEmbers(100); notify("+100 Spirit Embers"); return; }
+    if (act === "flowers") { addFlowers(200); notify("+200 Flowers"); return; }
     const g = getGame();
     if (!g) { notify("Start a run first"); return; }
     g.devMode = true; // dev run — no records
