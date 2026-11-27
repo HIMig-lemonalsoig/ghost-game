@@ -542,3 +542,12 @@ A lighter version of Slay the Spire's map, sized for a wave game:
 - New content goes in `src/content/` with a dev-panel hook and at least one achievement.
 - Keep the offline single-file build working: no network assets, everything bundled.
 - Balance changes go through `enforceStatCaps()` and the soft curves, never one-off clamps.
+
+### Playtest fix: bosses can be fought in melee (2026-11-26)
+User report (wave 12): every boss had to be fought from range; standing next to one was death.
+Cause: boss attacks all come from its body (radial orb volley, ground-slam ring) with almost no tell (slam wind-up 0.2 s, late-phase volleys ~0.15 s), and only 0.8–1.4 s between attacks, so there was never a safe moment up close.
+Fix (Hades / Hollow Knight style "tell → attack → opening"):
+- Ground slam wind-up 0.2 s → 0.6 s, with a dashed danger ring that fills in before it lands (dash through it).
+- Orb volleys always wind up ≥ 0.6 s, with energy gathering on the boss before each burst.
+- After every attack the boss is winded for ~1 s (stands still, "隙 opening" shown), and the gap between attacks is longer (2.0/1.75/1.5 s by phase).
+- Kitsune backs off at half speed so melee classes can stay on her.

@@ -2734,6 +2734,7 @@ interface Enemy {
   bossPatternTimer: number;    // final boss: time left in current pattern
   bossPatternStep: number;     // final boss: step counter inside a pattern
   bossPatternCd: number;       // final boss: cooldown between patterns
+  bossRecover?: number;        // melee pass: boss is winded after a pattern (stands still)
   // Class-driven debuffs / status:
   poisonRemaining: number;     // seconds left of poison DoT
   poisonTickAccum: number;     // fractional ticks
@@ -7959,6 +7960,47 @@ export class GhostGame {
     }
   }
 
+  /** Melee pass: visible wind-ups for the boss attacks that come from its body. */
+  drawBossTelegraph(e: Enemy) {
+    const ctx = this.ctx;
+    const pulse = 0.5 + 0.5 * Math.sin(this.elapsed * 18);
+    if (e.bossPatternTimer > 0 && e.bossPatternStep === 0 && e.bossPattern === 1) {
+      // Ground slam: the danger ring fills in until the slam lands.
+      const k = Math.max(0, Math.min(1, (1.25 - e.bossPatternTimer) / 0.6));
+      ctx.save();
+      ctx.strokeStyle = `hsla(${this.dangerHue}, 90%, 60%, ${0.35 + 0.4 * pulse})`;
+      ctx.lineWidth = 3;
+      ctx.setLineDash([10, 8]);
+      ctx.beginPath(); ctx.arc(e.pos.x, e.pos.y, 260, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = `hsla(${this.dangerHue}, 90%, 55%, ${0.12 + 0.1 * k})`;
+      ctx.beginPath(); ctx.arc(e.pos.x, e.pos.y, 260 * k, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `hsla(${this.dangerHue}, 95%, 70%, 0.95)`;
+      ctx.font = "bold 22px serif"; ctx.textAlign = "center";
+      ctx.fillText("!", e.pos.x, e.pos.y - e.size - 30);
+      ctx.restore();
+    } else if (e.bossPatternTimer > 0 && e.bossPattern === 0) {
+      // Radial volley: energy gathers on the boss before each burst.
+      const steps = e.bossPhase === 1 ? 1 : e.bossPhase === 2 ? 2 : 3;
+      if (e.bossPatternStep < steps) {
+        const untilNext = e.bossPatternTimer - (steps - e.bossPatternStep - 1) * 0.35 - 0.35;
+        const k = Math.max(0, Math.min(1, 1 - untilNext / 0.6));
+        ctx.save();
+        ctx.strokeStyle = `hsla(${this.dangerHue}, 90%, 65%, ${0.4 + 0.5 * k})`;
+        ctx.lineWidth = 3 + 3 * k;
+        ctx.beginPath(); ctx.arc(e.pos.x, e.pos.y, e.size + 70 * (1 - k) + 6, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
+    } else if ((e.bossRecover ?? 0) > 0) {
+      // Winded: a little "breath" puff over its head — your opening.
+      ctx.save();
+      ctx.fillStyle = `hsla(50, 90%, 70%, ${0.5 + 0.4 * pulse})`;
+      ctx.font = "bold 13px sans-serif"; ctx.textAlign = "center";
+      ctx.fillText("隙 opening", e.pos.x, e.pos.y - e.size - 30);
+      ctx.restore();
+    }
+  }
+
   updateFinalBoss(e: Enemy, dt: number, dist: number, angToPlayer: number, speedMul: number) {
     // Phase gating
     const ratio = e.hp / Math.max(1, e.maxHp);
@@ -8005,7 +8047,7 @@ export class GhostGame {
         }
       } else if (e.bossPattern === 1) {
         // Ground slam — small windup then a shockwave (uses existing shockwaves[]).
-        if (e.bossPatternStep === 0 && e.bossPatternTimer < 0.65) {
+        if (e.bossPatternStep === 0 && e.bossPatternTimer < 0.65) {   // windup = 1.25 - 0.65 = 0.6s (was 0.2s)
           e.bossPatternStep = 1;
           this.shockwaves.push({
             pos: { x: e.pos.x, y: e.pos.y },
@@ -8119,20 +8161,28 @@ export class GhostGame {
         }
       }
       if (e.bossPatternTimer <= 0) {
-        e.bossPatternCd = 1.4 - e.bossPhase * 0.2;
+        // Melee pass: a longer gap between attacks, and the boss is winded
+        // (stands still) for the first part of it, so you can get in and hit.
+        e.bossPatternCd = 2.0 - e.bossPhase * 0.25;
         e.bossPatternStep = 0;
+        e.bossRecover = 1.0 - (e.bossPhase - 1) * 0.15;
       }
       return;
     }
 
     // Between patterns — stalk player slowly, then queue next pattern.
     e.bossPatternCd -= dt;
+    if ((e.bossRecover ?? 0) > 0) {   // winded: no moving, no new attack yet
+      e.bossRecover = (e.bossRecover ?? 0) - dt;
+      return;
+    }
     if (e.bossKind === "kitsune") {
       // The witch keeps her distance and circles.
       const side = angToPlayer + Math.PI / 2;
       const away = dist < 230 ? -1 : dist > 320 ? 1 : 0;
-      e.pos.x += (Math.cos(angToPlayer) * away + Math.cos(side) * 0.6) * e.speed * speedMul * dt;
-      e.pos.y += (Math.sin(angToPlayer) * away + Math.sin(side) * 0.6) * e.speed * speedMul * dt;
+      // Melee pass: she backs off at half speed so a melee class can stay on her.
+      e.pos.x += (Math.cos(angToPlayer) * away * 0.5 + Math.cos(side) * 0.45) * e.speed * speedMul * dt;
+      e.pos.y += (Math.sin(angToPlayer) * away * 0.5 + Math.sin(side) * 0.45) * e.speed * speedMul * dt;
       e.pos.x = Math.max(40, Math.min(this.worldW - 40, e.pos.x));
       e.pos.y = Math.max(40, Math.min(this.worldH - 40, e.pos.y));
     } else if (dist > 220) {
@@ -8150,8 +8200,8 @@ export class GhostGame {
       e.bossPattern = choices[Math.floor(Math.random() * choices.length)];
       e.bossPatternStep = 0;
       e.bossPatternTimer =
-        e.bossPattern === 0 ? 1.2 :
-        e.bossPattern === 1 ? 0.85 :
+        e.bossPattern === 0 ? 0.6 + (e.bossPhase === 1 ? 1 : e.bossPhase === 2 ? 2 : 3) * 0.35 :
+        e.bossPattern === 1 ? 1.25 :
         e.bossPattern === 3 ? 0.9 :
         e.bossPattern === 4 ? 0.6 :
         e.bossPattern === 5 ? 1.6 :
@@ -11165,6 +11215,7 @@ export class GhostGame {
     if (e.bossKind) this.drawBossOrnament(e);
 
     ctx.restore();
+    if (e.isBoss) this.drawBossTelegraph(e);
 
     // Final boss extra: a centered kanji 鬼 above the body.
     if (e.archetype === "final") {
