@@ -268,6 +268,31 @@ kbd {
 .sh-ver.on { border-color: var(--gold); background: rgba(232,183,90,.1); color: var(--bone); cursor: default; }
 .sh-ver:not(.on):hover { border-color: var(--line-strong); }
 .sh-buy { white-space: nowrap; min-height: 44px; }
+/* Patch notes */
+.pn-panel { max-width: 780px; }
+.pn-filters { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 14px 0 12px; }
+.pn-filter { min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: rgba(0,0,0,.25); color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
+.pn-filter:hover { border-color: var(--line-strong); color: var(--bone); }
+.pn-filter.on { border-color: var(--gold); color: var(--bone); background: rgba(217,173,91,.12); }
+.pn-list { display: grid; gap: 12px; max-height: 58vh; overflow-y: auto; padding-right: 4px; }
+.pn-entry { position: relative; padding: 14px 16px; border-radius: 12px; background: var(--lacquer, var(--surface-2)); border: 1px solid rgba(237,227,200,.1); }
+.pn-entry.latest { border-color: rgba(217,173,91,.45); box-shadow: 0 0 0 1px rgba(217,173,91,.15), 0 14px 30px -18px rgba(217,173,91,.6); }
+.pn-entry header { display: grid; grid-template-columns: 44px 1fr; gap: 12px; align-items: center; margin-bottom: 10px; }
+.pn-k { font-size: 34px; color: var(--gold); text-align: center; text-shadow: 0 0 16px rgba(217,173,91,.35); }
+.pn-ver { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; letter-spacing: 1px; color: var(--gold); }
+.pn-latest { font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--ink); background: var(--gold); border-radius: 4px; padding: 1px 6px; }
+.pn-date { margin-left: auto; color: var(--dim); font-weight: 500; letter-spacing: 0; }
+.pn-entry h3 { font-family: var(--font-display); font-size: 20px; margin-top: 2px; }
+.pn-entry header p { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.pn-entry ul { list-style: none; display: grid; gap: 7px; }
+.pn-entry li { display: grid; grid-template-columns: 82px 1fr; gap: 10px; align-items: start; font-size: 13.5px; line-height: 1.45; }
+.pn-tag { display: inline-flex; justify-content: center; font-size: 10.5px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; border-radius: 6px; padding: 3px 6px; border: 1px solid currentColor; }
+.pn-new .pn-tag, .pn-filter.pn-new.on { color: hsl(150 60% 62%); }
+.pn-buff .pn-tag, .pn-filter.pn-buff.on { color: hsl(195 75% 64%); }
+.pn-nerf .pn-tag, .pn-filter.pn-nerf.on { color: hsl(2 80% 66%); }
+.pn-change .pn-tag, .pn-filter.pn-change.on { color: var(--gold); }
+.pn-fix .pn-tag, .pn-filter.pn-fix.on { color: hsl(265 65% 74%); }
+@media (max-width: 640px) { .pn-entry li { grid-template-columns: 1fr; gap: 3px; } .pn-tag { justify-self: start; } }
 /* Wardrobe */
 .wd-panel { max-width: 760px; }
 .wd-top { display: grid; grid-template-columns: 180px 1fr; gap: 18px; align-items: center; margin: 8px 0 12px; }

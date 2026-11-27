@@ -10,6 +10,8 @@ import type { NodeId } from "./unlocks";
 import { hueOf } from "./fx";
 import type { ClassId, GameStats, SecondaryId, Difficulty } from "./GhostGame";
 import { UI_CSS } from "./ui.css";
+import { PATCH_NOTES, LATEST_PATCH } from "./content/patchnotes";
+import type { NoteTag } from "./content/patchnotes";
 import { COSMETICS, SLOTS, flowers, flowersEarned, addFlowers, flowersFor, isOwned, buy as buyCosmetic, equip, equippedId, unlockText, newlyEarned, ownedCount, currentLook, drawPreview } from "./cosmetics";
 import type { Slot, Look, Cosmetic } from "./cosmetics";
 import { initDevMode } from "./devmode";
@@ -107,6 +109,9 @@ const activeVows = (): VowSet => (vowsUnlocked() ? { ...vowSet } : {});
 let achOpen = false;
 let shrineOpen = false;
 let wardrobeOpen = false;
+let patchOpen = false;
+const PATCH_KEY = "ghostgame.patch.v1";
+const patchSeen = () => { try { return localStorage.getItem(PATCH_KEY) === LATEST_PATCH; } catch { return true; } };
 let wardrobeTab: Slot = "attire";
 let wardrobeHover: string | null = null;   // preview an item before buying/equipping
 let histOpenId: number | null = null;
@@ -258,6 +263,42 @@ function shrineHTML(): string {
     <div class="panel-actions"><button class="btn primary" data-act="closeshrine">Done · Esc</button><button class="btn ghost" data-act="refundshrine" ${sh.spent ? "" : "disabled"}>Refund all</button></div>
   </div>`;
 }
+// ─── Patch notes ─────────────────────────────────────────────────────────────
+const TAG_LABEL: Record<NoteTag, string> = { new: "New", buff: "Buff", nerf: "Nerf", change: "Change", fix: "Fix" };
+const TAG_ICON: Record<NoteTag, string> = { new: "✦", buff: "▲", nerf: "▼", change: "◆", fix: "✓" };
+let patchFilter: NoteTag | "all" = "all";
+function patchHTML(): string {
+  const filters = (["all", "new", "buff", "nerf", "change", "fix"] as const).map(f =>
+    `<button class="pn-filter${patchFilter === f ? " on" : ""} ${f === "all" ? "" : `pn-${f}`}" data-pnf="${f}">${f === "all" ? "All" : `${TAG_ICON[f]} ${f === "new" ? "New stuff" : f === "fix" ? "Fixes" : TAG_LABEL[f] + "s"}`}</button>`).join("");
+  const entries = PATCH_NOTES.map((p, i) => {
+    const lines = p.lines.filter(([t]) => patchFilter === "all" || t === patchFilter);
+    if (!lines.length) return "";
+    return `<article class="pn-entry${i === 0 ? " latest" : ""}">
+      <header><span class="kanji pn-k">${p.kanji}</span><div><div class="pn-ver">v${p.version}${i === 0 ? ` <span class="pn-latest">Latest</span>` : ""}<span class="pn-date">${p.date}</span></div><h3>${p.title}</h3><p>${p.summary}</p></div></header>
+      <ul>${lines.map(([t, txt]) => `<li class="pn-${t}"><span class="pn-tag">${TAG_ICON[t]} ${TAG_LABEL[t]}</span><span>${txt}</span></li>`).join("")}</ul>
+    </article>`;
+  }).join("");
+  return `<div class="panel pn-panel" style="text-align:left">
+    <div class="panel-title" style="text-align:center">新 PATCH NOTES</div>
+    <div class="panel-sub" style="text-align:center">What's new, what got stronger (buffs) and what got weaker (nerfs) in every update.</div>
+    <div class="pn-filters">${filters}</div>
+    <div class="pn-list">${entries || `<p class="hint" style="text-align:center">Nothing of that kind yet.</p>`}</div>
+    <div class="panel-actions"><button class="btn primary" data-act="closepatch">Done · Esc</button></div>
+  </div>`;
+}
+function showPatchModal() {
+  patchOpen = true;
+  try { localStorage.setItem(PATCH_KEY, LATEST_PATCH); } catch { /* storage blocked */ }
+  overlay.classList.add("show", "top");
+  overlay.innerHTML = patchHTML();
+}
+function closePatchModal() {
+  patchOpen = false;
+  overlay.classList.remove("show", "top");
+  overlay.innerHTML = "";
+  renderMenu();
+}
+
 // ─── Wardrobe (cosmetics) ────────────────────────────────────────────────────
 function wardrobeLook(): Look {
   const look = currentLook();
@@ -762,7 +803,7 @@ function renderMenu() {
   <div class="menu-wrap">
     <div class="menu-top">
       <div class="logo"><span class="kanji">幽</span><div><h1>YŪKEN</h1><p>Survive the waves. Forge your legend.</p></div></div>
-      <div class="menu-actions">${continueBtn}<button class="btn ghost" data-act="guide"><span class="kanji" style="color:var(--gold)">道</span> Guide</button><button class="btn ghost" data-act="ach">Achievements <span class="num" style="opacity:.7">${unlockedCount()}/${ACHIEVEMENTS.length}</span></button><button class="btn ghost" data-act="career">Career</button><button class="btn ghost" data-act="daily"><span class="kanji" style="color:var(--gold)">日</span> Daily${dailyDay() ? "" : ` <span class="dl-new">NEW</span>`}</button><button class="btn ghost" data-act="shrine"><span class="kanji" style="color:var(--gold)">祖</span> Shrine <span class="num" style="opacity:.7">${getShrine().embers} 火</span></button><button class="btn ghost" data-act="wardrobe"><span class="kanji" style="color:var(--gold)">装</span> Wardrobe <span class="num" style="opacity:.7">${flowers()} 花</span></button><button class="btn ghost" data-act="controls">Controls</button><button class="btn ghost" data-act="a11y">Accessibility</button><button class="btn ghost" data-act="random">Random class</button></div>
+      <div class="menu-actions">${continueBtn}<button class="btn ghost" data-act="guide"><span class="kanji" style="color:var(--gold)">道</span> Guide</button><button class="btn ghost" data-act="ach">Achievements <span class="num" style="opacity:.7">${unlockedCount()}/${ACHIEVEMENTS.length}</span></button><button class="btn ghost" data-act="career">Career</button><button class="btn ghost" data-act="daily"><span class="kanji" style="color:var(--gold)">日</span> Daily${dailyDay() ? "" : ` <span class="dl-new">NEW</span>`}</button><button class="btn ghost" data-act="shrine"><span class="kanji" style="color:var(--gold)">祖</span> Shrine <span class="num" style="opacity:.7">${getShrine().embers} 火</span></button><button class="btn ghost" data-act="patch"><span class="kanji" style="color:var(--gold)">新</span> Patch notes${patchSeen() ? "" : ` <span class="dl-new">NEW</span>`}</button><button class="btn ghost" data-act="wardrobe"><span class="kanji" style="color:var(--gold)">装</span> Wardrobe <span class="num" style="opacity:.7">${flowers()} 花</span></button><button class="btn ghost" data-act="controls">Controls</button><button class="btn ghost" data-act="a11y">Accessibility</button><button class="btn ghost" data-act="random">Random class</button></div>
     </div>
     <div class="menu-body">
       <div class="class-grid" role="listbox" aria-label="Classes">${cards}</div>
@@ -871,6 +912,7 @@ menu.addEventListener("click", e => {
   else if (act === "vows") showVowsModal();
   else if (act === "shrine") showShrineModal();
   else if (act === "wardrobe") showWardrobeModal();
+  else if (act === "patch") showPatchModal();
   else if (act === "daily") showDailyModal();
   else if (act === "a11y") showA11yModal();
   else if (act === "random") {
@@ -1581,6 +1623,11 @@ overlay.addEventListener("click", e => {
   if (cact === "closevows") { closeVowsModal(); return; }
   if (cact === "closeshrine") { closeShrineModal(); return; }
   if (cact === "closewardrobe") { closeWardrobeModal(); return; }
+  if (cact === "closepatch") { closePatchModal(); return; }
+  if (patchOpen) {
+    const pf = t.closest<HTMLElement>("[data-pnf]");
+    if (pf) { patchFilter = pf.dataset.pnf as NoteTag | "all"; overlay.innerHTML = patchHTML(); return; }
+  }
   if (wardrobeOpen) {
     const wt = t.closest<HTMLElement>("[data-wtab]");
     if (wt) { wardrobeTab = wt.dataset.wtab as Slot; wardrobeHover = null; showWardrobeModal(); overlay.querySelector(".wd-list")!.scrollTop = 0; return; }
@@ -1746,6 +1793,7 @@ window.addEventListener("keydown", e => {
   if (vowsOpen) { if (e.code === "Escape") closeVowsModal(); return; }
   if (shrineOpen) { if (e.code === "Escape") closeShrineModal(); return; }
   if (wardrobeOpen) { if (e.code === "Escape") closeWardrobeModal(); return; }
+  if (patchOpen) { if (e.code === "Escape") closePatchModal(); return; }
   if (a11yOpen) { if (e.code === "Escape") closeA11yModal(); return; }
   if (dailyOpen) { if (e.code === "Escape") closeDailyModal(); else if (e.code === "Enter") { e.preventDefault(); startDaily(); } return; }
   if (guideOpen) { if (e.code === "Escape") closeGuide(); return; }
