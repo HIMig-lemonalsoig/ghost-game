@@ -839,6 +839,7 @@ export type ShopEffectId =
   | "shop_lucky_coin" | "shop_bounty" | "shop_spirit_bell" | "shop_battle_drum" | "shop_dash_talisman"
   | "shop_gamble" | "shop_oni_mask" | "shop_fire_charm" | "shop_thunder_charm" | "shop_reaper_bell" | "shop_fortune"
   | "shop_whetted_eye" | "shop_assassin_ledger" | "shop_night_lantern"
+  | "shop_wide_brush" | "shop_full_quiver" | "shop_maneki" | "shop_scholar_brush" | "shop_lodestone" | "shop_frost_talisman"
   // ===== Secondary weapon scrolls (equip into open slot, or replace slot 2) =====
   | `secondary_${SecondaryId}`;
 
@@ -872,6 +873,13 @@ export const SHOP_POOL: PoolEntry[] = [
   { effect: "shop_whetted_eye",     kanji: "研", name: "Whetted Eye",      desc: "+4% crit chance.",                                       priceMin: 24, priceMax: 34, rarity: "common"    },
   { effect: "shop_assassin_ledger", kanji: "帳", name: "Assassin's Ledger", desc: "+30% crit damage (crits hit harder). Appears once you have 15% crit.", priceMin: 45, priceMax: 62, rarity: "rare" },
   { effect: "shop_night_lantern",   kanji: "灯", name: "Night Lantern",    desc: "+15% crit chance, but −10% max HP.",                     priceMin: 90, priceMax: 120, rarity: "legendary" },
+  // STEP 3 (2026-11-27): one shop source for every stat that had none.
+  { effect: "shop_wide_brush",     kanji: "筆", name: "Wide Brush",      desc: "+10% area: explosions, smoke, AoE hits and petals reach farther.", priceMin: 30, priceMax: 44, rarity: "common" },
+  { effect: "shop_full_quiver",    kanji: "箙", name: "Full Quiver",     desc: "Thrown and shot weapons fire +1 projectile.",            priceMin: 60, priceMax: 80, rarity: "rare" },
+  { effect: "shop_maneki",         kanji: "招", name: "Maneki-neko",     desc: "+15% luck: rarer cards and shop items, more item drops.", priceMin: 30, priceMax: 44, rarity: "common" },
+  { effect: "shop_scholar_brush",  kanji: "学", name: "Scholar's Brush", desc: "+15% XP gained.",                                        priceMin: 26, priceMax: 38, rarity: "common" },
+  { effect: "shop_lodestone",      kanji: "磁", name: "Lodestone",       desc: "+40% pickup radius for XP, ammo and items.",             priceMin: 22, priceMax: 32, rarity: "common" },
+  { effect: "shop_frost_talisman", kanji: "氷", name: "Frost Talisman",  desc: "+8% chance to chill on hit (slows the foe).",            priceMin: 30, priceMax: 42, rarity: "common" },
   { effect: "ult_charge",    kanji: "気", name: "Spirit Surge",      desc: "Instantly fills 35% of your ultimate.",    priceMin: 25, priceMax: 35, rarity: "common"   },
   { effect: "ammo_refill",   kanji: "充", name: "Ammo Cache",        desc: "Refill all secondary ammo.",               priceMin: 15, priceMax: 22, rarity: "common"   },
   { effect: "ammo_cap",      kanji: "袋", name: "Wider Quiver",      desc: "+2 max ammo on every secondary.",          priceMin: 30, priceMax: 45, rarity: "rare"     },
@@ -2542,6 +2550,7 @@ export interface GameStats {
     attackSpeedPct: number;// % of base atk speed (100 = baseline)
     critChancePct: number;
     critMul: number;       // CRIT STEP: crit damage multiplier
+    more?: [string, string][];   // STEP 3: extra stats shown only once you have them
     hpRegen: number;
     secondaryDmgMul: number;
   };
@@ -2631,6 +2640,21 @@ export type EnemyArchetype =
   | "mirror";
 
 export type BossKind = "oni" | "kitsune" | "gasha" | "raijin";
+/** STEP 3: perk families for family weighting (owning one makes the rest 1.5× likelier). */
+const PERK_FAMILY: Record<string, string> = Object.fromEntries([
+  ["crit", ["keen_eye", "crit_strike", "steady_aim", "hawks_eye", "heavens_eye", "deep_cut", "bone_splitter", "death_blossom"]],
+  ["area", ["broad_sweep", "shock_stance", "heaven_earth", "long_blade", "wide_arc"]],
+  ["proj", ["extra_kunai", "piercing_shot", "steel_storm"]],
+  ["luck", ["lucky_charm", "fortune_favor", "scavenger"]],
+  ["xp", ["diligent", "scholar_scroll"]],
+  ["pickup", ["magnet_charm", "spirit_pull"]],
+  ["frost", ["frostbite", "deep_freeze", "winters_heart"]],
+  ["poison", ["poison_hits_c", "poison_dmg_r", "poison_ramp_l"]],
+  ["fire", ["fire_hits_c", "fire_dmg_r", "fire_spread_l"]],
+  ["bleed", ["bleed_hits_c", "bleed_dmg_r"]],
+  ["lightning", ["lightning_hits_r", "lightning_dmg_l"]],
+  ["heal", ["vampire", "lifebloom", "wave_clear", "shadow_lord"]],
+].flatMap(([fam, ids]) => (ids as string[]).map(id => [id, fam as string])));
 /** Spawn table: plain grunts always keep at least this share of regular spawns. */
 const SPAWN_MIN_NORMAL = 0.15;
 
@@ -2776,6 +2800,9 @@ interface Enemy {
   // Death Mark — cursed seal that increases damage taken; chains on kill.
   markRemaining: number;
   critMarkUntil?: number;      // CRIT STEP: Heaven's Eye mark expires at this time
+  chillUntil?: number;         // STEP 3: chilled (slowed) until
+  chillHits?: number;          // STEP 3: Deep Freeze counter
+  frozenUntil?: number;        // STEP 3: frozen solid until
   // Smoke Bomb disorient — wander randomly, cannot attack.
   disorientRemaining: number;
   disorientAng: number;        // current wander direction
@@ -3172,6 +3199,22 @@ export const PERK_POOL: Omit<PerkChoice, never>[] = [
   { id: "deep_cut",      kanji: "深", name: "Deep Cut",       desc: "+25% crit damage",                                          rarity: "common" },
   { id: "bone_splitter", kanji: "骨", name: "Bone Splitter",  desc: "+50% crit damage",                                          rarity: "rare" },
   { id: "death_blossom", kanji: "華", name: "Death Blossom",  desc: "Crits burst into petals that hit nearby foes for about 40% of the crit", rarity: "legendary" },
+  // STEP 3 (2026-11-27): area, projectiles, luck, XP, pickup and frost lines.
+  { id: "broad_sweep",    kanji: "広", name: "Broad Sweep",     desc: "+10% area and +4% melee reach",                               rarity: "common" },
+  { id: "shock_stance",   kanji: "震", name: "Shockwave Stance",desc: "+20% area and +8% melee reach",                                rarity: "rare" },
+  { id: "heaven_earth",   kanji: "乾", name: "Heaven and Earth",desc: "+35% area and +12% melee reach, but −10% attack speed",       rarity: "legendary" },
+  { id: "extra_kunai",    kanji: "苦", name: "Extra Kunai",     desc: "Thrown and shot weapons fire +1 projectile",                  rarity: "common" },
+  { id: "piercing_shot",  kanji: "貫", name: "Piercing Shot",   desc: "Projectiles pass through +1 more foe",                        rarity: "rare" },
+  { id: "steel_storm",    kanji: "嵐", name: "Storm of Steel",  desc: "+1 projectile, +1 pierce and +15% projectile speed",          rarity: "legendary" },
+  { id: "lucky_charm",    kanji: "福", name: "Lucky Charm",     desc: "+10% luck (rarer cards and shop items, more item drops)",     rarity: "common" },
+  { id: "fortune_favor",  kanji: "運", name: "Fortune's Favour",desc: "+25% luck",                                                    rarity: "rare" },
+  { id: "diligent",       kanji: "勉", name: "Diligent Study",  desc: "+10% XP gained",                                              rarity: "common" },
+  { id: "scholar_scroll", kanji: "巻", name: "Scholar's Scroll",desc: "+20% XP gained",                                              rarity: "rare" },
+  { id: "magnet_charm",   kanji: "磁", name: "Magnet Charm",    desc: "+30% pickup radius",                                          rarity: "common" },
+  { id: "spirit_pull",    kanji: "引", name: "Spirit Pull",     desc: "+60% pickup radius",                                          rarity: "rare" },
+  { id: "frostbite",      kanji: "凍", name: "Frostbite Edge",  desc: "+12% chance to chill on hit (slows the foe for 2s)",           rarity: "common" },
+  { id: "deep_freeze",    kanji: "氷", name: "Deep Freeze",     desc: "Hitting a chilled foe 3 times freezes it solid for 1s",       rarity: "rare" },
+  { id: "winters_heart",  kanji: "冬", name: "Winter's Heart",  desc: "Frozen foes shatter when killed, hurting everything nearby", rarity: "legendary" },
   { id: "thick_hide",    kanji: "皮", name: "Thick Hide",     desc: "+2 defense (blocks a share of every hit)",                   rarity: "common" },
   { id: "quick_draw",    kanji: "抜", name: "Quick Draw",     desc: "Dash recharges 15% faster",                                 rarity: "common" },
   { id: "scavenger",     kanji: "拾", name: "Scavenger",      desc: "+20% coins from kills",                                     rarity: "common" },
@@ -3230,6 +3273,16 @@ interface Perks {
   hawkEye: boolean;            // CRIT STEP: +5 crit points for 2s after a dash
   critMark: boolean;           // CRIT STEP: crits mark foes (+10% damage taken for 3s)
   deathBlossom: boolean;       // CRIT STEP: crits splash 40% to nearby foes
+  areaBonus: number;           // STEP 3 (soft-capped): +area for AoE / explosions
+  luck: number;                // STEP 3 (soft-capped)
+  xpBonus: number;             // STEP 3 (soft-capped)
+  pickupBonus: number;         // STEP 3 (soft-capped)
+  frostChance: number;         // STEP 3 (soft-capped): chill on hit
+  extraProjectiles: number;    // STEP 3: hard cap +4
+  pierceBonus: number;         // STEP 3: hard cap +3
+  projSpeedBonus: number;      // STEP 3
+  deepFreeze: boolean;
+  wintersHeart: boolean;
   momentumCdr: number;         // seconds reduced per kill
   barrageCdMul: number;        // multiplies base CD
   flashCdMul: number;
@@ -3353,6 +3406,8 @@ const defaultPerks = (): Perks => ({
   hawkEye: false,
   critMark: false,
   deathBlossom: false,
+  areaBonus: 0, luck: 0, xpBonus: 0, pickupBonus: 0, frostChance: 0,
+  extraProjectiles: 0, pierceBonus: 0, projSpeedBonus: 0, deepFreeze: false, wintersHeart: false,
   momentumCdr: 0,
   barrageCdMul: 1,
   flashCdMul: 1,
@@ -3934,7 +3989,7 @@ export class GhostGame {
   onHaptic?: (kind: "hit" | "deflect" | "ult") => void;
   private drawPickupRadius() {
     if (!this.showPickupRadius || !this.player || !this.xpOrbs.length) return;
-    const R = GhostGame.MAGNET_R, p = this.player.pos;
+    const R = GhostGame.MAGNET_R * this.pickupMul(), p = this.player.pos;
     const near = this.xpOrbs.some(o => Math.hypot(o.pos.x - p.x, o.pos.y - p.y) < R * 2.2);
     if (!near) return;
     const ctx = this.ctx;
@@ -4508,6 +4563,8 @@ export class GhostGame {
     const P = this.perks, C = STAT_CAPS;
     const fin = (v: number, d: number) => (Number.isFinite(v) ? v : d);
     this.applySoftStats();   // SOFTCAP: curves first, hard caps below are only backstops
+    P.extraProjectiles = Math.min(4, fin(P.extraProjectiles, 0));   // STEP 3
+    P.pierceBonus = Math.min(3, fin(P.pierceBonus, 0));
     P.damage = Math.min(MAX_KATANA_DAMAGE, fin(P.damage, 3));
     P.dexterity = Math.min(C.dexMaxRaw, fin(P.dexterity, 0));
     P.defense = Math.min(C.defenseMax, Math.max(0, fin(P.defense, 0)));
@@ -4568,6 +4625,7 @@ export class GhostGame {
     add(P.secondaryDmgMul >= C.secondaryDmgMul - 1e-6, "secondary_dmg_global", "perk_twin_fang");
     add(P.critChance >= C.critPointsMax - 1e-6, "crit", "shop_whetted_eye", "shop_night_lantern");
     add(critFromPoints(P.critChance) < 0.15, "shop_assassin_ledger");   // CRIT STEP: crit damage needs crit first
+    add(P.extraProjectiles >= 4 || !this.hasProjectileWeapon(), "shop_full_quiver");   // STEP 3
     add(P.hpRegen >= C.hpRegen - 1e-6, "hp_regen");
     add(P.monMul >= C.monMul - 1e-6, "shop_lucky_coin");
     add(P.ultChargeMul >= C.ultChargeMul - 1e-6, "shop_spirit_bell");
@@ -5841,6 +5899,15 @@ export class GhostGame {
       attackSpeedPct: Math.round((1 / Math.max(0.001, cdMulKatana)) * 100),
       critChancePct: Math.round(critFromPoints(this.perks.critChance) * 100),
       critMul: Math.round(this.critMultiplier() * 100) / 100,
+      more: ([
+        ["Area", this.perks.areaBonus > 0 ? `+${Math.round(this.perks.areaBonus * 100)}%` : ""],
+        ["Projectiles", this.perks.extraProjectiles > 0 ? `+${this.perks.extraProjectiles}` : ""],
+        ["Pierce", this.perks.pierceBonus > 0 ? `+${this.perks.pierceBonus}` : ""],
+        ["Luck", this.perks.luck > 0 ? `+${Math.round(this.perks.luck * 100)}%` : ""],
+        ["XP gain", this.perks.xpBonus > 0 ? `+${Math.round(this.perks.xpBonus * 100)}%` : ""],
+        ["Pickup radius", this.perks.pickupBonus > 0 ? `+${Math.round(this.perks.pickupBonus * 100)}%` : ""],
+        ["Chill chance", this.perks.frostChance > 0 ? `${Math.round(this.perks.frostChance * 100)}%` : ""],
+      ] as [string, string][]).filter(([, v]) => v),
       hpRegen: this.perks.hpRegen,
       secondaryDmgMul: this.perks.secondaryDmgMul,
     };
@@ -6362,6 +6429,14 @@ export class GhostGame {
   private blossomGuard = false;
   private lastBlossom = -1;
   private pendingBlossoms: { x: number; y: number; dmg: number; src: number }[] = [];
+  /** STEP 3: does the build carry a thrown / shot weapon that projectile perks help? */
+  hasProjectileWeapon(): boolean {
+    return this.stats.secondaryIds.some(id => !!id && ["yumi", "kunai", "crossbow", "shuriken_wheel", "flame_spear", "blowgun"].includes(id));
+  }
+  /** STEP 3: area multiplier for AoE radii. */
+  areaMul(): number { return 1 + Math.max(0, this.perks.areaBonus); }
+  /** STEP 3: pickup radius multiplier. */
+  pickupMul(): number { return 1 + Math.max(0, this.perks.pickupBonus); }
   /** Crit damage multiplier: 3× base plus the soft-capped crit damage stat (never above 5×). */
   critMultiplier(): number { return 3 + soft(this.perks.critDmgRaw, 2, 2); }
   private queueBlossom(e: Enemy, dmg: number) {
@@ -6376,7 +6451,7 @@ export class GhostGame {
     try {
       for (const b of list) {
         for (const o of this.enemies) {
-          if (o.state === "dead" || o.id === b.src || Math.hypot(o.pos.x - b.x, o.pos.y - b.y) > 80 + o.size) continue;
+          if (o.state === "dead" || o.id === b.src || Math.hypot(o.pos.x - b.x, o.pos.y - b.y) > 80 * this.areaMul() + o.size) continue;
           this.dmgSrcOverride = "Death Blossom";
           this.dealDamage(o, b.dmg, Math.atan2(o.pos.y - b.y, o.pos.x - b.x), 40);
           this.dmgSrcOverride = null;
@@ -6441,6 +6516,21 @@ export class GhostGame {
       case "deep_cut": this.perks.critDmgRaw += 0.25; break;
       case "bone_splitter": this.perks.critDmgRaw += 0.5; break;
       case "death_blossom": this.perks.deathBlossom = true; break;
+      case "broad_sweep": this.perks.areaBonus += 0.10; this.perks.attackRangeMul *= 1.04; break;
+      case "shock_stance": this.perks.areaBonus += 0.20; this.perks.attackRangeMul *= 1.08; break;
+      case "heaven_earth": this.perks.areaBonus += 0.35; this.perks.attackRangeMul *= 1.12; this.perks.attackCooldownMul *= 1.1; break;
+      case "extra_kunai": this.perks.extraProjectiles += 1; break;
+      case "piercing_shot": this.perks.pierceBonus += 1; break;
+      case "steel_storm": this.perks.extraProjectiles += 1; this.perks.pierceBonus += 1; this.perks.projSpeedBonus += 0.15; break;
+      case "lucky_charm": this.perks.luck += 0.10; break;
+      case "fortune_favor": this.perks.luck += 0.25; break;
+      case "diligent": this.perks.xpBonus += 0.10; break;
+      case "scholar_scroll": this.perks.xpBonus += 0.20; break;
+      case "magnet_charm": this.perks.pickupBonus += 0.30; break;
+      case "spirit_pull": this.perks.pickupBonus += 0.60; break;
+      case "frostbite": this.perks.frostChance += 0.12; break;
+      case "deep_freeze": this.perks.deepFreeze = true; break;
+      case "winters_heart": this.perks.wintersHeart = true; break;
       case "thick_hide": this.perks.defense += 2; break;
       case "quick_draw": this.perks.dashCdMul *= 0.85; break;
       case "scavenger": this.perks.monMul += 0.2; break;
@@ -6537,6 +6627,7 @@ export class GhostGame {
     const perkMaxed: Record<string, string> = {
       swift_step: "spd_common", swift_strike: "dex_common", thick_hide: "def_rare",
       keen_eye: "crit", crit_strike: "crit", steady_aim: "crit", hawks_eye: "crit", heavens_eye: "crit",
+      extra_kunai: "shop_full_quiver", steel_storm: "shop_full_quiver",
       lifebloom: "hp_regen", blade_edge: "dmg_katana_common",
       vampire: "lifesteal",
     };
@@ -6546,6 +6637,10 @@ export class GhostGame {
       // CRIT STEP: crit damage only matters once you crit (Halls of Torment rule).
       if ((p.id === "deep_cut" || p.id === "bone_splitter" || p.id === "death_blossom") && critNow < 0.15) return false;
       if (p.id === "death_blossom" && this.perks.deathBlossom) return false;
+      // STEP 3: only offer cards that can do something for this build.
+      if ((p.id === "extra_kunai" || p.id === "piercing_shot" || p.id === "steel_storm") && !this.hasProjectileWeapon()) return false;
+      if ((p.id === "deep_freeze" || p.id === "winters_heart") && !(this.perks.frostChance > 0)) return false;
+      if ((p.id === "deep_freeze" && this.perks.deepFreeze) || (p.id === "winters_heart" && this.perks.wintersHeart)) return false;
       if (this.perks.banished.includes(p.id)) return false;   // banished this run
       if (p.id === "wave_clear" && this.vr("no_rest")) return false;
       const up = ULT_PERK_BY_ID[p.id];
@@ -6556,13 +6651,22 @@ export class GhostGame {
       return true;
     });
 
+    const ownedFamilies = new Set(this.acquiredPerks.map(id => PERK_FAMILY[id]).filter(Boolean));
     // Weight: common 70%, rare 25%, legendary 5%
     const pickPassive = (): PerkChoice => {
       const r = Math.random();
-      const rarity = r < 0.05 ? "legendary" : r < 0.30 ? "rare" : "common";
+      const lk = Math.max(0, this.perks.luck);   // STEP 3: luck shifts odds toward rare / legendary
+      const legT = 0.05 * (1 + lk), rareT = legT + 0.25 * (1 + lk * 0.6);
+      const rarity = r < legT ? "legendary" : r < rareT ? "rare" : "common";
       const pool = passivesAvailable.filter(p => p.rarity === rarity);
       const src = pool.length ? pool : passivesAvailable;
-      return { ...src[Math.floor(Math.random() * src.length)], kind: "passive" } as PerkChoice;
+      // STEP 3: family weighting (Hades-style) — cards from a family you already
+      // have a card from are 1.5× as likely, so builds come together.
+      const w = src.map(p => (PERK_FAMILY[p.id] && ownedFamilies.has(PERK_FAMILY[p.id]) ? 1.5 : 1));
+      let roll = Math.random() * w.reduce((a, b) => a + b, 0);
+      let pick = src[src.length - 1];
+      for (let i = 0; i < src.length; i++) { roll -= w[i]; if (roll < 0) { pick = src[i]; break; } }
+      return { ...pick, kind: "passive" } as PerkChoice;
     };
 
     // Build ability cards for any abilities the player doesn't yet have equipped.
@@ -6603,7 +6707,7 @@ export class GhostGame {
   }
 
   gainXp(amount: number) {
-    amount *= this.meta.xpMul * (this.omenDef?.xp ?? 1);   // SHRINE Scholar, OMEN
+    amount *= this.meta.xpMul * (this.omenDef?.xp ?? 1) * (1 + Math.max(0, this.perks.xpBonus));   // SHRINE Scholar, OMEN, STEP 3 XP
     this.stats.xp += amount;
     let gained = false;
     while (this.stats.xp >= this.stats.xpToNext) {
@@ -7281,9 +7385,22 @@ export class GhostGame {
       this.healPlayer(2);
       this.spawnFloatText(e.pos, `+${this.perks.eliteBounty} 賞`, { color: "hsl(45 95% 65%)", size: 13, jp: true, vy: -70 });
     }
+    if (this.perks.wintersHeart && (e.frozenUntil ?? 0) > this.elapsed - 0.1 && !this.blossomGuard) {   // STEP 3: Winter's Heart
+      const R = 110 * this.areaMul(), sd = this.perks.damage * 2 + 6;
+      this.blossomGuard = true;
+      try {
+        for (const o of this.enemies) {
+          if (o === e || o.state === "dead" || o.hp <= 0 || Math.hypot(o.pos.x - e.pos.x, o.pos.y - e.pos.y) > R + o.size) continue;
+          this.dmgSrcOverride = "Winter's Heart"; this.dealDamage(o, sd, Math.atan2(o.pos.y - e.pos.y, o.pos.x - e.pos.x), 160); this.dmgSrcOverride = null;
+          o.chillUntil = this.elapsed + 2; o.slowRemaining = Math.max(o.slowRemaining, 2);
+        }
+      } finally { this.blossomGuard = false; }
+      this.fx.frost(e.pos.x, e.pos.y, 14);
+      this.fx.shockwave(e.pos.x, e.pos.y, R, { hue: 195, light: 88, life: 0.4, width: 8, lines: 12 });
+    }
     if (this.perks.reaperEvery > 0 && ++this.reaperCount >= this.perks.reaperEvery) {
       this.reaperCount = 0;
-      const R = 170;
+      const R = 170 * this.areaMul();   // STEP 3 area
       const rd = this.perks.damage * 3 + 4;
       for (const o of this.enemies) {
         if (o === e || o.state === "dead" || o.hp <= 0) continue;
@@ -7775,6 +7892,22 @@ export class GhostGame {
     }
     // ===== Phase 3 — Generic status effect chances =====
     // Fire (burn DoT), bleed (existing slot), and lightning (instant zap).
+    // STEP 3: frost — chill (slow), Deep Freeze (3 hits on a chilled foe = frozen 1s).
+    if ((e.chillUntil ?? 0) > this.elapsed && this.perks.deepFreeze) {
+      e.chillHits = (e.chillHits ?? 0) + 1;
+      if (e.chillHits >= 3 && !(e.frozenUntil && e.frozenUntil > this.elapsed)) {
+        e.chillHits = 0;
+        e.frozenUntil = this.elapsed + 1;
+        e.stunTimer = Math.max(e.stunTimer, e.isBoss ? 0.3 : 1);
+        this.fx.frost(e.pos.x, e.pos.y, 8);
+        this.fx.shockwave(e.pos.x, e.pos.y, e.size + 18, { hue: 195, light: 85, life: 0.3, width: 4 });
+      }
+    }
+    if (this.perks.frostChance > 0 && Math.random() < this.perks.frostChance) {
+      e.chillUntil = this.elapsed + 2;
+      e.slowRemaining = Math.max(e.slowRemaining, 2);
+      this.fx.frost(e.pos.x, e.pos.y, 3);
+    }
     if (this.perks.fireChance > 0 && Math.random() < this.perks.fireChance) {
       e.burnRemaining = Math.max(e.burnRemaining, 4);
       e.burnDps = Math.max(e.burnDps, 4);
@@ -8611,7 +8744,7 @@ export class GhostGame {
           }
         }
         if (hit) {
-          const r = ABILITY.FIREBALL_RADIUS;
+          const r = ABILITY.FIREBALL_RADIUS * this.areaMul();   // STEP 3 area
           for (const e of this.enemies) {
             if (e.state === "dead") continue;
             const d = Math.hypot(e.pos.x - fb.pos.x, e.pos.y - fb.pos.y);
@@ -8990,14 +9123,14 @@ export class GhostGame {
     const p = this.player;
     this.smokeClouds.push({
       pos: { x: p.pos.x, y: p.pos.y },
-      radius: ABILITY.SMOKE_BOMB_RADIUS,
+      radius: ABILITY.SMOKE_BOMB_RADIUS * this.areaMul(),   // STEP 3 area
       life: ABILITY.SMOKE_BOMB_LINGER,
       maxLife: ABILITY.SMOKE_BOMB_LINGER,
     });
     for (const e of this.enemies) {
       if (e.state === "dead") continue;
       const d = Math.hypot(e.pos.x - p.pos.x, e.pos.y - p.pos.y);
-      if (d <= ABILITY.SMOKE_BOMB_RADIUS) {
+      if (d <= ABILITY.SMOKE_BOMB_RADIUS * this.areaMul()) {
         e.disorientRemaining = ABILITY.SMOKE_BOMB_DURATION;
         e.disorientAng = Math.random() * Math.PI * 2;
         e.alertness = 0; // lose track of player
@@ -13333,7 +13466,7 @@ export class GhostGame {
 
   /** ULTPERK Aftershock: blast around the player when an ultimate ends. */
   private ultAftershock() {
-    const p = this.player.pos, R = 230;
+    const p = this.player.pos, R = 230 * this.areaMul();   // STEP 3 area
     for (const e of this.enemies) {
       if (e.state === "dead" || Math.hypot(e.pos.x - p.x, e.pos.y - p.y) > R + e.size) continue;
       this.dealDamage(e, this.ultDmg(15), Math.atan2(e.pos.y - p.y, e.pos.x - p.x), e.isBoss ? 40 : 260);
@@ -14123,7 +14256,7 @@ export class GhostGame {
         vh,
         life: T + 0.3,            // a little slack past the predicted landing
         damage: this.effectiveSecondaryDamage(id) + 4,
-        radius: this.isEvolved(id) ? 126 : 90,     // EVOLUTION: Venom Caltrops
+        radius: (this.isEvolved(id) ? 126 : 90) * this.areaMul(),     // EVOLUTION: Venom Caltrops · STEP 3 area
         venom: this.isEvolved(id),
       });
       // Face the throw so the throwing animation reads correctly.
@@ -14137,8 +14270,9 @@ export class GhostGame {
     // EVOLUTION: Raiden Bow / Shadow Fan / Siege Repeater fire extra shots.
     const evo = this.isEvolved(id);
     const extra = !evo ? 0 : id === "yumi" ? 2 : id === "kunai" ? 2 : id === "crossbow" ? 3 : 0;
-    const count = def.projectiles + extra;
-    const spread = extra && def.spread < 0.2 ? 0.22 + def.spread : def.spread;
+    const more = id === "kusarigama" ? 0 : this.perks.extraProjectiles;   // STEP 3: +projectiles (not the chain hook)
+    const count = def.projectiles + extra + more;
+    const spread = (extra || more) && def.spread < 0.2 ? 0.22 + def.spread + 0.06 * more : def.spread + 0.08 * more;
     for (let i = 0; i < count; i++) {
       const t = count === 1 ? 0 : (i / (count - 1)) - 0.5;   // -0.5..0.5
       const ang = baseAng + t * spread;
@@ -14149,7 +14283,7 @@ export class GhostGame {
          id === "shuriken_wheel" ? 560 :
          id === "flame_spear" ? 760 :
          id === "blowgun" ? 700 :
-         480) * projSpeedMul;
+         480) * projSpeedMul * (1 + this.perks.projSpeedBonus);
       const dmg = this.effectiveSecondaryDamage(id);
       const kind: SecondaryProjectile["kind"] =
         id === "yumi" ? "arrow" :
@@ -14175,6 +14309,7 @@ export class GhostGame {
         trail: [],
       };
       if (this.isClass("arashi") && !proj.pierce) proj.pierceLeft = SIG.arashiPierce;   // SIGNATURE Tailwind
+      if (!proj.pierce && this.perks.pierceBonus > 0 && kind !== "hook") proj.pierceLeft = (proj.pierceLeft ?? 0) + this.perks.pierceBonus;   // STEP 3
       if (kind === "shuriken") {
         proj.bouncesLeft = 4;
         proj.returning = false;
@@ -14590,7 +14725,7 @@ export class GhostGame {
 
   updateAmmoPickups(dt: number) {
     const PICKUP_R = 22;
-    const MAGNET_R = 110;
+    const MAGNET_R = 110 * this.pickupMul();   // STEP 3
     for (const p of this.ammoPickups) {
       p.life -= dt;
       const dx = this.player.pos.x - p.pos.x;
@@ -14653,6 +14788,7 @@ export class GhostGame {
     else if (e.archetype === "assassin" || e.archetype === "archer") chance = 0.10;
     else if (e.size > 16) chance = 0.06;
     else chance = 0.025;
+    chance *= 1 + Math.max(0, this.perks.luck);   // STEP 3: luck
     if (Math.random() > chance) return;
     const id = rollConsumable();
     const a = Math.random() * Math.PI * 2;
@@ -14669,7 +14805,7 @@ export class GhostGame {
   updateConsumablePickups(dt: number) {
     if (this.consumablePickups.length === 0) return;
     const PICKUP_R = 22;
-    const MAGNET_R = 130;
+    const MAGNET_R = 130 * this.pickupMul();   // STEP 3
     for (const p of this.consumablePickups) {
       p.life -= dt;
       // Scatter velocity drag
@@ -15021,7 +15157,7 @@ export class GhostGame {
   // Magnet radius is generous so orbs feel rewarding to chase.
   updateXpOrbs(dt: number) {
     const PICKUP_R = 20;
-    const MAGNET_R = GhostGame.MAGNET_R;
+    const MAGNET_R = GhostGame.MAGNET_R * this.pickupMul();   // STEP 3
     for (const o of this.xpOrbs) {
       o.life -= dt;
       // Scatter velocity drag
@@ -15394,8 +15530,9 @@ export class GhostGame {
 
   /** SHOP RARITY (7.3): per-slot odds for this wave, including bad-luck protection. */
   shopOdds() {
-    const legendary = Math.min(0.5, shopLegChance(this.stats.wave, this.perks.shopPity ?? 0));
-    return { legendary, rare: SHOP_RARITY.rare };
+    const lk = Math.max(0, this.perks.luck);   // STEP 3: luck
+    const legendary = Math.min(0.5, shopLegChance(this.stats.wave, this.perks.shopPity ?? 0) * (1 + lk));
+    return { legendary, rare: Math.min(0.6, SHOP_RARITY.rare * (1 + lk * 0.5)) };
   }
 
   /** Lock or unlock a shop card. Returns false when the lock limit is reached. */
@@ -15592,6 +15729,12 @@ export class GhostGame {
       case "shop_whetted_eye": this.perks.critChance += 0.04; break;
       case "shop_assassin_ledger": this.perks.critDmgRaw += 0.3; break;
       case "shop_night_lantern": this.perks.critChance += 0.15; this.applyGlassCannon(1, 0.1); break;
+      case "shop_wide_brush": this.perks.areaBonus += 0.10; break;
+      case "shop_full_quiver": this.perks.extraProjectiles += 1; break;
+      case "shop_maneki": this.perks.luck += 0.15; break;
+      case "shop_scholar_brush": this.perks.xpBonus += 0.15; break;
+      case "shop_lodestone": this.perks.pickupBonus += 0.40; break;
+      case "shop_frost_talisman": this.perks.frostChance += 0.08; break;
       case "ult_charge":
         this.addUltCharge(this.stats.ultMax * 0.35);   // 7.4: was 50%
         break;

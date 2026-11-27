@@ -38,6 +38,12 @@ export const SOFT_STATS: Record<string, { mode: "mul" | "add"; k: number; max: n
   lightningChance: { mode: "add", k: 0.4, max: 0.4, note: "Lightning chance: never above 40%" },
   bleedChance:     { mode: "add", k: 0.5, max: 0.5, note: "Bleed chance: never above 50%" },
   poisonChance:    { mode: "add", k: 0.5, max: 0.5, note: "Poison chance: never above 50%" },
+  // STEP 3 (2026-11-27): stats that had no sources before (curves from docs/CONTENT_RESEARCH.md C5b).
+  areaBonus:       { mode: "add", k: 0.8, max: 0.8, note: "Area (explosions, AoE, smoke, petals): never above +80%" },
+  luck:            { mode: "add", k: 1,   max: 1,   note: "Luck (rarer cards and shop items, more item drops): never above +100%" },
+  xpBonus:         { mode: "add", k: 1,   max: 1,   note: "XP gain: never above +100%" },
+  pickupBonus:     { mode: "add", k: 1.5, max: 1.5, note: "Pickup radius: never above +150%" },
+  frostChance:     { mode: "add", k: 0.5, max: 0.5, note: "Chill chance: never above 50%" },
   eliteBounty:     { mode: "add", k: 16,  max: 16,  note: "Elite bounty coins: never above 16" },
   invulnBonus:     { mode: "add", k: 0.75, max: 0.75, note: "Extra i-frames: never above 0.75s" },
 };

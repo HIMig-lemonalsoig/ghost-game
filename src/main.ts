@@ -1543,7 +1543,7 @@ function renderPause(s: GameStats) {
         <div class="pane"><h4>Stats</h4><div class="stats num">
           <div>Damage <b>${d.damage.toFixed(1)}</b></div><div>Dexterity <b>${d.dexterity}</b></div>
           <div>Defense <b>${d.defense} <i class="soft">${d.defensePct}% blocked</i></b></div><div>Move speed <b>${d.moveSpeedPct}%</b></div>
-          <div>Attack speed <b>${d.attackSpeedPct}%${mx(d.attackSpeedPct >= STAT_CAPS.attackSpeedMax * 100)}</b></div><div>Crit chance <b>${d.critChancePct}%</b></div><div>Crit damage <b>×${d.critMul.toFixed(2)}</b></div>
+          <div>Attack speed <b>${d.attackSpeedPct}%${mx(d.attackSpeedPct >= STAT_CAPS.attackSpeedMax * 100)}</b></div><div>Crit chance <b>${d.critChancePct}%</b></div><div>Crit damage <b>×${d.critMul.toFixed(2)}</b></div>${(d.more ?? []).map(([k, v]) => `<div>${k} <b>${v}</b></div>`).join("")}
           <div>HP regen <b>${d.hpRegen.toFixed(1)}/s${mx(d.hpRegen >= STAT_CAPS.hpRegen)}</b></div><div>Weapon dmg <b>×${d.secondaryDmgMul.toFixed(2)}${mx(d.secondaryDmgMul >= STAT_CAPS.secondaryDmgMul)}</b></div>
         </div></div>
         <div class="pane"><h4>Blessings</h4><div class="perk-list">${perks}</div></div>

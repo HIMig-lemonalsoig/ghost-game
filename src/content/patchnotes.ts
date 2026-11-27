@@ -12,6 +12,20 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.2", date: "2026-11-27", title: "Every Stat Has a Path", kanji: "道",
+    summary: "Six stats that had no perks or items now have full lines, and builds come together faster.",
+    lines: [
+      ["new", "Area: Broad Sweep, Shockwave Stance, Heaven and Earth (+area and melee reach). Explosions, smoke, petals, Reaper's Toll and Aftershock all grow with area."],
+      ["new", "Projectiles: Extra Kunai (+1 projectile), Piercing Shot (+1 pierce), Storm of Steel (+1 projectile, +1 pierce, faster shots). Only offered if you carry a thrown or shot weapon."],
+      ["new", "Luck: Lucky Charm and Fortune's Favour. Luck makes rare and legendary cards and shop items more common and items drop more often."],
+      ["new", "XP: Diligent Study and Scholar's Scroll. Pickup: Magnet Charm and Spirit Pull (bigger pickup radius for XP, ammo and items)."],
+      ["new", "Frost (new element): Frostbite Edge (chill on hit, slows), Deep Freeze (3 hits on a chilled foe freeze it), Winter's Heart (frozen foes shatter on death and chill everything nearby)."],
+      ["new", "Shop items: Wide Brush (area), Full Quiver (+1 projectile), Maneki-neko (luck), Scholar's Brush (XP), Lodestone (pickup), Frost Talisman (chill)."],
+      ["change", "Family weighting: once you own a card from a family (crit, area, frost, fire, poison…), the rest of that family shows up 1.5× as often."],
+      ["change", "New stats have diminishing returns like the others, and show in the pause screen once you have them."],
+    ],
+  },
+  {
     version: "3.1", date: "2026-11-27", title: "The Crit Update", kanji: "会",
     summary: "Crit builds are real now: more crit chance, and a brand-new crit damage stat.",
     lines: [
