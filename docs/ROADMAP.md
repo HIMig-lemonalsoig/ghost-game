@@ -519,7 +519,7 @@ Research warns: unlocks that only add raw power make runs trivial, so keep power
 
 A lighter version of Slay the Spire's map, sized for a wave game:
 
-- After some waves, choose **one of two modifiers for the next wave**, e.g. "Blood Moon: +40% enemies, ×2 coins", "Elite Hunt: elites ×3, extra Spirit Chest", "Calm Night: fewer enemies, no shop discount".
+- After some waves, choose **one of two modifiers for the next wave**, e.g. "Blood Moon: +40% enemies, +30% coins per kill", "Elite Hunt: elites ×3, extra Spirit Chest", "Calm Night: fewer enemies, no shop discount".
 - Rare **shrines** in the arena: walk into one to accept a trade, e.g. "lose 20% max HP → a random legendary perk", "curse: +25% enemy damage this wave → an extra evolution chest".
 - Shrines get telegraphs and a Guide entry; balance tracking records which choices people make.
 
@@ -555,3 +555,11 @@ Fix (Hades / Hollow Knight style "tell → attack → opening"):
   - Her blink now marks the landing spot with foxfire 0.55 s before she appears there, lands 150 px from you (was 240), and leaves her dazed ~1.6 s after the foxfire fan.
   - Blinks are rarer (volleys/summons weighted up) and never back-to-back.
   - Bot check (chasing at normal player speed, wave 10): within melee reach 93% of the fight, ~5 blinks per minute.
+
+### Playtest fix: omen coin leak (2026-11-26)
+User report: 2,172 coins at wave 13 after taking Blood Moon every time it was offered (shop items cost 84–186).
+Cause: the 7.7 coin tuning was measured without omens. Blood Moon gave +40% enemies **and** ×2 coins per kill, so a Blood Moon wave paid about 2–2.8× a normal one, and it's offered on waves 3, 7, 9, 11, 13…
+Fix (Brotato/Hades-style: risk modifiers pay a modest bonus, not a multiplier on top of a multiplier):
+- Blood Moon: ×2 → **+30% coins per kill** (with the extra enemies, roughly +30–60% per wave in bot runs).
+- Iron Tide: +60% → **+35% coins**.
+- Skipping a level-up card: 15 × wave → **10 × wave** coins (at wave 13: 195 → 130, about one common item instead of a rare).

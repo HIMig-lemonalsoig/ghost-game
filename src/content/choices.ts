@@ -11,11 +11,11 @@ export interface OmenDef {
   speed?: number; hp?: number; dmgOut?: number; dmgIn?: number;
 }
 export const OMENS: OmenDef[] = [
-  { id: "blood_moon",    kanji: "血", name: "Blood Moon",    hue: 355, desc: "+40% enemies, ×2 coins.", density: 1.4, coins: 2 },
+  { id: "blood_moon",    kanji: "血", name: "Blood Moon",    hue: 355, desc: "+40% enemies, +30% coins per kill.", density: 1.4, coins: 1.3 },
   { id: "elite_hunt",    kanji: "精", name: "Elite Hunt",    hue: 280, desc: "Elites ×3 as common. A Spirit Chest waits for you.", elite: 3, chest: true },
   { id: "calm_night",    kanji: "静", name: "Calm Night",    hue: 200, desc: "30% fewer enemies, but half the coins.", density: 0.7, coins: 0.5 },
   { id: "swift_shadows", kanji: "疾", name: "Swift Shadows", hue: 160, desc: "Enemies are 20% faster. +50% XP.", speed: 1.2, xp: 1.5 },
-  { id: "iron_tide",     kanji: "鉄", name: "Iron Tide",     hue: 30,  desc: "Enemies have +30% HP. +60% coins.", hp: 1.3, coins: 1.6 },
+  { id: "iron_tide",     kanji: "鉄", name: "Iron Tide",     hue: 30,  desc: "Enemies have +30% HP. +35% coins.", hp: 1.3, coins: 1.35 },
   { id: "glass_night",   kanji: "玻", name: "Glass Night",   hue: 50,  desc: "You deal +30% damage and take +30% damage.", dmgOut: 1.3, dmgIn: 1.3 },
 ];
 export const OMEN_BY_ID = Object.fromEntries(OMENS.map(o => [o.id, o])) as Record<OmenId, OmenDef>;

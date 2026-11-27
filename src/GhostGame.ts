@@ -6252,7 +6252,7 @@ export class GhostGame {
 
   /** Coins you get for skipping a level-up card. */
   skipReward(): number {
-    return Math.round(15 * Math.max(1, this.stats.wave) * DIFFICULTIES[this.difficulty].coins * this.meta.skipMul);   // SHRINE Ascetic
+    return Math.round(10 * Math.max(1, this.stats.wave) * DIFFICULTIES[this.difficulty].coins * this.meta.skipMul);   // SHRINE Ascetic
   }
 
   /** Take coins instead of a card. */
