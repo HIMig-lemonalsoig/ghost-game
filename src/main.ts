@@ -11,6 +11,7 @@ import { hueOf } from "./fx";
 import type { ClassId, GameStats, SecondaryId, Difficulty } from "./GhostGame";
 import { UI_CSS } from "./ui.css";
 import { createRack } from "./classrack";
+import { initMenuBackdrop } from "./menubg";
 import type { Rack } from "./classrack";
 import { PATCH_NOTES, LATEST_PATCH } from "./content/patchnotes";
 import type { NoteTag } from "./content/patchnotes";
@@ -738,8 +739,6 @@ function perkLabel(id: string): { kanji: string; name: string } {
 }
 
 // ─── Pointer-tracked glow & tilt (inspired by 21st.dev Glow Card / Tilt Card) ──
-const EMBERS = `<div class="embers" aria-hidden="true">${Array.from({ length: 22 }, (_, i) =>
-  `<i style="left:${(i * 37) % 100}%;--d:${8 + (i % 5) * 2}s;--delay:${-(i * 1.3).toFixed(1)}s;--dx:${((i % 7) - 3) * 22}px;${i % 3 ? "" : "background:var(--gold);box-shadow:0 0 8px var(--gold);"}"></i>`).join("")}</div>`;
 
 document.addEventListener("pointermove", e => {
   const el = (e.target as HTMLElement).closest?.<HTMLElement>(".glow");
@@ -769,6 +768,8 @@ function showMenu() {
   showUnlockToasts();
   renderMenu();
   menu.style.display = "block";
+  initMenuBackdrop();
+  document.body.classList.add("in-menu");
   requestAnimationFrame(() => $<HTMLElement>(".rack", menu)?.focus({ preventScroll: true }));
 }
 
@@ -787,7 +788,7 @@ function renderMenu() {
     ? `<button class="btn" data-act="continue">Continue · ${getClass(saved.classId).name} · Wave ${saved.wave}</button>`
     : "";
 
-  menu.innerHTML = `${EMBERS}
+  menu.innerHTML = `
   <div class="menu-wrap">
     <div class="menu-top">
       <div class="logo"><span class="kanji">幽</span><div><h1>YŪKEN</h1><p>Survive the waves. Forge your legend.</p></div></div>
@@ -970,6 +971,7 @@ function stopGame() {
 function bootGame(): GhostGame {
   stopGame();
   menu.style.display = "none";
+  document.body.classList.remove("in-menu");
   resize();
   const g = new GhostGame(canvas);
   game = g;

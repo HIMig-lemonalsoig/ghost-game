@@ -12,6 +12,17 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "2.8", date: "2026-11-27", title: "Dusk at the Dojo", kanji: "暮",
+    summary: "The main menu got colour: a living ukiyo-e sunset.",
+    lines: [
+      ["new", "Animated dusk sky behind the menu: deep indigo overhead, burning vermilion at the horizon."],
+      ["new", "A huge setting sun, four layers of ink-wash mountains and a pine forest that shift with your mouse for depth."],
+      ["new", "Sakura petals drift across the screen."],
+      ["change", "Menu panels, garments and buttons switched from brown-black to indigo glass with vermilion and gold, so the scene shows through."],
+      ["change", "Removed the old floating embers from the menu."],
+    ],
+  },
+  {
     version: "2.7", date: "2026-11-26", title: "The Garment Rack", kanji: "衣",
     summary: "Class select is now a rack of hanging garments.",
     lines: [
