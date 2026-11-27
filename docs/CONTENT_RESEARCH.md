@@ -108,3 +108,111 @@ Plus a new **boss** for wave 25 or Endless: **Ōmukade**, a huge centipede that 
 | C5d | **Enemy pacing.** Where each new enemy fits so early waves don't get harder | Wave-by-wave spawn table plus bot playtests at waves 5, 10 and 15 |
 | C5e | **Class budget.** New classes measured with the same ult budget harness (target 60 grunts) | Bot budget runs |
 | C5f | **Your picks.** Which of the candidates above you actually want | Discussion |
+
+---
+
+# C5 results (2026-11-27)
+
+All numbers come from the real formulas in `src/content/curves.ts` and `rollPerkChoicesInner()` / `pickRollKind()` in `src/GhostGame.ts` (script: average damage, not single-hit luck).
+
+## C5a. Crit chance × crit damage
+Average damage from crits = 1 + crit chance × (crit damage − 1). Crit chance is soft-capped (`soft(points, 0.5, 0.75)`): 6 points → 8%, 20 → 21%, 39 (every crit source today) → 33%, 100 → 50%, never above 75%.
+
+**Value of one card** (damage increase it gives you), by build:
+
+| Build | Honed Edge (+15% dmg) | Keen Eye (+6 crit) | Killing Edge (+20 crit) | Deep Cut (+0.25× crit dmg) | Bone Splitter (+0.5× crit dmg) |
+|---|---|---|---|---|---|
+| Fresh: no damage, no crit | +14.5% | +16.1% | **+42.9%** | 0% | 0% |
+| +60% damage, 0% crit | +7.2% | +16.1% | **+42.9%** | 0% | 0% |
+| +60% damage, 21% crit | +7.2% | +5.9% | +16.7% | +3.7% | +7.5% |
+| +60% damage, 33% crit | +7.2% | +3.2% | +9.3% | +5.0% | +9.9% |
+| +120% damage, 41% crit | +4.5% | +1.9% | +5.8% | +5.6% | **+11.3%** |
+
+Findings:
+- **Killing Edge is the strongest rare in the game early** (+43% damage from one card). That's because the first crit points are worth a lot at 3×. It's fine as a rare, but new crit cards shouldn't pile on top of it.
+- **Crit damage is worthless until you have crit**, then becomes the best late card. This matches Halls of Torment: only offer crit-damage cards once crit chance is at least ~15%.
+- **Keep crits at 3×** (no nerf to existing builds). Crit-damage cards add to the multiplier: +0.25 (common), +0.5 (rare), soft-capped at +2 (so never above 5×).
+- New crit-chance cards should be smaller than Killing Edge: Steady Aim +5 points, Hawk's Eye +10.
+
+## C5b. Soft caps for the new stats
+Stacking the same card keeps helping but less each time; never reaches the cap.
+
+| New stat (curve) | Common ×1 / ×3 / ×5 / ×10 | Rare ×1 / ×3 / ×5 / ×10 | Cap |
+|---|---|---|---|
+| Crit damage (add, k 2, max 2) | +0.22 / +0.55 / +0.77 / +1.11× | +0.40 / +0.86 / +1.11 / +1.43× | +2× (5× total) |
+| Area (mul, k 0.8, max 0.8) | +9 / 22 / 31 / 44% | +16 / 34 / 44 / 57% | +80% |
+| Luck (add, k 1, max 1) | +9 / 23 / 33 / 50% | +17 / 38 / 50 / 67% | +100% |
+| XP gain (mul, k 1, max 1) | +9 / 23 / 33 / 50% | +17 / 38 / 50 / 67% | +100% |
+| Pickup radius (mul, k 1.5, max 1.5) | +25 / 56 / 75 / 100% | +43 / 82 / 100 / 120% | +150% |
+| Dodge (add, k 0.3, max 0.3) | — | 6 / 13 / 17 / 22% | 30% |
+| Frost chance (add, k 0.5, max 0.5) | 10 / 21 / 27 / 35% | (same card) | 50% (same as other elements) |
+| Damage vs bosses (mul, k 1, max 1) | — | +20 / 43 / 56 / 71% | +100% |
+| Projectiles | +1 per card, hard cap +4 | Pierce +1, hard cap +3 | — |
+
+Dodge is capped lowest (30%) because a dodge cancels a whole hit. Boss damage stops at +100% so the 12% per-ult boss cap and boss HP still matter.
+
+## C5c. Card pool dilution
+Simulated with the real odds (70% common / 25% rare / 5% legendary per card, 3 cards per level-up). Today's pool for one class is about 18 common, 21 rare and 12 legendary cards. Adding the ~26 candidate perks (8 / 10 / 8):
+
+| Chance to see ONE specific card at least once | By level-up 8 (≈ wave 6) | By level-up 14 (≈ wave 11) |
+|---|---|---|
+| Common | 63% → 49% | 82% → 69% |
+| Rare | 26% → 18% | 41% → 29% |
+| Legendary | 10% → 6% | 17% → 10% |
+
+But **themes get easier to build**: today the crit "family" (2 cards) appears on 3+ level-ups by level-up 14 in 34% of runs; with a 5-card crit family it's **58%**.
+
+Findings:
+- Adding 26 cards makes any single card about 30% rarer, which hurts runs chasing one legendary.
+- Fix, as in Hades (gods you've taken show up more): **family weighting**. Cards from a family you already own a card from (crit, area, frost…) get ×1.5 weight. Plus the existing reroll / banish tools and the Shrine's Lore node.
+- Don't add all 26 at once: start with the stats that have **zero** sources (crit damage, area, projectiles, luck, XP, pickup, frost), about 14 cards.
+
+## C5d. Enemy pacing (found an existing bug)
+`pickRollKind()` adds chances in a fixed order, and from wave 10 they add up to **more than 100%** (105% at wave 10, 153% by wave 20). Types at the end of the list get squeezed out:
+
+| Wave | Heavy (intended → actual) | Assassin (intended → actual) | Plain grunts |
+|---|---|---|---|
+| 8 | 35% → 35% | 0 → 0 | 22% |
+| 10 | 35% → 30% | 2.5% → 2.5% | **0%** |
+| 12 | 35% → **6.8%** | 7.5% → 7.5% | 0% |
+| 15 | 35% → **0%** | 15% → **2.2%** | 0% |
+| 20 | 35% → **0%** | 18% → **0%** | 0% |
+
+So **heavies disappear from wave ~13 and assassins from ~16**, and plain grunts vanish at wave 10. Adding new enemies on top would push even more out.
+
+Fix before adding enemies: turn the chances into **weights** and normalize them, so every unlocked type keeps a share (Brotato-style spawn tables). This changes late-wave difficulty (heavies come back), so it needs a bot check after the fix.
+
+**Proposed introduction waves for new enemies** (one new type per normal wave, none on boss waves, each taking its share from the weights rather than adding density):
+
+| Wave | Today | Proposed new |
+|---|---|---|
+| 11 | — | Inoshishi (charger) |
+| 13 | — | Kappa raider (ambusher) |
+| 14 | — | Taiko drummer (buffer) |
+| 16 | — | Tsukumogami (splitter) |
+| 17 | — | Yumi sniper |
+| 18 | — | Mukade (trail-layer) |
+| 19 | — | Yuki-warashi (frost control) |
+| 12+ | — | Mimic: 10% of Spirit Chests |
+| Endless 30 | — | Ōmukade boss (adds to the boss rotation after the Final Boss) |
+
+Waves 2–10 already introduce a new type almost every wave, so new enemies go into waves 11–19, which today introduce only one (Mirror Monk at 12). Late runs get fresher without making the early game harder.
+
+## C5e. Starting ult budgets for new classes
+Each new class's ult reuses a mechanic we've already measured with the ult budget harness (target 60 grunts' worth at wave 25, ±30%). Start from that class's multiplier, then re-measure after building.
+
+| New class | Ult idea | Closest measured ult | Its score | Starting setting |
+|---|---|---|---|---|
+| Teppō (gunner) | Volley line: a row of gunners fires across the screen | Tetsubo cone (61), Kensei line (58) | ~60 | ULT_CLASS_MUL ≈ 1.0 (line damage like Kensei) |
+| Takajō (falconer) | Hawk dives on every marked foe for 6s | Kagemusha clone (58) | 58 | Pet damage like the clone, `ultDmgRaw(7.5)` per strike |
+| Karakuri-shi (puppeteer) | Drops 3 automaton turrets for 8s | Kagemusha clone ×3 | ~3 × 58 = too much | Each turret at ~⅓ of a clone's damage |
+| Bakuto (gambler) | Rolls dice: random ult from 6 effects | Average of the 6 effects | varies | Budget each face at 60; random choice keeps the average fair |
+| Rikishi (sumo) | Grabs and slams foes in a ring | Tetsubo launch (61) | 61 | ULT_CLASS_MUL ≈ 1.6 |
+| Sumi-e Painter | Paints an ink tiger that rampages for 6s | Kagemusha clone (58) / Onmyoji tempest (69) | ~60 | Tiger hits like the clone, plus area like Tempest at half |
+
+## Recommended build order
+1. **Fix the enemy roll** (weights + normalize) and re-check difficulty with the bot. This is a bug fix that matters even with no new content.
+2. **Crit damage stat + crit family** (Deep Cut, Bone Splitter, Death Blossom; Steady Aim, Hawk's Eye; shop: Whetted Eye, Assassin's Ledger, Night Lantern), with the "only after 15% crit" rule.
+3. **Zero-source stats**: area, projectiles, luck, XP, pickup, frost (about 14 cards + 6 shop items), each with the soft caps above, plus **family weighting**.
+4. **New enemies** in waves 11–19 (one at a time, bot-checked).
+5. **New classes** (one at a time, ult budget measured).
