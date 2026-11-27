@@ -838,6 +838,7 @@ export type ShopEffectId =
   | "perk_soul_collector"
   | "shop_lucky_coin" | "shop_bounty" | "shop_spirit_bell" | "shop_battle_drum" | "shop_dash_talisman"
   | "shop_gamble" | "shop_oni_mask" | "shop_fire_charm" | "shop_thunder_charm" | "shop_reaper_bell" | "shop_fortune"
+  | "shop_whetted_eye" | "shop_assassin_ledger" | "shop_night_lantern"
   // ===== Secondary weapon scrolls (equip into open slot, or replace slot 2) =====
   | `secondary_${SecondaryId}`;
 
@@ -867,6 +868,10 @@ export const SHOP_POOL: PoolEntry[] = [
   { effect: "heal_full",     kanji: "癒", name: "Full Mend",        desc: "Restore all HP.",                          priceMin: 40, priceMax: 55, rarity: "common"   },
   { effect: "heal_half",     kanji: "薬", name: "Salve",             desc: "Restore 40% of your max HP.",              priceMin: 18, priceMax: 25, rarity: "common"   },
   { effect: "crit",          kanji: "極", name: "Killing Eye",       desc: "+8% crit chance (crits deal 3× damage).",  priceMin: 40, priceMax: 60, rarity: "rare"     },
+  // CRIT STEP (2026-11-27): crit chance + the new crit damage stat.
+  { effect: "shop_whetted_eye",     kanji: "研", name: "Whetted Eye",      desc: "+4% crit chance.",                                       priceMin: 24, priceMax: 34, rarity: "common"    },
+  { effect: "shop_assassin_ledger", kanji: "帳", name: "Assassin's Ledger", desc: "+30% crit damage (crits hit harder). Appears once you have 15% crit.", priceMin: 45, priceMax: 62, rarity: "rare" },
+  { effect: "shop_night_lantern",   kanji: "灯", name: "Night Lantern",    desc: "+15% crit chance, but −10% max HP.",                     priceMin: 90, priceMax: 120, rarity: "legendary" },
   { effect: "ult_charge",    kanji: "気", name: "Spirit Surge",      desc: "Instantly fills 35% of your ultimate.",    priceMin: 25, priceMax: 35, rarity: "common"   },
   { effect: "ammo_refill",   kanji: "充", name: "Ammo Cache",        desc: "Refill all secondary ammo.",               priceMin: 15, priceMax: 22, rarity: "common"   },
   { effect: "ammo_cap",      kanji: "袋", name: "Wider Quiver",      desc: "+2 max ammo on every secondary.",          priceMin: 30, priceMax: 45, rarity: "rare"     },
@@ -2536,6 +2541,7 @@ export interface GameStats {
     defensePct: number;    // % of each hit blocked by Defense
     attackSpeedPct: number;// % of base atk speed (100 = baseline)
     critChancePct: number;
+    critMul: number;       // CRIT STEP: crit damage multiplier
     hpRegen: number;
     secondaryDmgMul: number;
   };
@@ -2769,6 +2775,7 @@ interface Enemy {
   // ===== New ability effects =====
   // Death Mark — cursed seal that increases damage taken; chains on kill.
   markRemaining: number;
+  critMarkUntil?: number;      // CRIT STEP: Heaven's Eye mark expires at this time
   // Smoke Bomb disorient — wander randomly, cannot attack.
   disorientRemaining: number;
   disorientAng: number;        // current wander direction
@@ -3158,6 +3165,13 @@ export const PERK_POOL: Omit<PerkChoice, never>[] = [
   { id: "lightning_dmg_l", kanji: "雷", name: "Stormborn",          desc: "+8 lightning damage and +0.25s stun",                         rarity: "legendary" },
   // ===== Build-direction perks =====
   { id: "keen_eye",      kanji: "眼", name: "Keen Eye",       desc: "+6% critical hit chance",                                   rarity: "common" },
+  // CRIT STEP (2026-11-27): a full crit family. Crit damage cards only show up once you have 15% crit.
+  { id: "steady_aim",    kanji: "準", name: "Steady Aim",     desc: "+5% crit chance",                                           rarity: "common" },
+  { id: "hawks_eye",     kanji: "鷹", name: "Hawk's Eye",     desc: "+10% crit chance, and +5% more for 2s after you dash",      rarity: "rare" },
+  { id: "heavens_eye",   kanji: "天", name: "Heaven's Eye",   desc: "+15% crit chance. Crits mark foes: they take +10% damage for 3s", rarity: "legendary" },
+  { id: "deep_cut",      kanji: "深", name: "Deep Cut",       desc: "+25% crit damage",                                          rarity: "common" },
+  { id: "bone_splitter", kanji: "骨", name: "Bone Splitter",  desc: "+50% crit damage",                                          rarity: "rare" },
+  { id: "death_blossom", kanji: "華", name: "Death Blossom",  desc: "Crits burst into petals that hit nearby foes for about 40% of the crit", rarity: "legendary" },
   { id: "thick_hide",    kanji: "皮", name: "Thick Hide",     desc: "+2 defense (blocks a share of every hit)",                   rarity: "common" },
   { id: "quick_draw",    kanji: "抜", name: "Quick Draw",     desc: "Dash recharges 15% faster",                                 rarity: "common" },
   { id: "scavenger",     kanji: "拾", name: "Scavenger",      desc: "+20% coins from kills",                                     rarity: "common" },
@@ -3212,6 +3226,10 @@ interface Perks {
   stealthHeal: number;
   // Active-ability tuning
   critChance: number;          // 0..1
+  critDmgRaw: number;          // CRIT STEP: raw crit damage bonus (soft-capped, added to the 3× base)
+  hawkEye: boolean;            // CRIT STEP: +5 crit points for 2s after a dash
+  critMark: boolean;           // CRIT STEP: crits mark foes (+10% damage taken for 3s)
+  deathBlossom: boolean;       // CRIT STEP: crits splash 40% to nearby foes
   momentumCdr: number;         // seconds reduced per kill
   barrageCdMul: number;        // multiplies base CD
   flashCdMul: number;
@@ -3331,6 +3349,10 @@ const defaultPerks = (): Perks => ({
   doubleStrike: false,
   stealthHeal: 0,
   critChance: 0,
+  critDmgRaw: 0,
+  hawkEye: false,
+  critMark: false,
+  deathBlossom: false,
   momentumCdr: 0,
   barrageCdMul: 1,
   flashCdMul: 1,
@@ -3622,6 +3644,7 @@ export class GhostGame {
         defensePct: 0,
         attackSpeedPct: 100,
         critChancePct: 0,
+        critMul: 3,
         hpRegen: 0,
         secondaryDmgMul: 1,
       },
@@ -4518,7 +4541,11 @@ export class GhostGame {
     const def: Record<string, number> = { def_rare: 2, def_leg: 4 };
     const dex: Record<string, number> = { dex_common: 3, dex_rare: 6, dex_leg: 12 };
     const spd: Record<string, number> = { spd_common: 1.05, spd_rare: 1.08, spd_leg: 1.15, perk_ghost_steps: 1.05, perk_drifting_leaves: 1.05 };
-    const crit: Record<string, number> = { crit: 0.08, perk_cursed_eye: 0.05 };
+    const crit: Record<string, number> = { crit: 0.08, perk_cursed_eye: 0.05, shop_whetted_eye: 0.04, shop_night_lantern: 0.15 };
+    if (effect === "shop_assassin_ledger") {
+      const now = 3 + soft(P.critDmgRaw, 2, 2), next = 3 + soft(P.critDmgRaw + 0.3, 2, 2);
+      return `Crit damage ×${now.toFixed(2)} → ×${next.toFixed(2)}`;
+    }
     if (effect in def) return `Blocked ${pc(defenseReduction(P.defense))} → ${pc(defenseReduction(P.defense + def[effect]))}`;
     if (effect in dex) {
       const now = 1 / Math.max(1 / STAT_CAPS.attackSpeedMax, P.attackCooldownMul / dexAttackSpeed(P.dexterity * 0.8));
@@ -4539,7 +4566,8 @@ export class GhostGame {
     add(P.dexterity >= C.dexMaxRaw || this.katanaCdMul() <= 1 / C.attackSpeedMax + 1e-6, "dex_common", "dex_rare", "dex_leg", "perk_raging_current");
     add(P.classDamageMul >= C.classDamageMul - 1e-6, "perk_crimson_blade", "perk_war_paint", "shop_gamble");
     add(P.secondaryDmgMul >= C.secondaryDmgMul - 1e-6, "secondary_dmg_global", "perk_twin_fang");
-    add(P.critChance >= C.critPointsMax - 1e-6, "crit");
+    add(P.critChance >= C.critPointsMax - 1e-6, "crit", "shop_whetted_eye", "shop_night_lantern");
+    add(critFromPoints(P.critChance) < 0.15, "shop_assassin_ledger");   // CRIT STEP: crit damage needs crit first
     add(P.hpRegen >= C.hpRegen - 1e-6, "hp_regen");
     add(P.monMul >= C.monMul - 1e-6, "shop_lucky_coin");
     add(P.ultChargeMul >= C.ultChargeMul - 1e-6, "shop_spirit_bell");
@@ -5812,6 +5840,7 @@ export class GhostGame {
       defensePct: Math.round(defenseReduction(this.perks.defense) * 100),
       attackSpeedPct: Math.round((1 / Math.max(0.001, cdMulKatana)) * 100),
       critChancePct: Math.round(critFromPoints(this.perks.critChance) * 100),
+      critMul: Math.round(this.critMultiplier() * 100) / 100,
       hpRegen: this.perks.hpRegen,
       secondaryDmgMul: this.perks.secondaryDmgMul,
     };
@@ -6328,6 +6357,36 @@ export class GhostGame {
   }
 
   // +damage for −max HP. Used by the Glass Cannon perk and Ronin's Gamble.
+  // ===================== CRIT STEP =====================
+  hawkEyeT = 0;
+  private blossomGuard = false;
+  private lastBlossom = -1;
+  private pendingBlossoms: { x: number; y: number; dmg: number; src: number }[] = [];
+  /** Crit damage multiplier: 3× base plus the soft-capped crit damage stat (never above 5×). */
+  critMultiplier(): number { return 3 + soft(this.perks.critDmgRaw, 2, 2); }
+  private queueBlossom(e: Enemy, dmg: number) {
+    this.lastBlossom = this.elapsed;
+    this.pendingBlossoms.push({ x: e.pos.x, y: e.pos.y, dmg: dmg * 0.34, src: e.id });   // the splash picks up damage bonuses again, so 0.34 lands near 40%
+  }
+  /** Death Blossom bursts resolve after the hit (no crit chains inside one hit). */
+  private resolveBlossoms() {
+    if (!this.pendingBlossoms.length) return;
+    const list = this.pendingBlossoms; this.pendingBlossoms = [];
+    this.blossomGuard = true;
+    try {
+      for (const b of list) {
+        for (const o of this.enemies) {
+          if (o.state === "dead" || o.id === b.src || Math.hypot(o.pos.x - b.x, o.pos.y - b.y) > 80 + o.size) continue;
+          this.dmgSrcOverride = "Death Blossom";
+          this.dealDamage(o, b.dmg, Math.atan2(o.pos.y - b.y, o.pos.x - b.x), 40);
+          this.dmgSrcOverride = null;
+        }
+        this.fx.burst(b.x, b.y, { count: 12, hue: 340, sat: 80, light: 78, speed: 170, life: 0.5, grav: 60 });
+        this.fx.shockwave(b.x, b.y, 80, { hue: 340, light: 75, life: 0.3, width: 5 });
+      }
+    } finally { this.blossomGuard = false; }
+  }
+
   private applyGlassCannon(dmgMul: number, hpCut: number) {
     this.perks.classDamageMul *= dmgMul;
     const cut = Math.round((100 + this.perks.maxHpBonus) * hpCut);
@@ -6376,6 +6435,12 @@ export class GhostGame {
       }
       case "wave_clear": this.perks.healBetweenWaves += 25; break;
       case "keen_eye": this.perks.critChance += 0.06; break;
+      case "steady_aim": this.perks.critChance += 0.05; break;
+      case "hawks_eye": this.perks.critChance += 0.10; this.perks.hawkEye = true; break;
+      case "heavens_eye": this.perks.critChance += 0.15; this.perks.critMark = true; break;
+      case "deep_cut": this.perks.critDmgRaw += 0.25; break;
+      case "bone_splitter": this.perks.critDmgRaw += 0.5; break;
+      case "death_blossom": this.perks.deathBlossom = true; break;
       case "thick_hide": this.perks.defense += 2; break;
       case "quick_draw": this.perks.dashCdMul *= 0.85; break;
       case "scavenger": this.perks.monMul += 0.2; break;
@@ -6471,11 +6536,16 @@ export class GhostGame {
     const maxed = this.maxedShopEffects();
     const perkMaxed: Record<string, string> = {
       swift_step: "spd_common", swift_strike: "dex_common", thick_hide: "def_rare",
-      keen_eye: "crit", crit_strike: "crit", lifebloom: "hp_regen", blade_edge: "dmg_katana_common",
+      keen_eye: "crit", crit_strike: "crit", steady_aim: "crit", hawks_eye: "crit", heavens_eye: "crit",
+      lifebloom: "hp_regen", blade_edge: "dmg_katana_common",
       vampire: "lifesteal",
     };
+    const critNow = critFromPoints(this.perks.critChance);
     const passivesAvailable = PERK_POOL.filter(p => {
       if (perkMaxed[p.id] && maxed.has(perkMaxed[p.id])) return false;
+      // CRIT STEP: crit damage only matters once you crit (Halls of Torment rule).
+      if ((p.id === "deep_cut" || p.id === "bone_splitter" || p.id === "death_blossom") && critNow < 0.15) return false;
+      if (p.id === "death_blossom" && this.perks.deathBlossom) return false;
       if (this.perks.banished.includes(p.id)) return false;   // banished this run
       if (p.id === "wave_clear" && this.vr("no_rest")) return false;
       const up = ULT_PERK_BY_ID[p.id];
@@ -6941,6 +7011,7 @@ export class GhostGame {
       }
       p.dashAng = ang;
       p.dashTimer = BASE.DASH_DURATION;
+      if (this.perks.hawkEye) this.hawkEyeT = 2;   // CRIT STEP: Hawk's Eye
       this.playerRoot = 0;   // dashing breaks an Onryō root
       this.run.dashes++;
       p.dashCooldown = BASE.DASH_COOLDOWN * (this.stats.classId === "tengu" ? 0.6 : 1) * this.perks.dashCdMul * (this.ultWindTimer > 0 ? 0.15 : 1);
@@ -7572,10 +7643,13 @@ export class GhostGame {
     }
     // Crit
     let isCrit = false;
-    const critChance = critFromPoints(this.perks.critChance + (this.stats.buffLuckRemaining > 0 ? 0.4 : 0));
+    const critChance = critFromPoints(this.perks.critChance + (this.stats.buffLuckRemaining > 0 ? 0.4 : 0) + (this.hawkEyeT > 0 ? 0.05 : 0));
+    if (e.critMarkUntil !== undefined && e.critMarkUntil > this.elapsed) dmg *= 1.1;   // CRIT STEP: Heaven's Eye mark
     if (this.forceCrit || this.ultFinaleTimer > 0 || (critChance > 0 && Math.random() < critChance)) {
-      dmg *= 3;
+      dmg *= this.critMultiplier();
       isCrit = true;
+      if (this.perks.critMark) e.critMarkUntil = this.elapsed + 3;
+      if (this.perks.deathBlossom && !this.blossomGuard && this.elapsed - this.lastBlossom > 0.15) this.queueBlossom(e, dmg);
       if (this.hasDuo("duo_venom") && e.poisonRemaining > 0) dmg *= 2;   // DUO Venom Strike
       if (this.stats.classId === "kabuki" && this.kabukiHealCd <= 0 && this.player.hp < this.player.maxHp) {
         this.kabukiHealCd = 0.5;
@@ -12067,6 +12141,8 @@ export class GhostGame {
       if (e.webbedRemaining > 0) e.webbedRemaining = Math.max(0, e.webbedRemaining - dt);
     }
     updateUltTrail(this, dt);   // ult visual pass 2
+    this.hawkEyeT = Math.max(0, this.hawkEyeT - dt);
+    this.resolveBlossoms();
     if (this.ultBloodRageTimer > 0) this.ultBloodRageTimer = Math.max(0, this.ultBloodRageTimer - dt);
     if (this.ultShadowStepTimer > 0) this.ultShadowStepTimer = Math.max(0, this.ultShadowStepTimer - dt);
     if (this.ultMountainTimer > 0) this.ultMountainTimer = Math.max(0, this.ultMountainTimer - dt);
@@ -15513,6 +15589,9 @@ export class GhostGame {
       case "crit":
         this.perks.critChance = this.perks.critChance + 0.08;
         break;
+      case "shop_whetted_eye": this.perks.critChance += 0.04; break;
+      case "shop_assassin_ledger": this.perks.critDmgRaw += 0.3; break;
+      case "shop_night_lantern": this.perks.critChance += 0.15; this.applyGlassCannon(1, 0.1); break;
       case "ult_charge":
         this.addUltCharge(this.stats.ultMax * 0.35);   // 7.4: was 50%
         break;

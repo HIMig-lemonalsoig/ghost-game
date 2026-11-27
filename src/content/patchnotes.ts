@@ -12,6 +12,17 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.1", date: "2026-11-27", title: "The Crit Update", kanji: "会",
+    summary: "Crit builds are real now: more crit chance, and a brand-new crit damage stat.",
+    lines: [
+      ["new", "New stat: Crit damage. Crits still start at ×3; crit damage perks and items add to it (never above ×5). Shown in the pause screen."],
+      ["new", "Level-up perks: Steady Aim (+5% crit), Hawk's Eye (+10% crit, +5% more for 2s after a dash), Heaven's Eye (+15% crit; crits mark foes to take +10% damage for 3s)."],
+      ["new", "Level-up perks: Deep Cut (+25% crit damage), Bone Splitter (+50% crit damage), Death Blossom (crits burst into petals that hit nearby foes for about 40% of the crit)."],
+      ["new", "Shop items: Whetted Eye (+4% crit), Assassin's Ledger (+30% crit damage), Night Lantern (+15% crit, −10% max HP)."],
+      ["change", "Crit damage cards and the Ledger only show up once you have at least 15% crit, so they're never wasted picks."],
+    ],
+  },
+  {
     version: "3.0.2", date: "2026-11-27", title: "Spawn Table Fix", kanji: "群",
     summary: "Late waves had stopped spawning some enemy types entirely.",
     lines: [
