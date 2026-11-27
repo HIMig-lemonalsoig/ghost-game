@@ -1003,7 +1003,28 @@ function toggle(el: HTMLElement | null, cls: string, on: boolean) {
   if (el && el.classList.contains(cls) !== on) el.classList.toggle(cls, on);
 }
 
+// UI pass: ult charge as a tick gauge around the orb (after "Radial Progress", kanchanasw / doodle-ui, 21st.dev).
+const ULT_TICKS = 36;
+const ULT_TICKS_SVG = (() => {
+  let t = "";
+  for (let i = 0; i < ULT_TICKS; i++) {
+    const a = ((-135 + (i / (ULT_TICKS - 1)) * 270) - 90) * Math.PI / 180;
+    const j = (Math.sin(i * 78.233) * 43758.5453 % 1) * 0.6;   // seeded hand-drawn jitter
+    const r1 = 41, r2 = 47 + j;
+    t += `<line x1="${(50 + Math.cos(a) * r1).toFixed(1)}" y1="${(50 + Math.sin(a) * r1).toFixed(1)}" x2="${(50 + Math.cos(a) * r2).toFixed(1)}" y2="${(50 + Math.sin(a) * r2).toFixed(1)}"/>`;
+  }
+  return `<svg class="ult-ticks" viewBox="0 0 100 100" aria-hidden="true" data-h="ultticks">${t}</svg>`;
+})();
 const PAUSE_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>`;
+
+// UI pass: primary buttons get a light that follows the pointer (after "Klyv Shimmer Button", klyv-ui, 21st.dev).
+document.addEventListener("pointermove", e => {
+  const b = (e.target as HTMLElement | null)?.closest?.<HTMLElement>(".btn.primary");
+  if (!b) return;
+  const r = b.getBoundingClientRect();
+  b.style.setProperty("--gx", `${e.clientX - r.left}px`);
+  b.style.setProperty("--gy", `${e.clientY - r.top}px`);
+}, { passive: true });
 
 let seenItemSeq = 0;
 let itemCardUntil = 0;
@@ -1045,8 +1066,9 @@ function buildHud() {
       <div class="group" data-h="weapons"></div>
       <div class="group" data-h="abilities"></div>
       <div class="cell ult-cell">
+        <div class="ult-gauge" style="--h:${hueOf(cls.accent)}">${ULT_TICKS_SVG}
         <div class="slot ult" data-h="ult" style="--h:${hueOf(cls.accent)}"><div class="fill" data-h="ultfill"></div>
-          <span class="kanji k-base">${cls.ultKanji}</span><span class="kanji k-fill">${cls.ultKanji}</span><span class="cdn num" data-h="ultpct"></span><kbd>${K("ult")}</kbd></div>
+          <span class="kanji k-base">${cls.ultKanji}</span><span class="kanji k-fill">${cls.ultKanji}</span><span class="cdn num" data-h="ultpct"></span><kbd>${K("ult")}</kbd></div></div>
         <div class="cell-name">${cls.ultName}</div>
       </div>
       <div class="group" data-h="items"></div>
@@ -1224,6 +1246,13 @@ function updateHud(s: GameStats) {
   const fill = H("ultfill");
   const fh = `${Math.round(ultFrac * 100)}%`;
   if (fill && cache.get("ultfill") !== fh) { cache.set("ultfill", fh); fill.style.height = fh; }
+  const ticksOn = String(Math.round(ultFrac * ULT_TICKS));
+  const tk = H("ultticks");
+  if (tk && cache.get("ultticks") !== ticksOn) {
+    cache.set("ultticks", ticksOn);
+    const n = Number(ticksOn);
+    tk.querySelectorAll("line").forEach((l, i) => l.classList.toggle("on", i < n));
+  }
   const ultReady = s.ultReady && !s.ultActive;
   if (ult) {
     const pv = ultFrac.toFixed(3);
