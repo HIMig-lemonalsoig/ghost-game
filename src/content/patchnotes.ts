@@ -12,6 +12,18 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.13", date: "2026-11-27", title: "Night Parade", kanji: "百",
+    summary: "Every yokai and boss now has real pixel art: a full night parade of a hundred demons.",
+    lines: [
+      ["new", "Oni Warlord: a hulking red oni with ivory horns, a wild mane and a studded iron kanabō. He walks, lifts the club overhead and smashes it down when his slam lands, and falls flat when beaten."],
+      ["new", "Raijin, the Thunder General: a blue thunder god inside his ring of red war drums. Lightning crackles between his drumsticks and bursts when he strikes."],
+      ["new", "Onryō drifts toward you hunched over with hair across her face; Mirror Monk raises a polished bronze mirror that flashes; Bomber is a straw-hatted ghost with a lit bomb; Kappa creeps with its shell and water dish (it spills when it dies); Taiko Drummer marches and beats the drum on its chest; Yuki-warashi toddles along with an ice ball."],
+      ["new", "Creatures: a smouldering Boar Spirit, a blue hitodama Wisp, the one-eyed Lantern Ghost, the hopping Umbrella Spirit, a fanged gold Mimic on spider legs (it still looks like a real chest until it bites), and the Nue chimera with its snake tail. Yumi Snipers use the new archer in dark colours."],
+      ["change", "Every warning is unchanged and drawn on top: the Onryō's casting ring, the Nue's summoning ring, the Lantern's blast radius, the Taiko's drumbeat pulse, and a gold arc under the Mirror Monk showing which side reflects shots."],
+      ["change", "Mukade stays hand-drawn: its body is a chain that trails behind it. All new art was made with PixelLab and checked frame by frame (offline version only)."],
+    ],
+  },
+  {
     version: "3.12", date: "2026-11-27", title: "All Sides", kanji: "全",
     summary: "The archer, kitsune and both tengu can now be seen from the front and the back.",
     lines: [

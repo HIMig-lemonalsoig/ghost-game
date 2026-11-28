@@ -10,7 +10,8 @@
 
 import { buildSheets, ONI_LOOK, RAIJIN_LOOK } from "./pixelart";
 
-export type CharId = "samurai" | "archer" | "commander" | "kitsune" | "karasu" | "ytengu" | "skwarrior" | "skspear" | "skarcher" | "oni" | "raijin";
+export type CharId = "samurai" | "archer" | "commander" | "kitsune" | "karasu" | "ytengu" | "skwarrior" | "skspear" | "skarcher" | "oni" | "raijin"
+  | "onryo" | "kappa" | "taiko" | "bomber" | "mirror" | "yukiwarashi" | "lantern" | "wisp" | "tsukumo" | "mimic" | "boar" | "nue";
 export type Anim = "Idle" | "Walk" | "Run" | "Attack_1" | "Attack_2" | "Attack_3" | "Hurt" | "Dead" | "Protection" | "Protect" | "Shot" | "Shot_1" | "RunUp" | "RunDown" | "IdleUp" | "IdleDown";
 /** Colour variants, made once with a canvas filter and cached. */
 export type Variant = "base" | "crimson" | "shade" | "flash" | "gold";
@@ -45,7 +46,12 @@ function gridFor(key: string, img: HTMLImageElement): { cols: number; rows: numb
 }
 /** Sheets from a different tool: anchor each frame on its own body, not the idle pose's. */
 const OWN_ANIMS = new Set(["Run", "Walk"]);   // PixelLab runs/walks are imported as plain strips too
-const ownAnchored = (key: string, fromGrid: boolean) => fromGrid || VIEW_ANIMS.has(key.split("/")[1]) || OWN_ANIMS.has(key.split("/")[1]);
+/** Bodies whose attack/hurt/death sheets are CraftPix (consistent frames, shared anchor). */
+const CRAFTPIX_BODIES = new Set(["samurai", "archer", "commander", "kitsune", "karasu", "ytengu", "skwarrior", "skspear", "skarcher"]);
+const ownAnchored = (key: string, fromGrid: boolean) => {
+  const [ch, anim] = key.split("/");
+  return fromGrid || VIEW_ANIMS.has(anim) || OWN_ANIMS.has(anim) || (!CRAFTPIX_BODIES.has(ch) && anim !== "Idle");
+};
 
 function gridToStrip(img: HTMLImageElement, gd: { cols: number; rows: number; skip: number; end: number; pingpong: boolean; pick?: number[] }): HTMLCanvasElement {
   const cell = img.width / gd.cols;
@@ -133,6 +139,7 @@ export function loadSprites() {
   // Hand-made bosses (src/pixelart.ts) are painted in code at start-up.
   try {
     for (const [id, look] of [["oni", ONI_LOOK], ["raijin", RAIJIN_LOOK]] as const) {
+      if (d[`${id}/Idle`]) continue;   // real PixelLab art for this boss is in ./art — use that instead
       const sh = buildSheets(look);
       for (const [anim, c] of Object.entries(sh)) sheets.set(`${id}/${anim}`, { img: c, size: c.height, frames: Math.round(c.width / c.height) });
     }
@@ -187,7 +194,7 @@ function sheetFor(id: CharId, anim: Anim): Sheet | undefined {
     ?? (anim === "Protection" ? g("Protect") : anim === "Protect" ? g("Protection") : undefined)
     ?? (anim === "Shot" ? g("Shot_1") : anim === "Shot_1" ? g("Shot") : undefined)
     ?? (anim === "Run" ? g("Walk") : undefined)
-    ?? (anim.startsWith("Attack") || anim.startsWith("Shot") ? g("Attack_1") : undefined)
+    ?? (anim.startsWith("Attack") || anim.startsWith("Shot") ? g("Attack_1") ?? g("Walk") : undefined)
     ?? g("Idle");
 }
 
@@ -212,6 +219,8 @@ function imageFor(id: CharId, anim: Anim, v: Variant): { src: CanvasImageSource;
 export function frameCount(id: CharId, anim: Anim): number { return sheetFor(id, anim)?.frames ?? 1; }
 /** True only if this character has its own sheet for the animation (no fallback). */
 export function hasAnim(id: CharId, anim: Anim): boolean { return sheets.has(`${id}/${anim}`); }
+/** True if this body has any art at all. */
+export function hasBody(id: CharId): boolean { return sheets.has(`${id}/Idle`) || sheets.has(`${id}/Walk`); }
 
 export interface DrawOpts {
   /** Frame index (wrapped for loops, clamped otherwise). */

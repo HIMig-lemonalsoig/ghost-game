@@ -1,5 +1,5 @@
 // Consolidated game engine and supporting systems. No React dependencies.
-import { loadSprites, spritesReady, drawChar, classChar, frameCount, hasAnim, type Anim as SprAnim, type CharId, type Variant as SprVariant } from "./sprites";
+import { loadSprites, spritesReady, drawChar, classChar, frameCount, hasAnim, hasBody, type Anim as SprAnim, type CharId, type Variant as SprVariant } from "./sprites";
 import { drawCrestCursor } from "./cursor";
 import { Fx, hueOf } from "./fx";
 import { updateUltTrail, drawUltUnder, drawUltOver } from "./ultvfx";
@@ -2694,6 +2694,16 @@ export type EnemyArchetype =
   | "mirror"
   // STEP 4 (src/newenemies.ts)
   | "inoshishi" | "kappa_raid" | "taiko" | "tsukumo" | "tsukumo_small" | "sniper" | "mukade" | "yukiwarashi" | "mimic";
+
+/** v3.13: yokai drawn as sprites (only when their art is present). Bodies only — every
+ *  warning ring / telegraph is still drawn by the game on top. */
+const YOKAI_SPRITES: Record<string, { id: CharId; variant?: SprVariant; h?: number }> = {
+  onryo: { id: "onryo" }, mirror: { id: "mirror" }, bomber: { id: "bomber" },
+  kappa_raid: { id: "kappa" }, taiko: { id: "taiko" }, yukiwarashi: { id: "yukiwarashi", h: 4.6 },
+  sniper: { id: "archer", variant: "shade" },
+  lantern: { id: "lantern", h: 4.4 }, wisp: { id: "wisp", h: 3.4 }, tsukumo: { id: "tsukumo", h: 3.6 }, tsukumo_small: { id: "tsukumo", h: 3.6 },
+  mimic: { id: "mimic", h: 2.6 }, inoshishi: { id: "boar", h: 3.2 }, nue: { id: "nue", h: 3.0 },
+};
 
 export type BossKind = "oni" | "kitsune" | "gasha" | "raijin";
 /** STEP 3: perk families for family weighting (owning one makes the rest 1.5× likelier). */
@@ -11231,6 +11241,11 @@ export class GhostGame {
   // Bodies for the newer roles. Drawn unrotated around the enemy's position.
   private drawSpecialEnemy(e: Enemy): boolean {
     const ctx = this.ctx;
+    if (e.archetype !== "priest" && YOKAI_SPRITES[e.archetype] && this.isSpriteEnemy(e)) {
+      this.drawEnemySprite(e, false);
+      this.drawYokaiOverlay(e);
+      return true;
+    }
     if (drawNewEnemy(this, ctx, e)) return true;   // STEP 4
     const t = this.elapsed + e.id;
     const flash = e.hitFlash > 0;
@@ -11666,10 +11681,70 @@ export class GhostGame {
   isSpriteEnemy(e: Enemy): boolean {
     if (!this.useSprites || !spritesReady()) return false;
     if (e.isBoss) return e.bossKind === "kitsune" || e.bossKind === "gasha" || e.bossKind === "oni" || e.bossKind === "raijin";
+    const yk = YOKAI_SPRITES[e.archetype];
+    if (yk) return hasBody(yk.id) && !(e.archetype === "kappa_raid" && e.submerged) && !(e.archetype === "mimic" && (e as Enemy & { disguised?: boolean }).disguised);
     return e.archetype === "normal" || e.archetype === "assassin" || e.archetype === "archer" || e.archetype === "heavy" || e.archetype === "shielded" || e.archetype === "priest";
   }
 
-  spriteHeightOf(e: Enemy): number { return e.size * (e.bossKind === "gasha" ? 4.2 : e.bossKind === "oni" || e.bossKind === "raijin" ? 3.6 : e.isBoss ? 3.4 : 4.4); }
+  /** Gameplay warnings that sat on the old yokai bodies, redrawn on top of their sprites. */
+  private drawYokaiOverlay(e: Enemy) {
+    const ctx = this.ctx, t = this.elapsed + e.id;
+    const midY = e.size - this.spriteHeightOf(e) * 0.5;   // body centre (feet are at +size)
+    ctx.save();
+    switch (e.archetype) {
+      case "onryo": {
+        const charge = Math.max(0, 1 - (e.special ?? ONRYO.castEvery) / 0.6);
+        if (charge > 0) {
+          ctx.strokeStyle = `hsla(280, 85%, 70%, ${charge})`; ctx.lineWidth = 2.5;
+          ctx.beginPath(); ctx.arc(0, midY, e.size + 14, -Math.PI / 2, -Math.PI / 2 + charge * Math.PI * 2); ctx.stroke();
+        }
+        break;
+      }
+      case "nue": {
+        if ((e.summonCharge ?? 0) > 0) {
+          const k = 1 - (e.summonCharge ?? 0) / NUE.summonCharge;
+          ctx.strokeStyle = `hsla(270, 90%, 70%, ${0.4 + k * 0.6})`; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.arc(0, midY, e.size + 10 + k * 18, 0, Math.PI * 2); ctx.stroke();
+          ctx.fillStyle = `hsla(270, 90%, 60%, ${0.12 + k * 0.2})`; ctx.fill();
+        }
+        break;
+      }
+      case "mirror": {   // the reflecting front: a gold arc on the ground on the mirror's side
+        ctx.translate(0, e.size - 2); ctx.scale(1, 0.45); ctx.rotate(e.facing);
+        ctx.strokeStyle = `hsla(45, 95%, 70%, ${0.55 + Math.sin(t * 4) * 0.25})`; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(0, 0, e.size + 10, -0.9, 0.9); ctx.stroke();
+        break;
+      }
+      case "lantern": {
+        if ((e.fuse ?? 0) > 0) {
+          const fp = 1 - e.fuse! / 0.8;
+          ctx.fillStyle = `hsla(10, 90%, 50%, ${0.12 + fp * 0.18})`; ctx.beginPath(); ctx.arc(0, 0, 90, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = `hsla(10, 95%, 60%, ${0.5 + fp * 0.4})`; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(0, 0, 90, 0, Math.PI * 2); ctx.stroke();
+          ctx.beginPath(); ctx.arc(0, 0, 90 * fp, 0, Math.PI * 2); ctx.stroke();
+        }
+        break;
+      }
+      case "taiko": {
+        if ((e.drumT ?? 0) > 0) {
+          const r = e.size + 8 + ((t * 60) % 30);
+          ctx.strokeStyle = `hsla(0, 80%, 60%, ${1 - ((t * 60) % 30) / 30})`; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.ellipse(0, e.size - 2, r, r * 0.45, 0, 0, Math.PI * 2); ctx.stroke();
+        }
+        break;
+      }
+      case "inoshishi": {
+        if (e.stunTimer > 0) {
+          ctx.fillStyle = "hsl(50, 100%, 70%)";
+          for (let i = 0; i < 3; i++) { const a = t * 5 + i * 2.1; ctx.beginPath(); ctx.arc(Math.cos(a) * 12, e.size - this.spriteHeightOf(e) - 4 + Math.sin(a) * 4, 2.5, 0, Math.PI * 2); ctx.fill(); }
+        }
+        break;
+      }
+    }
+    ctx.restore();
+  }
+
+  spriteHeightOf(e: Enemy): number { return e.size * (YOKAI_SPRITES[e.archetype]?.h ?? (e.bossKind === "gasha" ? 4.2 : e.bossKind === "oni" || e.bossKind === "raijin" ? 3.6 : e.isBoss ? 3.4 : 4.4)); }
 
   private drawEnemySprite(e: Enemy, dead: boolean): boolean {
     if (!this.isSpriteEnemy(e)) return false;
@@ -11684,6 +11759,7 @@ export class GhostGame {
       case "heavy": id = "commander"; break;
       case "shielded": id = undead ? "skwarrior" : "commander"; break;
       default:
+        if (YOKAI_SPRITES[e.archetype] && !e.isBoss) { id = YOKAI_SPRITES[e.archetype].id; variant = YOKAI_SPRITES[e.archetype].variant ?? "base"; break; }
         if (e.bossKind === "kitsune") { id = "kitsune"; break; }
         if (e.bossKind === "gasha") { id = "skwarrior"; break; }
         if (e.bossKind === "oni") { id = "oni"; break; }
@@ -11723,7 +11799,7 @@ export class GhostGame {
     } else if (e.state === "attacking") {
       anim = id === "archer" || id === "skarcher" ? "Shot" : e.id % 3 === 0 ? "Attack_2" : "Attack_1";
       frame = Math.max(0, Math.min(1, e.attackAnim)) * frameCount(id, anim); loop = false;
-    } else if (e.hitFlash > 0.5) { anim = "Hurt"; frame = (1 - e.hitFlash) * frameCount(id, "Hurt") * 2; loop = false; }
+    } else if (e.hitFlash > 0.5 && !e.isBoss) { anim = "Hurt"; frame = (1 - e.hitFlash) * frameCount(id, "Hurt") * 2; loop = false; }
     else if (e.archetype === "shielded" && e.shieldHp > 0 && e.state === "alert") { anim = "Protect"; frame = 99; loop = false; }
     else if (e.state !== "stunned" && e.speed > 0.5) { anim = e.archetype === "assassin" ? "Run" : "Walk"; frame = t * (e.archetype === "assassin" ? 14 : 10); }
     else { anim = "Idle"; frame = t * 7; }
@@ -11737,7 +11813,15 @@ export class GhostGame {
       const vy = Math.max(-1, Math.min(1, edy / emv));
       ctx.rotate((flip ? -1 : 1) * (0.05 + 0.08 * Math.max(0, -vy) - 0.04 * Math.max(0, vy)));
     }
-    drawChar(ctx, id, anim, { frame, loop, flip, height: h, variant, flash: e.hitFlash > 0 ? Math.min(0.8, e.hitFlash) : 0 });
+    let fl = e.hitFlash > 0 ? Math.min(0.8, e.hitFlash) : 0;
+    if (e.archetype === "lantern" && (e.fuse ?? 0) > 0) {   // swell and blink before it bursts
+      const fp = 1 - e.fuse! / 0.8;
+      ctx.scale(1 + fp * 0.45, 1 + fp * 0.45);
+      if (Math.sin(this.elapsed * (20 + fp * 40)) > 0) fl = 0.8;
+    }
+    if (e.archetype === "tsukumo" || e.archetype === "tsukumo_small") ctx.translate(0, -Math.abs(Math.sin(this.elapsed * 6 + e.id)) * e.size * 0.45);   // hops on one leg
+    if (e.archetype === "taiko" && (e.drumT ?? 0) > 0) { const b = 1 + 0.08 * Math.sin(this.elapsed * 40); ctx.scale(b, b); }
+    drawChar(ctx, id, anim, { frame, loop, flip, height: h, variant, flash: fl });
     ctx.restore();
     return true;
   }
