@@ -10695,12 +10695,12 @@ export class GhostGame {
     } else if (rangedHeld) {
       this.drawRangedWeapon(rangedHeld);
     } else if (weaponId === "twin_sai") {
-      this.drawTwinSai();
+      if (!spriteBody || swingingNow) this.drawTwinSai();
     } else if (weaponId === "flame_spear") {
       const ph = 1 - p.attackAnim;
       const ext = p.attackAnim > 0 ? (ph < 0.25 ? ph / 0.25 : 1 - (ph - 0.25) / 0.75) : 0;
       ctx.rotate(p.attackAnim > 0 ? 0 : 0.18 * swingDir);
-      this.drawSpear(ext * 46);
+      if (!spriteBody || swingingNow) this.drawSpear(ext * 46);
     } else {
       if (this.barrageActive && swingingNow) {
         for (const off of [-0.35, -0.7]) {
@@ -10712,8 +10712,9 @@ export class GhostGame {
         }
       }
       ctx.rotate(swingAng);
-      // Sprite bodies already hold the katana — only draw other weapons.
-      if (!spriteBody || weaponId) this.drawPlayerWeapon(weaponId, p.attackAnim > 0, weaponRange);
+      // Sprite bodies already hold a blade: only show the weapon model mid-swing (so the arc
+      // still reads), never at rest — at rest it spun with the cursor across the body.
+      if (!spriteBody || (weaponId && swingingNow)) this.drawPlayerWeapon(weaponId, p.attackAnim > 0, weaponRange);
     }
     ctx.restore();
 

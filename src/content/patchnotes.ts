@@ -18,6 +18,7 @@ export const PATCH_NOTES: PatchNote[] = [
       ["new", "The samurai has a new walk and a much faster-looking sprint (made in PixelLab), replacing the old run."],
       ["fix", "Running down no longer jitters: frames line up on the chest instead of the swinging sword, the half-turned frames are gone, and the animation plays back and forth instead of snapping."],
       ["fix", "Moving diagonally no longer flickers between the side view and the front/back view."],
+      ["fix", "Melee weapons other than the katana (war fan, spear, sai, axes…) no longer hang across the pixel-art body spinning with your cursor. They only appear during a swing, so the swing arc still shows. Bows and guns still show, since they aim."],
       ["fix", "Every body now centres on its chest, so switching between idle, walk, run and attack doesn't nudge the character sideways."],
     ],
   },
