@@ -12,6 +12,16 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.16", date: "2026-11-27", title: "Signature Moves", kanji: "奥",
+    summary: "Every class's ultimate is now performed by your pixel-art character.",
+    lines: [
+      ["new", "The ult cutscene shows your own character, large, performing its signature move with a glow in your class colour: the Kensei's iaijutsu draw, the Tetsu-bo's earth-cracking slam, the Kitsune's foxfire spell, the Archer's charged shot and more."],
+      ["new", "19 hand-checked ult moves across all six bodies: draw, crouch-dash, sky raise, whirlwind spin, guard, aimed release, lunge, spell, banner/blade plant and ground slam. Each class plays the move that matches its ultimate."],
+      ["new", "In the fight, your character plays the same move for the ult's opening moment instead of the old drawn weapon pose."],
+      ["change", "Frames that broke the look were cut (a smeared draw frame, a crouch that turned into someone else, a flickering cast, a ghosted slam)."],
+    ],
+  },
+  {
     version: "3.15", date: "2026-11-27", title: "The Armoury", kanji: "武",
     summary: "Every weapon and every evolution has pixel art.",
     lines: [

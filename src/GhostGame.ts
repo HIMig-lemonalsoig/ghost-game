@@ -4110,6 +4110,8 @@ export class GhostGame {
   showCursor = true; cursorInside = true; cursorT = 0; cursorSpin = 0; cursorKick = 0; cursorScale = 1; minimapScale = 1;
   /** v3.7 pixel sprites: on/off + per-player animation state. */
   useSprites = true;
+  /** True for the frame the sprite body itself is playing the ult move (code pose is skipped). */
+  sprUltPose = false;
   /** Ghost copies of the player (phantoms, clones, decoys) drawn through drawPlayer. */
   ghostLook: { variant?: SprVariant; outline?: string; moving?: boolean } | null = null;
   sprPrev = { x: 0, y: 0, mv: 0, lastAtk: 0, atkIdx: 0, face: 1, vert: false, vx: 0, vy: 0, lastT: 0, dustT: 0, dust: [] as { x: number; y: number; vx: number; vy: number; age: number; life: number; r: number }[] };
@@ -10528,7 +10530,11 @@ export class GhostGame {
     sp.lastAtk = p.attackAnim;
     const t = this.elapsed;
     let anim: SprAnim, frame: number, loop = true;
-    if (p.attackAnim > 0) {
+    const ultAnim = `Ult_${ULT_STYLES[this.stats.classId].pose}` as SprAnim;
+    this.sprUltPose = !!this.ultPose && hasAnim(id, ultAnim);
+    if (this.sprUltPose) {   // the class's ult move, played once over the 0.9s pose
+      anim = ultAnim; frame = (this.ultPose!.t / this.ultPose!.dur) * frameCount(id, ultAnim) * 1.05; loop = false;
+    } else if (p.attackAnim > 0) {
       anim = id === "archer" ? "Shot" : (["Attack_1", "Attack_2", "Attack_3"] as const)[sp.atkIdx];
       frame = (1 - p.attackAnim) * frameCount(id, anim); loop = false;
     } else if (p.hitFlash > 0) { anim = "Hurt"; frame = (1 - p.hitFlash) * frameCount(id, "Hurt"); loop = false; }
@@ -10721,6 +10727,8 @@ export class GhostGame {
       if (spinWeapon === "twin_sai") { this.drawSai(1); ctx.rotate(Math.PI); this.drawSai(1); }
       else if (spinWeapon === "flame_spear") this.drawSpear(18);
       else this.drawPlayerWeapon(spinWeapon, true, weaponRange * 0.85);
+    } else if (this.ultPose && !swingingNow && spriteBody && this.sprUltPose) {
+      // The sprite is playing its own ult move — nothing to draw on top.
     } else if (this.ultPose && !swingingNow) {
       // Hold the class's ultimate pose (post-strike frame) for a moment.
       const style = ULT_STYLES[this.stats.classId];
@@ -13614,6 +13622,22 @@ export class GhostGame {
   }
 
   private drawCutsceneCharacter(ctx: CanvasRenderingContext2D, x: number, y: number, S: number, f: { ang: number; squash: number; glow: number }, hue: number, pose: string) {
+    if (this.useSprites && spritesReady()) {   // the real character performing its ult move, big
+      const id = classChar(this.stats.classId);
+      let anim = `Ult_${pose}` as SprAnim;
+      if (!hasAnim(id, anim)) anim = "Attack_1";
+      const k = this.ultCutscene ? Math.min(1, this.ultCutscene.t / this.ultCutscene.dur) : 1;
+      const n = frameCount(id, anim);
+      const fr = Math.min(n - 1, (k / 0.8) * n);   // finish the move a little before the banner fades
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0,0.45)";
+      ctx.beginPath(); ctx.ellipse(x + 2 * S, y + 13 * S, 15 * S, 5 * S, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.translate(x, y + 13 * S);
+      drawChar(ctx, id, anim, { frame: fr, loop: false, height: S * 46,
+        outline: { color: `hsl(${hue}, 95%, 66%)`, alpha: 0.35 + f.glow * 0.6, width: 3 } });
+      ctx.restore();
+      return;
+    }
     ctx.save();
     ctx.translate(x, y);
     ctx.scale(S, S * f.squash);

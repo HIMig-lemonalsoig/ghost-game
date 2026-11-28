@@ -13,7 +13,7 @@ import { buildSheets, ONI_LOOK, RAIJIN_LOOK } from "./pixelart";
 export type CharId = "samurai" | "archer" | "commander" | "kitsune" | "karasu" | "ytengu" | "skwarrior" | "skspear" | "skarcher" | "oni" | "raijin"
   | "onryo" | "kappa" | "taiko" | "bomber" | "mirror" | "yukiwarashi" | "lantern" | "wisp" | "tsukumo" | "mimic" | "boar" | "nue"
   | "shogun" | "hawk" | "turret" | "inktiger" | "mukade_head" | "mukade_seg";
-export type Anim = "Idle" | "Walk" | "Run" | "Attack_1" | "Attack_2" | "Attack_3" | "Hurt" | "Dead" | "Protection" | "Protect" | "Shot" | "Shot_1" | "RunUp" | "RunDown" | "IdleUp" | "IdleDown";
+export type Anim = "Idle" | "Walk" | "Run" | "Attack_1" | "Attack_2" | "Attack_3" | "Hurt" | "Dead" | "Protection" | "Protect" | "Shot" | "Shot_1" | "RunUp" | "RunDown" | "IdleUp" | "IdleDown" | `Ult_${string}`;
 /** Colour variants, made once with a canvas filter and cached. */
 export type Variant = "base" | "crimson" | "shade" | "flash" | "gold" | "spirit";
 
@@ -52,7 +52,7 @@ const OWN_ANIMS = new Set(["Run", "Walk"]);   // PixelLab runs/walks are importe
 const CRAFTPIX_BODIES = new Set(["samurai", "archer", "commander", "kitsune", "karasu", "ytengu", "skwarrior", "skspear", "skarcher"]);
 const ownAnchored = (key: string, fromGrid: boolean) => {
   const [ch, anim] = key.split("/");
-  return fromGrid || VIEW_ANIMS.has(anim) || OWN_ANIMS.has(anim) || (!CRAFTPIX_BODIES.has(ch) && anim !== "Idle");
+  return fromGrid || VIEW_ANIMS.has(anim) || OWN_ANIMS.has(anim) || anim.startsWith("Ult_") || anim === "RefEast" || (!CRAFTPIX_BODIES.has(ch) && anim !== "Idle");
 };
 
 function gridToStrip(img: HTMLImageElement, gd: { cols: number; rows: number; skip: number; end: number; pingpong: boolean; pick?: number[] }): HTMLCanvasElement {
@@ -154,7 +154,14 @@ export function loadSprites() {
       const src = gd ? gridToStrip(img, gd) : img;
       const size = src.height;
       const sh: Sheet = { img: src, size, frames: Math.max(1, Math.round(src.width / size)) };
-      if (ownAnchored(key, !!gd)) sh.own = ownAnchors(src, size, sh.frames);
+      if (ownAnchored(key, !!gd)) {
+        sh.own = ownAnchors(src, size, sh.frames);
+        if (key.split("/")[1].startsWith("Ult_")) {   // effects (auras, slash rings) would drag per-frame anchors: hold one steady anchor
+          const med = (v: number[]) => v.slice().sort((a, b) => a - b)[v.length >> 1];
+          const cx = med(sh.own.map(o => o.cx)), feet = med(sh.own.map(o => o.feet));
+          sh.own = sh.own.map(() => ({ cx, feet }));
+        }
+      }
       sheets.set(key, sh);
       loaded++;
     };
@@ -241,7 +248,8 @@ function scaleFor(id: CharId, anim: Anim): number {
   if (hit !== undefined) return hit;
   let f = 1;
   const idle = sheets.get(`${id}/Idle`);
-  const refKey = anim === "RunDown" || anim === "IdleDown" ? "IdleDown"
+  const refKey = anim.startsWith("Ult_") ? (sheets.has(`${id}/RefEast`) ? "RefEast" : "Walk")
+    : anim === "RunDown" || anim === "IdleDown" ? "IdleDown"
     : anim === "RunUp" || anim === "IdleUp" ? "IdleUp"
     : anim === "Run" || anim === "Walk" ? "Walk" : null;
   const ref = refKey ? sheets.get(`${id}/${refKey}`) : undefined;
