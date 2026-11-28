@@ -1,5 +1,6 @@
 // Consolidated game engine and supporting systems. No React dependencies.
-import { loadSprites, spritesReady, drawChar, classChar, frameCount, hasAnim, hasBody, drawItem, type Anim as SprAnim, type CharId, type Variant as SprVariant } from "./sprites";
+import { HAND_TRACKS, HOLD_HAND } from "./handtracks";
+import { loadSprites, spritesReady, drawChar, classChar, frameCount, hasAnim, hasBody, drawItem, drawProp, frameAnchor, type Anim as SprAnim, type CharId, type Variant as SprVariant } from "./sprites";
 import { drawCrestCursor } from "./cursor";
 import { Fx, hueOf } from "./fx";
 import { updateUltTrail, drawUltUnder, drawUltOver } from "./ultvfx";
@@ -819,6 +820,23 @@ const MELEE_SECONDARY_IDS: SecondaryId[] = [
 
 export const isMeleeSecondary = (id: SecondaryId): boolean =>
   MELEE_SECONDARY_IDS.includes(id);
+
+/** Hand-tracked bodies: the clip a ranged weapon plays when it fires, and for how long (s). Bow, crossbow
+ *  and blowgun clips have the weapon drawn into the art; the throws use a hand track. */
+const FIRE_CLIP: Partial<Record<SecondaryId, [string, number]>> = {
+  kunai: ["Flick", 0.32], shuriken_wheel: ["Flick", 0.32], smoke_bomb: ["Toss", 0.36], tetsubishi: ["Toss", 0.36],
+  kusarigama: ["Chain", 0.5], yumi: ["Bow", 0.45], crossbow: ["Xbow", 0.3], blowgun: ["Blow", 0.32],
+};
+const FIRE_OWNER: Record<string, SecondaryId[]> = {};
+for (const [w, c] of Object.entries(FIRE_CLIP)) (FIRE_OWNER[c![0]] ??= []).push(w as SecondaryId);
+/** Small throwables are held as one piece (art/props), not the inventory icon of a bundle. */
+const HELD_PROP: Partial<Record<SecondaryId, string>> = { kunai: "kunai1", shuriken_wheel: "shuriken1", tetsubishi: "caltrop1", smoke_bomb: "smokebomb1" };
+/** Resting weapon angle in the holding idle/run, per view (radians, facing right; negative = up). */
+const HOLD_ANGLE: Record<"side" | "front" | "back", (w: SecondaryId) => number> = {
+  side: w => w === "flame_spear" ? -1.3 : w === "yumi" ? -1.5 : w === "crossbow" || w === "blowgun" ? 0.35 : w === "tate" ? 0 : w === "kusarigama" ? -1.1 : -0.95,
+  front: w => w === "flame_spear" ? -1.75 : w === "yumi" ? -1.57 : w === "crossbow" || w === "blowgun" ? 1.9 : w === "tate" ? 0 : -2.1,
+  back: w => w === "flame_spear" ? -1.4 : w === "yumi" ? -1.57 : w === "crossbow" || w === "blowgun" ? 1.2 : w === "tate" ? 0 : -1.1,
+};
 
 /** Pixel bodies: which weapons are thrown from the hand, aimed from the shoulder or thrust. */
 const THROWN = new Set<SecondaryId>(["kunai", "shuriken_wheel", "smoke_bomb", "tetsubishi", "kusarigama"]);
@@ -4128,9 +4146,10 @@ export class GhostGame {
   /** True for the frame the sprite body itself is playing the ult move (code pose is skipped). */
   sprUltPose = false;
   sprBare = false;   // the pixel body is the weaponless version this frame (a non-katana weapon is in hand)
+  sprHeld = false;   // ...and that body drew the weapon in its own hand (hand-tracked clips)
   /** Ghost copies of the player (phantoms, clones, decoys) drawn through drawPlayer. */
   ghostLook: { variant?: SprVariant; outline?: string; moving?: boolean } | null = null;
-  sprPrev = { x: 0, y: 0, mv: 0, lastAtk: 0, atkIdx: 0, face: 1, vert: false, vx: 0, vy: 0, lastT: 0, throwT: 0, lastFire: 0, dustT: 0, dust: [] as { x: number; y: number; vx: number; vy: number; age: number; life: number; r: number }[] };
+  sprPrev = { x: 0, y: 0, mv: 0, lastAtk: 0, atkIdx: 0, face: 1, vert: false, vx: 0, vy: 0, lastT: 0, throwT: 0, lastFire: 0, fireClip: "", fireT: 0, fireDur: 0, dustT: 0, dust: [] as { x: number; y: number; vx: number; vy: number; age: number; life: number; r: number }[] };
   /** WARDROBE: the player's equipped cosmetics (set by the UI before a run; null = classic look). */
   look: Look | null = null;
   private lookPrev = { x: 0, y: 0, sway: 0 };
@@ -10554,6 +10573,8 @@ export class GhostGame {
     const bare = !!bareW && !this.sprUltPose && hasAnim(id, "Bare_Idle");
     this.sprBare = bare;
     if (this.fireAnim > sp.lastFire + 0.3 && heldNow && THROWN.has(heldNow)) sp.throwT = 0.3;
+    if (this.fireAnim > sp.lastFire + 0.3 && heldNow && FIRE_CLIP[heldNow]) { const c = FIRE_CLIP[heldNow]!; sp.fireClip = c[0]; sp.fireDur = c[1]; sp.fireT = 0; }
+    if (sp.fireClip) { sp.fireT += fdt; if (sp.fireT >= sp.fireDur || heldNow !== FIRE_OWNER[sp.fireClip]?.find(w => w === heldNow)) sp.fireClip = ""; }
     sp.lastFire = this.fireAnim;
     sp.throwT = Math.max(0, sp.throwT - fdt);
     if (this.sprUltPose) {   // the class's ult move, played once over the 0.9s pose
@@ -10632,7 +10653,45 @@ export class GhostGame {
       ctx.scale(1 - st * 0.7, 1 + st);
     }
     const view = anim === "RunUp" || anim === "IdleUp" ? "back" : anim === "RunDown" || anim === "IdleDown" ? "front" : "side";
-    if (bare) {
+    let held: Parameters<typeof drawChar>[3]["held"];
+    this.sprHeld = false;
+    if (bare && hasAnim(id, "Bare_Chop")) {
+      // Hand-tracked clips: a motion made for each kind of weapon, with the weapon drawn in the hand.
+      const w = bareW!;
+      let track: string | null = null, rest: "side" | "front" | "back" = "side";
+      if (p.attackAnim > 0 && p.swingWeaponId) {
+        const sw = p.swingWeaponId;
+        track = sw === "ono" || sw === "odachi" ? "Chop" : sw === "tate" ? "Bash" : THRUSTS.has(sw) ? "Thrust" : p.swingDir > 0 ? "Slash" : "Rise";
+        anim = `Bare_${track}`; frame = (1 - p.attackAnim) * frameCount(id, anim); loop = false;
+      } else if (sp.fireClip && hasAnim(id, `Bare_${sp.fireClip}`)) {
+        anim = `Bare_${sp.fireClip}`; frame = (sp.fireT / sp.fireDur) * frameCount(id, anim); loop = false;
+        track = HAND_TRACKS[sp.fireClip] ? sp.fireClip : null;
+        if (!track) anim = anim;   // bow / crossbow / blowgun clips carry the weapon in the art itself
+      } else {
+        if (anim === "Run" || anim === "RunUp" || anim === "RunDown" || anim === "IdleUp" || anim === "IdleDown") {
+          if (hasAnim(id, `Bare_${anim}`)) anim = `Bare_${anim}`;
+        } else { anim = "Bare_Idle"; frame = t * 8; loop = true; }
+        rest = anim === "Bare_RunUp" || anim === "Bare_IdleUp" ? "back" : anim === "Bare_RunDown" || anim === "Bare_IdleDown" ? "front" : "side";
+      }
+      const firingBaked = !!sp.fireClip && !HAND_TRACKS[sp.fireClip] && anim === `Bare_${sp.fireClip}`;
+      if (!firingBaked) {
+        const wpn = (p.attackAnim > 0 && p.swingWeaponId) ? p.swingWeaponId : w;
+        const restRef = rest === "back" ? "Bare_IdleUp" : rest === "front" ? "Bare_IdleDown" : "Bare_Idle";
+        const r0 = frameAnchor(id, restRef as SprAnim, 0);
+        const animNow = anim;
+        held = {
+          behind: rest === "back",
+          at: (f) => {
+            if (track) { const k = HAND_TRACKS[track][Math.min(f, HAND_TRACKS[track].length - 1)]; return k[2] === null ? null : [k[0], k[1], k[2]]; }
+            const a = frameAnchor(id, animNow, f), h = HOLD_HAND[rest];
+            const dx = a && r0 ? a.cx - r0.cx : 0, dy = a && r0 ? a.feet - r0.feet : 0;
+            return [h[0] + dx, h[1] + dy, HOLD_ANGLE[rest](wpn)];
+          },
+          draw: (c, x, y, ang) => this.drawHeldWeapon(c, wpn, x, y, ang, track),
+        };
+        this.sprHeld = true;
+      }
+    } else if (bare) {
       if (p.attackAnim > 0 && p.swingWeaponId) {
         anim = THRUSTS.has(p.swingWeaponId) ? "Bare_Thrust" : "Bare_Swing";
         frame = (1 - p.attackAnim) * frameCount(id, anim); loop = false;
@@ -10653,7 +10712,7 @@ export class GhostGame {
       ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = gl;
       ctx.beginPath(); ctx.arc(0, -R * 1.6, R * 4.2, 0, Math.PI * 2); ctx.fill(); ctx.restore();
     }
-    drawChar(ctx, id, anim, { frame, loop, flip: sp.face < 0, height: R * 4.4, flash: p.hitFlash > 0 ? 0.6 : 0, variant: "base",
+    drawChar(ctx, id, anim, { frame, loop, flip: sp.face < 0, height: R * 4.4, flash: p.hitFlash > 0 ? 0.6 : 0, variant: "base", held,
       outline: fox > 0 ? { color: `hsl(${30 + 12 * Math.sin(now * 9)}, 100%, 60%)`, alpha: Math.min(1, fox * 1.6), width: 1.6 + Math.sin(now * 16) } : undefined,
       dye: this.look ? lookDye(this.look) : undefined, layers: this.look ? spriteLayers(this.look, now, sp.mv, view) : undefined });
     ctx.restore();
@@ -10671,6 +10730,33 @@ export class GhostGame {
       ctx.restore();
     }
     return true;
+  }
+
+  /** A weapon in a hand-tracked pixel body's fist: grip on (x, y), turned to `ang` (local px, facing right). */
+  private drawHeldWeapon(ctx: CanvasRenderingContext2D, w: SecondaryId, x: number, y: number, ang: number, track: string | null) {
+    const len = BARE_LEN[w] ?? 34, evo = this.isEvolved(w);
+    const prop = !evo ? HELD_PROP[w] : undefined;
+    ctx.save();
+    ctx.translate(x, y);
+    if (prop) {
+      // Small throwables are held one at a time, between the fingers, point out.
+      if (w === "kunai") { drawProp(ctx, "kunai1", 2, -2, 15, ang + Math.PI / 2 + 0.15, 0.5, 0.82); drawProp(ctx, "kunai1", -1, 1, 15, ang + Math.PI / 2 - 0.25, 0.5, 0.82); }
+      else drawProp(ctx, prop, 0, -3, w === "shuriken_wheel" ? 12 : 10, w === "shuriken_wheel" && track ? this.elapsed * 20 : 0);
+      ctx.restore();
+      return;
+    }
+    ctx.rotate(ang);
+    if (w === "kusarigama" && track === "Chain") {   // the weight whirls on its chain overhead
+      const sp = this.elapsed * 22, cr = 16;
+      ctx.strokeStyle = "hsl(210, 10%, 62%)"; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(sp) * cr, Math.sin(sp) * cr * 0.45); ctx.stroke();
+      ctx.fillStyle = "hsl(210, 10%, 35%)"; ctx.beginPath(); ctx.arc(Math.cos(sp) * cr, Math.sin(sp) * cr * 0.45, 2.2, 0, Math.PI * 2); ctx.fill();
+    }
+    const key = `${w}${evo ? "_evo" : ""}`;
+    const grip = w === "tate" ? 0.5 : w === "flame_spear" ? (track === "Thrust" ? 0.45 : 0.3) : w === "yumi" || w === "shuriken_wheel" || w === "smoke_bomb" || w === "tetsubishi" ? 0.5 : 0.12;
+    if (w === "tate") ctx.rotate(-ang);   // a shield stays upright, face out
+    drawItem(ctx, key, -len * grip, len) || drawItem(ctx, w, -len * grip, len);
+    ctx.restore();
   }
 
   /** The weaponless pixel body's hand-held weapon: held at rest, swung from the shoulder,
@@ -10838,6 +10924,8 @@ export class GhostGame {
       if (spinWeapon === "twin_sai") { this.drawSai(1); ctx.rotate(Math.PI); this.drawSai(1); }
       else if (spinWeapon === "flame_spear") this.drawSpear(18);
       else this.drawPlayerWeapon(spinWeapon, true, weaponRange * 0.85);
+    } else if (spriteBody && this.sprHeld) {
+      // The pixel body is holding its weapon itself.
     } else if (spriteBody && this.sprBare && !pose && !(this.ultPose && !swingingNow) && !(this.player.deflectTimer > 0 && !swingingNow)) {
       ctx.rotate(-p.facing);
       this.drawBareWeapon(swingingNow ? weaponId : null, swingAng, weaponRange);

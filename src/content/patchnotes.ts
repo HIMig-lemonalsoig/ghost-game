@@ -12,6 +12,17 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.19", date: "2026-11-28", title: "In Hand", kanji: "握",
+    summary: "The Samurai body now really holds every weapon, with a motion made for each one.",
+    lines: [
+      ["new", "Samurai-bodied classes hold the weapon in their fist: the grip sits exactly in the hand on every frame, and the fist is drawn over the handle. From behind, the weapon is carried over the back."],
+      ["new", "A motion for each kind of weapon: a two-handed overhead chop for the ōdachi and war axe, quick slashes that alternate with rising cuts for the war fan and jutte, a lunging thrust for the flame spear and twin sai, and a shield bash."],
+      ["new", "Kunai are held one or two at a time between the fingers (no more bundle of three), cocked behind the head and flicked; they leave the hand on release. Shuriken are flicked the same way, smoke bombs and caltrops are tossed underhand, and the kusarigama's weight whirls overhead before the throw."],
+      ["new", "The bow is drawn to the cheek and loosed, the crossbow is raised to the shoulder and fired, and the blowgun goes to the mouth for each dart."],
+      ["change", "Evolved weapons show their evolved art in the hand. The other bodies (Commander, Archer, Kitsune, Karasu, Tengu) get the same treatment next."],
+    ],
+  },
+  {
     version: "3.18.2", date: "2026-11-28", title: "The Full Tempest", kanji: "霊",
     summary: "Spirit Tempest's vortex now lasts as long as the ult does.",
     lines: [

@@ -291,6 +291,10 @@ export interface DrawOpts {
   /** Extra art drawn with the body (already flipped to face right): `behind` before it, `front` after.
    *  (hx, hy) is the top-centre of the head in local px, `head` the head's height in px. */
   layers?: { behind?: (hx: number, hy: number, head: number, ctx: CanvasRenderingContext2D) => void; front?: (hx: number, hy: number, head: number, ctx: CanvasRenderingContext2D) => void };
+  /** A held weapon: `at` gives the hand point for frame f in sprite px (and the weapon angle, facing
+   *  right; null = nothing in hand). `draw` paints the weapon with its grip at (x, y) in local px.
+   *  Unless `behind`, the fist is redrawn over the grip so the hand wraps the handle. */
+  held?: { at: (f: number) => [number, number, number] | null; draw: (ctx: CanvasRenderingContext2D, x: number, y: number, ang: number) => void; behind?: boolean };
 }
 
 // ── Wardrobe dyes ────────────────────────────────────────────────────────────
@@ -415,7 +419,14 @@ export function drawChar(ctx: CanvasRenderingContext2D, id: CharId, anim: Anim, 
     head = { hx: dx + hd.hx * k + (fix?.dx ?? 0) * hu, hy: dy + hd.hy * k + (fix?.dy ?? 0) * hu };
     o.layers.behind?.(head.hx, head.hy, o.height * 0.2, ctx);
   }
+  const hp = o.held?.at(f) ?? null;
+  if (hp && o.held!.behind) o.held!.draw(ctx, dx + hp[0] * k, dy + hp[1] * k, hp[2]);
   ctx.drawImage(im.src, f * sh.size, 0, sh.size, sh.size, dx, dy, s, s);
+  if (hp && !o.held!.behind) {
+    o.held!.draw(ctx, dx + hp[0] * k, dy + hp[1] * k, hp[2]);
+    const r = 3.5, sx = Math.round(hp[0] - r), sy = Math.round(hp[1] - r), w = Math.round(r * 2);   // the fist, back over the grip
+    ctx.drawImage(im.src, f * sh.size + sx, sy, w, w, dx + sx * k, dy + sy * k, w * k, w * k);
+  }
   if (head) o.layers!.front?.(head.hx, head.hy, o.height * 0.2, ctx);
   if (o.flash && o.flash > 0) {
     const fl = imageFor(id, anim, "flash");
@@ -497,6 +508,30 @@ function boxOf(id: string, sh: Sheet) {
   cosBox.set(id, b);
   return b;
 }
+/** A frame's own anchor (cx, feet) in sprite px, for hand tracks measured on another frame. */
+export function frameAnchor(id: CharId, anim: Anim, f: number): { cx: number; feet: number } | null {
+  const sh = sheets.get(`${id}/${anim}`);
+  if (!sh) return null;
+  const n = sh.frames, i = ((Math.floor(f) % n) + n) % n;
+  const o = sh.own?.[i];
+  if (o) return { cx: o.cx, feet: o.feet };
+  const an = anchorOf(id);
+  return { cx: an.cx, feet: an.feet };
+}
+
+/** Draw a prop (art/props/<key>.png) `size` px tall, rotated, with (ax, ay) as the pivot (0..1 of its box). */
+export function drawProp(ctx: CanvasRenderingContext2D, key: string, x: number, y: number, size: number, rot = 0, ax = 0.5, ay = 0.5): boolean {
+  const sh = sheets.get(`props/${key}`);
+  if (!sh) return false;
+  const smooth = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = false;
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+  ctx.drawImage(sh.img, 0, 0, sh.size, sh.size, -size * ax, -size * ay, size, size);
+  ctx.restore();
+  ctx.imageSmoothingEnabled = smooth;
+  return true;
+}
+
 /** Per-body nudge of the detected head (head units; +x = forward). */
 const HEAD_FIX: Partial<Record<string, { dx: number; dy: number }>> = { kitsune: { dx: -0.18, dy: 0.12 } };
 
