@@ -12,6 +12,18 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.12", date: "2026-11-27", title: "All Sides", kanji: "全",
+    summary: "The archer, kitsune and both tengu can now be seen from the front and the back.",
+    lines: [
+      ["new", "Archer (Takajō, Teppō, archer enemies): new run and walk, plus front and back views when moving up or down."],
+      ["new", "Kitsune (Kitsune class and the Nine-Tailed Witch boss): glides toward you with all nine tails fanned, runs away showing her tails, and has a new side run and walk."],
+      ["new", "Karasu tengu (Tengu class and assassins): sprints with its wings spread from every side, crow beak visible running at you."],
+      ["new", "Yamabushi tengu (Yamabushi class and healer monks): red face and white mane from the front, wings from the back, new run and walk."],
+      ["change", "Every frame was checked by hand; runs that changed outfit, lost a beak or barely moved were thrown out and remade. Skeletons keep the side view for now."],
+      ["change", "Art made with PixelLab from the CraftPix characters (offline version only)."],
+    ],
+  },
+  {
     version: "3.11.3", date: "2026-11-27", title: "Face the Camera", kanji: "面",
     summary: "The samurai and the commander now have real front views.",
     lines: [

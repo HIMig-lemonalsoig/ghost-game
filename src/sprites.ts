@@ -44,7 +44,8 @@ function gridFor(key: string, img: HTMLImageElement): { cols: number; rows: numb
   return { cols, rows: cols, skip: SKIP[key] ?? (anim === "RunUp" ? 1 : 0), end: DROP_END[key] ?? 0, pingpong: PINGPONG.has(key), pick: PICK[key] };
 }
 /** Sheets from a different tool: anchor each frame on its own body, not the idle pose's. */
-const ownAnchored = (key: string, fromGrid: boolean) => fromGrid || VIEW_ANIMS.has(key.split("/")[1]);
+const OWN_ANIMS = new Set(["Run", "Walk"]);   // PixelLab runs/walks are imported as plain strips too
+const ownAnchored = (key: string, fromGrid: boolean) => fromGrid || VIEW_ANIMS.has(key.split("/")[1]) || OWN_ANIMS.has(key.split("/")[1]);
 
 function gridToStrip(img: HTMLImageElement, gd: { cols: number; rows: number; skip: number; end: number; pingpong: boolean; pick?: number[] }): HTMLCanvasElement {
   const cell = img.width / gd.cols;
