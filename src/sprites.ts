@@ -31,22 +31,25 @@ interface Sheet { img: HTMLImageElement | HTMLCanvasElement; frames: number; siz
 const VIEW_ANIMS = new Set(["RunUp", "RunDown", "IdleUp"]);
 const SKIP: Record<string, number> = { "samurai/RunUp": 1, "samurai/RunDown": 3, "samurai/Run": 1 };
 /** Trailing frames to drop, and sheets that don't loop cleanly (play 1→n→1 instead of snapping back). */
-const DROP_END: Record<string, number> = { "samurai/RunDown": 1 };
+const DROP_END: Record<string, number> = {};
+/** Hand-picked frames (grid order) when only some of an AI sheet are consistent with each other. */
+const PICK: Record<string, number[]> = { "samurai/RunDown": [5, 6, 7] };
 const PINGPONG = new Set(["samurai/RunDown"]);
 /** Any square sheet bigger than one frame is a PixelLab grid (CraftPix sheets are long strips). */
-function gridFor(key: string, img: HTMLImageElement): { cols: number; rows: number; skip: number; end: number; pingpong: boolean } | null {
+function gridFor(key: string, img: HTMLImageElement): { cols: number; rows: number; skip: number; end: number; pingpong: boolean; pick?: number[] } | null {
   if (img.width !== img.height || img.width < 200) return null;
   const anim = key.split("/")[1];
   const cols = img.width % 3 === 0 && img.width / 3 >= 48 ? 3 : img.width % 4 === 0 ? 4 : 3;
-  return { cols, rows: cols, skip: SKIP[key] ?? (anim === "RunUp" ? 1 : 0), end: DROP_END[key] ?? 0, pingpong: PINGPONG.has(key) };
+  return { cols, rows: cols, skip: SKIP[key] ?? (anim === "RunUp" ? 1 : 0), end: DROP_END[key] ?? 0, pingpong: PINGPONG.has(key), pick: PICK[key] };
 }
 /** Sheets from a different tool: anchor each frame on its own body, not the idle pose's. */
 const ownAnchored = (key: string, fromGrid: boolean) => fromGrid || VIEW_ANIMS.has(key.split("/")[1]);
 
-function gridToStrip(img: HTMLImageElement, gd: { cols: number; rows: number; skip: number; end: number; pingpong: boolean }): HTMLCanvasElement {
+function gridToStrip(img: HTMLImageElement, gd: { cols: number; rows: number; skip: number; end: number; pingpong: boolean; pick?: number[] }): HTMLCanvasElement {
   const cell = img.width / gd.cols;
   const idx: number[] = [];
-  for (let k = gd.skip; k < gd.cols * gd.rows - gd.end; k++) idx.push(k);
+  if (gd.pick) idx.push(...gd.pick);
+  else for (let k = gd.skip; k < gd.cols * gd.rows - gd.end; k++) idx.push(k);
   if (gd.pingpong) for (let k = idx.length - 2; k > 0; k--) idx.push(idx[k]);
   const c = document.createElement("canvas");
   c.width = cell * idx.length; c.height = cell;

@@ -10558,7 +10558,7 @@ export class GhostGame {
     let vert = false;
     if (sp.vert) {
       const va: SprAnim = sp.vy < 0 ? "RunUp" : "RunDown";
-      if (hasAnim(id, va)) { anim = va; frame = now * (p.dashTimer > 0 ? 18 : 12); loop = true; vert = true; }
+      if (hasAnim(id, va)) { anim = va; frame = now * (p.dashTimer > 0 ? 16 : va === "RunDown" ? 8 : 12); loop = true; vert = true; }
     } else if (anim === "Idle" && Math.sin(p.facing) < -0.75 && hasAnim(id, "IdleUp")) {
       anim = "IdleUp"; frame = 0;                       // aiming straight up: stand facing away
     }
