@@ -4099,7 +4099,7 @@ export class GhostGame {
   showMinimap = true;
   showCursor = true; cursorInside = true; cursorT = 0; cursorSpin = 0; cursorKick = 0; cursorScale = 1; minimapScale = 1;
   /** v3.7 pixel sprites: on/off + per-player animation state. */
-  useSprites = true; sprPrev = { x: 0, y: 0, mv: 0, lastAtk: 0, atkIdx: 0 };
+  useSprites = true; sprPrev = { x: 0, y: 0, mv: 0, lastAtk: 0, atkIdx: 0, face: 1 };
   /** WARDROBE: the player's equipped cosmetics (set by the UI before a run; null = classic look). */
   look: Look | null = null;
   private lookPrev = { x: 0, y: 0, sway: 0 };
@@ -10489,7 +10489,8 @@ export class GhostGame {
     if (!this.useSprites || !spritesReady()) return false;
     const p = this.player, ctx = this.ctx, sp = this.sprPrev;
     const id = classChar(this.stats.classId);
-    const mv = Math.hypot(p.pos.x - sp.x, p.pos.y - sp.y);
+    const dx = p.pos.x - sp.x;
+    const mv = Math.hypot(dx, p.pos.y - sp.y);
     sp.x = p.pos.x; sp.y = p.pos.y;
     sp.mv += (Math.min(1, mv / 3) - sp.mv) * 0.3;
     if (p.attackAnim > sp.lastAtk + 0.25) sp.atkIdx = (sp.atkIdx + 1) % 3;   // new swing → next combo frame set
@@ -10512,7 +10513,12 @@ export class GhostGame {
     ctx.restore();
     ctx.save();
     ctx.translate(0, R - 1);
-    drawChar(ctx, id, anim, { frame, loop, flip: Math.cos(p.facing) < 0, height: R * 4.4, flash: p.hitFlash > 0 ? 0.6 : 0, variant: "base" });
+    // Face where you're going while running; face your aim when attacking,
+    // guarding or standing still. Straight up/down keeps the last side.
+    const aimFace = Math.cos(p.facing) < 0 ? -1 : 1;
+    if (anim !== "Run") sp.face = aimFace;
+    else if (Math.abs(dx) > 0.4) sp.face = dx < 0 ? -1 : 1;
+    drawChar(ctx, id, anim, { frame, loop, flip: sp.face < 0, height: R * 4.4, flash: p.hitFlash > 0 ? 0.6 : 0, variant: "base" });
     ctx.restore();
     return true;
   }
@@ -11618,7 +11624,15 @@ export class GhostGame {
     }
     const ctx = this.ctx, t = this.elapsed + e.id * 0.37;
     const h = this.spriteHeightOf(e);
-    const flip = Math.cos(e.facing) < 0;
+    // Face the way they walk; face their target while attacking or standing.
+    const tr = e as Enemy & { _sx?: number; _face?: number };
+    const edx = tr._sx === undefined ? 0 : e.pos.x - tr._sx;
+    tr._sx = e.pos.x;
+    const attackingNow = e.state === "attacking" || (e.isBoss && e.bossPatternTimer > 0);
+    if (dead) { /* keep the side they fell on */ }
+    else if (attackingNow || Math.abs(edx) < 0.25) tr._face = Math.cos(e.facing) < 0 ? -1 : 1;
+    else tr._face = edx < 0 ? -1 : 1;
+    const flip = (tr._face ?? (Math.cos(e.facing) < 0 ? -1 : 1)) < 0;
     ctx.save();
     ctx.translate(0, e.size - 1);
     if (dead) {

@@ -12,6 +12,15 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.10.1", date: "2026-11-27", title: "Face Forward", kanji: "向",
+    summary: "Pixel-art characters now face the way they're moving.",
+    lines: [
+      ["fix", "You no longer moonwalk: while running, your character faces the way you're going. When you attack, guard or stand still, they turn to face your cursor."],
+      ["fix", "Enemies and bosses face the way they walk, and turn toward you when they stop or attack."],
+      ["change", "Running straight up or down keeps the side you were last facing (the art is side-on)."],
+    ],
+  },
+  {
     version: "3.10", date: "2026-11-27", title: "Oni and Thunder", kanji: "雷",
     summary: "The last two bosses get pixel-art bodies, hand-drawn for Yūken.",
     lines: [
