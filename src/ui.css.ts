@@ -806,8 +806,8 @@ body.crest-cursor.in-play #game-canvas { cursor: none; }
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); mask-composite: exclude; animation: beam-spin 6s linear infinite; }
 .hanger.locked .garment { filter: grayscale(.85) brightness(.75); }
 .hanger:not(.sel):hover .garment { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
-.rack-nav { position: absolute; top: 50%; z-index: 200; width: 46px; height: 46px; border-radius: 50%; transform: translateY(-50%);
-  background: rgba(20,16,13,.78); border: 1px solid rgba(217,173,91,.35); color: var(--gold); font-size: 26px; line-height: 1; backdrop-filter: blur(4px);
+.rack-nav { position: absolute; top: 50%; z-index: 200; width: 54px; height: 54px; border-radius: 50%; transform: translateY(-50%); cursor: pointer;
+  background: rgba(20,16,13,.85); border: 2px solid rgba(232,183,90,.75); color: var(--gold); font-size: 32px; font-weight: 700; line-height: 1; backdrop-filter: blur(4px);
   box-shadow: 0 6px 16px rgba(0,0,0,.5); transition: border-color .2s, transform .15s; }
 .rack-nav:hover { border-color: var(--gold); transform: translateY(-50%) scale(1.06); }
 .rack-nav.prev { left: 12px; } .rack-nav.next { right: 12px; }
@@ -825,7 +825,7 @@ body.crest-cursor.in-play #game-canvas { cursor: none; }
   .garment { height: 166px; padding-top: 22px; }
   .garment .kanji { font-size: 36px; }
   .garment .name { font-size: 13px; }
-  .rack-nav { width: 42px; height: 42px; }
+  .rack-nav { width: 46px; height: 46px; }
 }
 
 /* ═══════════ Menu: ukiyo-e dusk ═══════════ */

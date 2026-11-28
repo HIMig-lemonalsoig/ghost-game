@@ -7,8 +7,8 @@
 //    motion ripples outward from the leader. Here each garment is a pendulum on
 //    its hook: when the rack slides, the ones nearest the centre swing first and
 //    the swing travels down the rail, then everything settles.
-// Click a garment, drag / swipe the rail, use the mouse wheel, the ‹ › buttons
-// or the arrow keys. Reduced motion: no swinging, instant moves.
+// Click a garment, drag / swipe the rail sideways, the ‹ › buttons or the arrow
+// keys. Scrolling up/down never changes the class. Reduced motion: no swinging, instant moves.
 
 export interface RackItem { id: string; html: string; accent: string; locked: boolean; }
 export interface Rack { select(index: number, animate?: boolean): void; destroy(): void; }
@@ -104,10 +104,12 @@ export function createRack(host: HTMLElement, items: RackItem[], start: number, 
   };
 
   // ── Input ──
-  let dragging = false, dragX = 0, dragPos = 0, dragV = 0, dragT = 0, moved = 0;
+  let dragging = false, dragX = 0, dragY = 0, dragPos = 0, dragV = 0, dragT = 0, moved = 0, movedY = 0;
+  let downOn: HTMLElement | null = null;   // the garment under the finger when pressed (pointer capture hides it later)
   root.addEventListener("pointerdown", e => {
     if ((e.target as HTMLElement).closest(".rack-nav")) return;
-    dragging = true; dragX = e.clientX; dragPos = pos; dragV = 0; dragT = performance.now(); moved = 0;
+    downOn = (e.target as HTMLElement).closest<HTMLElement>("[data-rack]");
+    dragging = true; dragX = e.clientX; dragY = e.clientY; dragPos = pos; dragV = 0; dragT = performance.now(); moved = 0; movedY = 0;
     root.setPointerCapture(e.pointerId);
     wake();
   });
@@ -115,6 +117,8 @@ export function createRack(host: HTMLElement, items: RackItem[], start: number, 
     if (!dragging) return;
     const now = performance.now(), prev = pos;
     moved = Math.max(moved, Math.abs(e.clientX - dragX));
+    movedY = Math.max(movedY, Math.abs(e.clientY - dragY));
+    if (movedY > 10 && moved < 10) return;   // scrolling the page up/down, not dragging the rail
     pos = Math.max(-0.4, Math.min(n - 0.6, dragPos - (e.clientX - dragX) / (width * PITCH)));
     dragV = ((pos - prev) / Math.max(now - dragT, 1)) * 1000;
     dragT = now;
@@ -126,9 +130,11 @@ export function createRack(host: HTMLElement, items: RackItem[], start: number, 
     if (!dragging) return;
     dragging = false;
     try { root.releasePointerCapture(e.pointerId); } catch { /* not captured */ }
-    if (moved < 6) {   // a click, not a drag: pick the garment under the pointer
-      const h = (e.target as HTMLElement).closest<HTMLElement>("[data-rack]");
-      const i = h ? Number(h.dataset.rack) : selected;
+    // The browser took over to scroll the page (touch), or the finger mostly moved up/down:
+    // that was a scroll, never a pick. Settle back on the current class.
+    if (e.type === "pointercancel" || (movedY > 10 && moved < 10)) { target = selected; wake(); return; }
+    if (moved < 6) {   // a click / tap: pick the garment that was pressed
+      const i = downOn ? Number(downOn.dataset.rack) : selected;
       target = i; setSelected(i); wake();
       return;
     }
@@ -139,17 +145,19 @@ export function createRack(host: HTMLElement, items: RackItem[], start: number, 
   };
   root.addEventListener("pointerup", end);
   root.addEventListener("pointercancel", end);
+  // Mouse wheel / trackpad: only a sideways swipe moves the rail. Scrolling up/down scrolls
+  // the page as normal (it used to switch classes on the way down to the Start button).
   let wheelLock = 0;
   root.addEventListener("wheel", e => {
-    const dv = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
-    if (Math.abs(dv) < 12) return;
+    if (Math.abs(e.deltaX) <= Math.abs(e.deltaY) || Math.abs(e.deltaX) < 12) return;
     e.preventDefault();
     const now = performance.now();
     if (now < wheelLock) return;
     wheelLock = now + 220;
-    target = Math.max(0, Math.min(n - 1, Math.round(target) + Math.sign(dv)));
+    target = Math.max(0, Math.min(n - 1, Math.round(target) + Math.sign(e.deltaX)));
     setSelected(target); wake();
   }, { passive: false });
+  // Keyboard ← → is handled by the menu itself (main.ts menuKeys), anywhere on the screen.
   host.querySelector(".rack-nav.prev")!.addEventListener("click", () => { target = Math.max(0, Math.round(target) - 1); setSelected(target); wake(); });
   host.querySelector(".rack-nav.next")!.addEventListener("click", () => { target = Math.min(n - 1, Math.round(target) + 1); setSelected(target); wake(); });
 

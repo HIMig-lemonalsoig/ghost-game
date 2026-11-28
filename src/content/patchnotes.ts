@@ -12,6 +12,16 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.13.1", date: "2026-11-27", title: "Steady Hands", kanji: "定",
+    summary: "Characters stay the same size facing any way, and the class rack behaves.",
+    lines: [
+      ["fix", "Characters no longer grow when they face the camera or walk away from it. The front, back and side views of each body are scaled to match (the samurai's front view was 45% too big, the commander's 31%, the kitsune's 29%)."],
+      ["fix", "Class select: scrolling the page up or down never changes your class any more, so picking Kunoichi and scrolling down to Start keeps Kunoichi."],
+      ["fix", "Class select: clicking or tapping a class picks it (clicks were landing on the class you already had). On touchscreens, a scroll is never mistaken for a tap."],
+      ["change", "Class select: bigger, brighter ‹ › buttons. Browse with the buttons, the ← → keys, clicking, or dragging the rail sideways."],
+    ],
+  },
+  {
     version: "3.13", date: "2026-11-27", title: "Night Parade", kanji: "百",
     summary: "Every yokai and boss now has real pixel art: a full night parade of a hundred demons.",
     lines: [

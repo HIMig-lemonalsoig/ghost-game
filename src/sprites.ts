@@ -216,6 +216,45 @@ function imageFor(id: CharId, anim: Anim, v: Variant): { src: CanvasImageSource;
   return { src: c, sh };
 }
 
+/** Height of the drawn pixels in one frame of a sheet. */
+function frameHeight(sh: Sheet, f = 0): number {
+  const c = document.createElement("canvas");
+  c.width = sh.size; c.height = sh.size;
+  const g = c.getContext("2d", { willReadFrequently: true })!;
+  g.drawImage(sh.img, f * sh.size, 0, sh.size, sh.size, 0, 0, sh.size, sh.size);
+  const px = g.getImageData(0, 0, sh.size, sh.size).data;
+  let top = -1, bot = -1;
+  for (let y = 0; y < sh.size; y++) for (let x = 0; x < sh.size; x++) if (px[(y * sh.size + x) * 4 + 3] > 40) { if (top < 0) top = y; bot = y; break; }
+  return top < 0 ? 0 : bot - top;
+}
+
+/** Views drawn by a different tool can come out bigger than the body's idle pose (e.g. the
+ *  CraftPix samurai is 68px tall, PixelLab's front view of him 99px). Scale each movement
+ *  view so its standing height matches the idle pose: front views against the standing
+ *  front (IdleDown), back views against IdleUp, side walks/runs against the walk. */
+const viewScale = new Map<string, number>();
+function scaleFor(id: CharId, anim: Anim): number {
+  const key = `${id}/${anim}`;
+  const hit = viewScale.get(key);
+  if (hit !== undefined) return hit;
+  let f = 1;
+  const idle = sheets.get(`${id}/Idle`);
+  const refKey = anim === "RunDown" || anim === "IdleDown" ? "IdleDown"
+    : anim === "RunUp" || anim === "IdleUp" ? "IdleUp"
+    : anim === "Run" || anim === "Walk" ? "Walk" : null;
+  const ref = refKey ? sheets.get(`${id}/${refKey}`) : undefined;
+  if (idle && ref) {
+    const ih = frameHeight(idle);
+    const hs: number[] = [];
+    for (let i = 0; i < Math.min(ref.frames, 8); i++) hs.push(frameHeight(ref, i));
+    hs.sort((a, b) => a - b);
+    const rh = hs[hs.length >> 1];
+    if (ih > 8 && rh > 8) f = Math.max(0.6, Math.min(1.25, ih / rh));
+  }
+  viewScale.set(key, f);
+  return f;
+}
+
 export function frameCount(id: CharId, anim: Anim): number { return sheetFor(id, anim)?.frames ?? 1; }
 /** True only if this character has its own sheet for the animation (no fallback). */
 export function hasAnim(id: CharId, anim: Anim): boolean { return sheets.has(`${id}/${anim}`); }
@@ -244,7 +283,7 @@ export function drawChar(ctx: CanvasRenderingContext2D, id: CharId, anim: Anim, 
   const n = sh.frames;
   let f = Math.floor(o.frame);
   f = o.loop === false ? Math.max(0, Math.min(n - 1, f)) : ((f % n) + n) % n;
-  const k = o.height / Math.max(8, an.feet - an.top);
+  const k = (o.height / Math.max(8, an.feet - an.top)) * scaleFor(id, anim);
   const smooth = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = false;
   ctx.save();
