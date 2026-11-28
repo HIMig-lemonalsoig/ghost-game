@@ -18,7 +18,8 @@ export const PATCH_NOTES: PatchNote[] = [
       ["new", "Running up shows the samurai from behind, with the gold crest on his back plate; running down shows him walking toward the camera. Left and right still use the side view."],
       ["new", "Standing still while aiming straight up, the samurai turns to face away from you."],
       ["change", "The direction arrow at your feet hides while you run up, since the back view already shows the way you're going."],
-      ["change", "New poses made with PixelLab from the CraftPix samurai (offline version only). Other bodies keep the side view with lean and dust."],
+      ["new", "Red ronin enemies use the same back and front views when they walk up or down."],
+      ["change", "New poses made with PixelLab from the CraftPix samurai (offline version only). Other bodies keep the side view with lean and dust for now."],
     ],
   },
   {

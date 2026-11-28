@@ -11720,7 +11720,13 @@ export class GhostGame {
     else if (e.archetype === "shielded" && e.shieldHp > 0 && e.state === "alert") { anim = "Protect"; frame = 99; loop = false; }
     else if (e.state !== "stunned" && e.speed > 0.5) { anim = e.archetype === "assassin" ? "Run" : "Walk"; frame = t * (e.archetype === "assassin" ? 14 : 10); }
     else { anim = "Idle"; frame = t * 7; }
-    if (!attackingNow && emv > 0.25 && (anim === "Walk" || anim === "Run")) {
+    // Mostly-vertical walking uses back / front views when this body has them.
+    let evert = false;
+    if (!attackingNow && emv > 0.25 && (anim === "Walk" || anim === "Run") && Math.abs(edy) > Math.abs(edx) * 1.2) {
+      const va: SprAnim = edy < 0 ? "RunUp" : "RunDown";
+      if (hasAnim(id, va)) { anim = va; frame = t * 10; loop = true; evert = true; }
+    }
+    if (!evert && !attackingNow && emv > 0.25 && (anim === "Walk" || anim === "Run")) {
       const vy = Math.max(-1, Math.min(1, edy / emv));
       ctx.rotate((flip ? -1 : 1) * (0.05 + 0.08 * Math.max(0, -vy) - 0.04 * Math.max(0, vy)));
     }

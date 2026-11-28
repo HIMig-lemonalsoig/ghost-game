@@ -25,14 +25,19 @@ const FILTERS: Record<Variant, string> = {
 
 interface Sheet { img: HTMLImageElement | HTMLCanvasElement; frames: number; size: number; own?: { cx: number; feet: number }[]; }
 
-/** PixelLab exports come as square grids (3×3 = 9 frames, read left→right, top→bottom).
- *  `skip` drops leading frames that are still side-on. */
-const GRIDS: Record<string, { cols: number; rows: number; skip: number }> = {
-  "samurai/RunUp": { cols: 3, rows: 3, skip: 1 },     // back view, running away from the camera
-  "samurai/RunDown": { cols: 3, rows: 3, skip: 2 },   // 3/4 front view, walking toward the camera
-};
-/** Sheets drawn by a different artist/tool: centre them on their own body, not the idle pose's. */
-const OWN_ANCHOR = new Set(["samurai/RunUp", "samurai/RunDown", "samurai/IdleUp"]);
+/** PixelLab exports come as square grids (e.g. 3×3 = 9 frames, read left→right, top→bottom).
+ *  Any square RunUp / RunDown sheet is treated as a grid. `SKIP` drops leading frames that
+ *  are still side-on or just standing (default: RunUp 1, RunDown 0). */
+const VIEW_ANIMS = new Set(["RunUp", "RunDown", "IdleUp"]);
+const SKIP: Record<string, number> = { "samurai/RunUp": 1, "samurai/RunDown": 2 };
+function gridFor(key: string, img: HTMLImageElement): { cols: number; rows: number; skip: number } | null {
+  const anim = key.split("/")[1];
+  if ((anim !== "RunUp" && anim !== "RunDown") || img.width !== img.height || img.width < 200) return null;
+  const cols = img.width % 3 === 0 && img.width / 3 >= 48 ? 3 : img.width % 4 === 0 ? 4 : 3;
+  return { cols, rows: cols, skip: SKIP[key] ?? (anim === "RunUp" ? 1 : 0) };
+}
+/** Sheets from a different tool: anchor each frame on its own body, not the idle pose's. */
+const ownAnchored = (key: string) => VIEW_ANIMS.has(key.split("/")[1]);
 
 function gridToStrip(img: HTMLImageElement, gd: { cols: number; rows: number; skip: number }): HTMLCanvasElement {
   const cell = img.width / gd.cols, n = gd.cols * gd.rows - gd.skip;
@@ -94,11 +99,11 @@ export function loadSprites() {
     total++;
     const img = new Image();
     img.onload = () => {
-      const gd = GRIDS[key];
+      const gd = gridFor(key, img);
       const src = gd ? gridToStrip(img, gd) : img;
       const size = src.height;
       const sh: Sheet = { img: src, size, frames: Math.max(1, Math.round(src.width / size)) };
-      if (OWN_ANCHOR.has(key)) sh.own = ownAnchors(src, size, sh.frames);
+      if (ownAnchored(key)) sh.own = ownAnchors(src, size, sh.frames);
       sheets.set(key, sh);
       loaded++;
     };
