@@ -12,6 +12,15 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.11.3", date: "2026-11-27", title: "Face the Camera", kanji: "面",
+    summary: "The samurai and the commander now have real front views.",
+    lines: [
+      ["new", "Running down shows the samurai and the commander sprinting toward the camera, faces and armour front-on, replacing the old half-turned walk."],
+      ["new", "Standing still while aiming straight down, they face the camera."],
+      ["change", "With back views already in, both bodies now look right in all four directions. Red ronin and heavy/shield enemies get the new front views too."],
+    ],
+  },
+  {
     version: "3.11.2", date: "2026-11-27", title: "Banner Bearer", kanji: "旗",
     summary: "The banner commander gets a back view, a new sprint and a new walk.",
     lines: [

@@ -11,7 +11,7 @@
 import { buildSheets, ONI_LOOK, RAIJIN_LOOK } from "./pixelart";
 
 export type CharId = "samurai" | "archer" | "commander" | "kitsune" | "karasu" | "ytengu" | "skwarrior" | "skspear" | "skarcher" | "oni" | "raijin";
-export type Anim = "Idle" | "Walk" | "Run" | "Attack_1" | "Attack_2" | "Attack_3" | "Hurt" | "Dead" | "Protection" | "Protect" | "Shot" | "Shot_1" | "RunUp" | "RunDown" | "IdleUp";
+export type Anim = "Idle" | "Walk" | "Run" | "Attack_1" | "Attack_2" | "Attack_3" | "Hurt" | "Dead" | "Protection" | "Protect" | "Shot" | "Shot_1" | "RunUp" | "RunDown" | "IdleUp" | "IdleDown";
 /** Colour variants, made once with a canvas filter and cached. */
 export type Variant = "base" | "crimson" | "shade" | "flash" | "gold";
 
@@ -28,13 +28,14 @@ interface Sheet { img: HTMLImageElement | HTMLCanvasElement; frames: number; siz
 /** PixelLab exports come as square grids (e.g. 3×3 = 9 frames, read left→right, top→bottom).
  *  Any square RunUp / RunDown sheet is treated as a grid. `SKIP` drops leading frames that
  *  are still side-on or just standing (default: RunUp 1, RunDown 0). */
-const VIEW_ANIMS = new Set(["RunUp", "RunDown", "IdleUp"]);
-const SKIP: Record<string, number> = { "samurai/RunUp": 1, "samurai/RunDown": 3, "samurai/Run": 1, "commander/Run": 1, "commander/RunUp": 1 };
+const VIEW_ANIMS = new Set(["RunUp", "RunDown", "IdleUp", "IdleDown"]);
+// Frame 1 of a PixelLab run is the standing pose, so it's dropped from every run sheet.
+const SKIP: Record<string, number> = { "samurai/RunUp": 1, "samurai/RunDown": 1, "samurai/Run": 1, "commander/Run": 1, "commander/RunUp": 1, "commander/RunDown": 1 };
 /** Trailing frames to drop, and sheets that don't loop cleanly (play 1→n→1 instead of snapping back). */
 const DROP_END: Record<string, number> = {};
 /** Hand-picked frames (grid order) when only some of an AI sheet are consistent with each other. */
-const PICK: Record<string, number[]> = { "samurai/RunDown": [5, 6, 7] };
-const PINGPONG = new Set(["samurai/RunDown"]);
+const PICK: Record<string, number[]> = {};
+const PINGPONG = new Set<string>();
 /** Any square sheet bigger than one frame is a PixelLab grid (CraftPix sheets are long strips). */
 function gridFor(key: string, img: HTMLImageElement): { cols: number; rows: number; skip: number; end: number; pingpong: boolean; pick?: number[] } | null {
   if (img.width !== img.height || img.width < 200) return null;
