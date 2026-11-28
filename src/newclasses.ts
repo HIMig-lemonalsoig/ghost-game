@@ -1,3 +1,4 @@
+import { drawChar, hasBody, spritesReady } from "./sprites";
 // ─── Step 5 classes (2026-11-27) ─────────────────────────────────────────────
 // Six playstyles the roster didn't have (docs/CONTENT_RESEARCH.md C4 / C5e):
 //   teppo   Teppō        matchlock gunner   — every 4th shot is a piercing matchlock blast · ult: Three Ranks Fire (volley lane ×3)
@@ -312,8 +313,15 @@ export function drawNewClasses(g: any, ctx: CanvasRenderingContext2D) {
   for (const v of st.volleys) {   // ghost gunners in a rank behind you
     const ux = Math.cos(v.ang), uy = Math.sin(v.ang), fade = Math.min(1, v.t / 0.2) * Math.max(0, 1 - Math.max(0, v.t - (0.25 + v.n * 0.38)) / 0.1);
     ctx.save(); ctx.globalAlpha = 0.75 * fade;
+    const ghosts = g.useSprites && spritesReady();
     for (let i = -2; i <= 2; i++) {
       const x = v.x - ux * 30 - uy * i * 28, y = v.y - uy * 30 + ux * i * 28;
+      if (ghosts) {   // blue ink copies of you, matchlocks raised
+        g.ghostLook = { variant: "spirit", outline: "hsl(210, 80%, 72%)" };
+        g.drawPlayerGhost(x, y, v.ang, 0.75 * fade, 0.5, 1);
+        g.ghostLook = null;
+        continue;
+      }
       ctx.fillStyle = "hsla(210, 30%, 80%, .55)"; ctx.beginPath(); ctx.arc(x, y, 11, 0, TAU); ctx.fill();
       ctx.strokeStyle = "hsl(30, 40%, 35%)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + ux * 30, y + uy * 30); ctx.stroke();   // matchlock barrel
     }
@@ -325,7 +333,19 @@ export function drawNewClasses(g: any, ctx: CanvasRenderingContext2D) {
       ctx.fillStyle = "hsl(45, 90%, 62%)"; ctx.fillRect(x - 6, y - 6, 12, 12); ctx.fillStyle = "#3a1d06"; ctx.beginPath(); ctx.arc(x, y, 1.8, 0, TAU); ctx.fill(); }
     ctx.restore();
   }
+  const PET_ART: Record<string, { id: "hawk" | "turret" | "inktiger"; h: number; fps: number }> = {
+    hawk: { id: "hawk", h: 30, fps: 14 }, turret: { id: "turret", h: 34, fps: 8 }, tiger: { id: "inktiger", h: 46, fps: 14 },
+  };
   for (const q of st.pets as Pet[]) {
+    const art = PET_ART[q.kind];
+    if (art && g.useSprites && spritesReady() && hasBody(art.id)) {   // pixel-art pets
+      ctx.save(); ctx.translate(q.x, q.y + art.h * 0.45);
+      const anim = art.fps ? "Walk" : "Idle";
+      drawChar(ctx, art.id, anim, { frame: t * (art.fps || 1) + q.hx, flip: Math.cos(q.ang) < 0, height: art.h,
+        outline: q.ult ? { color: "hsl(45, 95%, 65%)", alpha: 0.6 } : undefined });
+      ctx.restore();
+      continue;
+    }
     ctx.save(); ctx.translate(q.x, q.y);
     if (q.kind === "hawk") {
       ctx.rotate(q.ang + Math.PI / 2 * (q.dive > 0 ? 0 : 1));

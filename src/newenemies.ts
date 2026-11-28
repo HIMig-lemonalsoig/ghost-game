@@ -1,3 +1,4 @@
+import { drawPartRot, hasBody, spritesReady } from "./sprites";
 // ─── Step 4 enemies (2026-11-27) ─────────────────────────────────────────────
 // Eight new yokai, each with ONE clear role and a readable telegraph
 // (docs/CONTENT_RESEARCH.md C3/C5d). They unlock in waves 11–19, where the game
@@ -312,6 +313,18 @@ export function drawNewEnemy(g: any, ctx: CanvasRenderingContext2D, e: any): boo
       ctx.restore(); return true;
     }
     case "mukade": {
+      if (g.useSprites && spritesReady() && hasBody("mukade_head") && hasBody("mukade_seg")) {
+        // Top-down pixel art: plated segments along the trail, each turned to follow the curve.
+        const segs = e.segs ?? [];
+        for (let i = segs.length - 1; i >= 0; i -= 3) {
+          const sg = segs[i], nx = i >= 3 ? segs[i - 3] : e.pos;
+          const ang = Math.atan2(nx.y - sg.y, nx.x - sg.x) + Math.PI / 2;
+          drawPartRot(ctx, "mukade_seg", "Idle", 0, sg.x - e.pos.x, sg.y - e.pos.y, ang, s * (2.3 - i * 0.02));
+        }
+        drawPartRot(ctx, "mukade_head", "Idle", 0, 0, 0, e.facing + Math.PI / 2, s * 2.8, 1);
+        if (flash) { ctx.save(); ctx.globalCompositeOperation = "lighter"; drawPartRot(ctx, "mukade_head", "Idle", 0, 0, 0, e.facing + Math.PI / 2, s * 2.8, 0.6); ctx.restore(); }
+        return true;
+      }
       ctx.save();
       const segs = e.segs ?? [];
       for (let i = segs.length - 1; i >= 0; i -= 3) {   // body segments trailing behind, drawn relative to head

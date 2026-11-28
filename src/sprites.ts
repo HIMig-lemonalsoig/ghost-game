@@ -11,10 +11,11 @@
 import { buildSheets, ONI_LOOK, RAIJIN_LOOK } from "./pixelart";
 
 export type CharId = "samurai" | "archer" | "commander" | "kitsune" | "karasu" | "ytengu" | "skwarrior" | "skspear" | "skarcher" | "oni" | "raijin"
-  | "onryo" | "kappa" | "taiko" | "bomber" | "mirror" | "yukiwarashi" | "lantern" | "wisp" | "tsukumo" | "mimic" | "boar" | "nue";
+  | "onryo" | "kappa" | "taiko" | "bomber" | "mirror" | "yukiwarashi" | "lantern" | "wisp" | "tsukumo" | "mimic" | "boar" | "nue"
+  | "shogun" | "hawk" | "turret" | "inktiger" | "mukade_head" | "mukade_seg";
 export type Anim = "Idle" | "Walk" | "Run" | "Attack_1" | "Attack_2" | "Attack_3" | "Hurt" | "Dead" | "Protection" | "Protect" | "Shot" | "Shot_1" | "RunUp" | "RunDown" | "IdleUp" | "IdleDown";
 /** Colour variants, made once with a canvas filter and cached. */
-export type Variant = "base" | "crimson" | "shade" | "flash" | "gold";
+export type Variant = "base" | "crimson" | "shade" | "flash" | "gold" | "spirit";
 
 const FILTERS: Record<Variant, string> = {
   base: "none",
@@ -22,6 +23,7 @@ const FILTERS: Record<Variant, string> = {
   shade: "grayscale(1) sepia(.6) hue-rotate(225deg) saturate(2.4) brightness(.8)", // violet shinobi
   flash: "brightness(0) invert(1)",                       // white hit silhouette
   gold: "sepia(1) saturate(2.2) hue-rotate(-12deg) brightness(1.05)",
+  spirit: "grayscale(1) sepia(1) hue-rotate(170deg) saturate(2.6) brightness(1.08)",   // blue ink double
 };
 
 interface Sheet { img: HTMLImageElement | HTMLCanvasElement; frames: number; size: number; own?: { cx: number; feet: number }[]; }
@@ -328,6 +330,22 @@ export function drawChar(ctx: CanvasRenderingContext2D, id: CharId, anim: Anim, 
       ctx.globalAlpha = a;
     }
   }
+  ctx.restore();
+  ctx.imageSmoothingEnabled = smooth;
+  return true;
+}
+
+/** Draw one frame centred on (x, y), turned by `angle`, `size` px across. For top-down parts
+ *  (mukade head / segments) whose art points up. */
+export function drawPartRot(ctx: CanvasRenderingContext2D, id: CharId, anim: Anim, frame: number, x: number, y: number, angle: number, size: number, alpha = 1): boolean {
+  const sh = sheetFor(id, anim);
+  if (!sh) return false;
+  const f = ((Math.floor(frame) % sh.frames) + sh.frames) % sh.frames;
+  const smooth = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = false;
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(angle); ctx.globalAlpha *= alpha;
+  ctx.drawImage(sh.img, f * sh.size, 0, sh.size, sh.size, -size / 2, -size / 2, size, size);
   ctx.restore();
   ctx.imageSmoothingEnabled = smooth;
   return true;

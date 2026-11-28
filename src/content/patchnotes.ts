@@ -12,6 +12,17 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.14", date: "2026-11-27", title: "The Shogun Rises", kanji: "将",
+    summary: "The final boss, your summons and the last old-style enemy get pixel art.",
+    lines: [
+      ["new", "The Shogun (final boss): a towering warlord in black and crimson lacquered armour, a horned kabuto with a gold crescent, a red oni mask and a flowing crimson cape. He stalks you, cleaves with a giant crimson crescent slash and falls to one knee before collapsing. His nameplate now reads The Shogun."],
+      ["new", "Your copies are now copies of you: Kagemusha's Twin Shadows clone is a blue ink double of your character, Kunoichi's Phantom Dance afterimages are pink-outlined copies with fading trails, smoke decoys are dark doubles, and Teppō's ghost gunners are blue ink ranks of you."],
+      ["new", "Pets: Takajō's hawk flaps beside you, Karakuri turrets are red-lacquered clockwork crossbows that wind and fire, and Sumi-e's Living Ink summons a striped spirit tiger. Ult summons glow gold."],
+      ["new", "Mukade is now a chain of red armoured plates with a golden-mandibled head, each plate turning to follow its winding trail."],
+      ["fix", "Phantom Dance no longer scrambled your own facing and running animation while the afterimages were on screen."],
+    ],
+  },
+  {
     version: "3.13.2", date: "2026-11-27", title: "Clean Edges", kanji: "縁",
     summary: "Leftovers from the old circle bodies are gone.",
     lines: [

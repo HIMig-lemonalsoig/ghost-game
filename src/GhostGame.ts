@@ -4109,7 +4109,10 @@ export class GhostGame {
   showMinimap = true;
   showCursor = true; cursorInside = true; cursorT = 0; cursorSpin = 0; cursorKick = 0; cursorScale = 1; minimapScale = 1;
   /** v3.7 pixel sprites: on/off + per-player animation state. */
-  useSprites = true; sprPrev = { x: 0, y: 0, mv: 0, lastAtk: 0, atkIdx: 0, face: 1, vert: false, vx: 0, vy: 0, lastT: 0, dustT: 0, dust: [] as { x: number; y: number; vx: number; vy: number; age: number; life: number; r: number }[] };
+  useSprites = true;
+  /** Ghost copies of the player (phantoms, clones, decoys) drawn through drawPlayer. */
+  ghostLook: { variant?: SprVariant; outline?: string; moving?: boolean } | null = null;
+  sprPrev = { x: 0, y: 0, mv: 0, lastAtk: 0, atkIdx: 0, face: 1, vert: false, vx: 0, vy: 0, lastT: 0, dustT: 0, dust: [] as { x: number; y: number; vx: number; vy: number; age: number; life: number; r: number }[] };
   /** WARDROBE: the player's equipped cosmetics (set by the UI before a run; null = classic look). */
   look: Look | null = null;
   private lookPrev = { x: 0, y: 0, sway: 0 };
@@ -5121,6 +5124,15 @@ export class GhostGame {
     }
     // Speedster trails: fading pink after-silhouettes along each afterimage's path.
     for (const [i, img] of this.ultPhantomImages.entries()) {
+      if (this.useSprites && spritesReady()) {   // fading pink copies of the sprite along the path
+        img.trail.forEach((tr, k) => {
+          if (k % 3) return;
+          this.ghostLook = { outline: `hsl(${320 + i * 12}, 95%, 72%)`, moving: true };
+          this.drawPlayerGhost(tr.x, tr.y, img.facing, tr.a * 0.22, 0, img.dir);
+          this.ghostLook = null;
+        });
+        continue;
+      }
       for (const tr of img.trail) {
         ctx.fillStyle = `hsla(${320 + i * 12}, 85%, 72%, ${tr.a * 0.22})`;
         ctx.beginPath(); ctx.arc(tr.x, tr.y, BASE.PLAYER_RADIUS * (0.6 + tr.a * 0.4), 0, Math.PI * 2); ctx.fill();
@@ -5131,13 +5143,18 @@ export class GhostGame {
     const fadeOut = t > PD.finisher ? 1 - (t - PD.finisher) / (PD.dur - PD.finisher) : 1;
     for (const [i, img] of this.ultPhantomImages.entries()) {
       ctx.save();
+      if (this.useSprites && spritesReady()) ctx.globalAlpha = 0;   // sprites get an outline instead of a glow disc
       const glow = ctx.createRadialGradient(img.pos.x, img.pos.y, 0, img.pos.x, img.pos.y, BASE.PLAYER_RADIUS * 2.4);
       glow.addColorStop(0, `hsla(${320 + i * 12}, 90%, 70%, ${0.35 * fadeOut})`);
       glow.addColorStop(1, "hsla(320, 90%, 60%, 0)");
       ctx.fillStyle = glow;
       ctx.beginPath(); ctx.arc(img.pos.x, img.pos.y, BASE.PLAYER_RADIUS * 2.4, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
+      const spr = this.useSprites && spritesReady();
+      this.ghostLook = spr ? { outline: `hsl(${320 + i * 12}, 95%, 72%)`, moving: true } : null;
       this.drawPlayerGhost(img.pos.x, img.pos.y, img.facing, 0.72 * fadeOut, img.swing, img.dir);
+      this.ghostLook = null;
+      if (spr) continue;
       // Glowing pink rim so the copies read as spirit afterimages.
       ctx.save();
       ctx.strokeStyle = `hsla(${320 + i * 12}, 95%, 75%, ${0.85 * fadeOut})`;
@@ -10497,8 +10514,10 @@ export class GhostGame {
   /** v3.7: draw the player as an animated pixel sprite (feet at the hitbox bottom). */
   private drawPlayerSprite(): boolean {
     if (!this.useSprites || !spritesReady()) return false;
-    const p = this.player, ctx = this.ctx, sp = this.sprPrev;
+    const p = this.player, ctx = this.ctx;
     const id = classChar(this.stats.classId);
+    if (this.ghostAlpha > 0 && this.ghostLook) return this.drawGhostSprite(id);
+    const sp = this.sprPrev;
     const dx = p.pos.x - sp.x, dy = p.pos.y - sp.y;
     const mv = Math.hypot(dx, dy);
     sp.x = p.pos.x; sp.y = p.pos.y;
@@ -10597,6 +10616,25 @@ export class GhostGame {
       ctx.fillStyle = accent; ctx.fill();
       ctx.restore();
     }
+    return true;
+  }
+
+  /** A copy of your character (phantom / clone / decoy): same body, its own tint and outline,
+   *  no ring, dust or arrow, and it never touches your own movement tracking. */
+  private drawGhostSprite(id: CharId): boolean {
+    const p = this.player, ctx = this.ctx, gl = this.ghostLook!;
+    const R = BASE.PLAYER_RADIUS, t = this.elapsed;
+    let anim: SprAnim, frame: number, loop = true;
+    if (p.attackAnim > 0) {
+      anim = id === "archer" ? "Shot" : (["Attack_1", "Attack_2", "Attack_3"] as const)[Math.abs(p.swingDir) % 3];
+      frame = (1 - p.attackAnim) * frameCount(id, anim); loop = false;
+    } else if (gl.moving) { anim = "Run"; frame = t * 12; }
+    else { anim = "Idle"; frame = t * 8; }
+    ctx.save();
+    ctx.translate(0, R - 1);
+    drawChar(ctx, id, anim, { frame, loop, flip: Math.cos(p.facing) < 0, height: R * 4.4, variant: gl.variant ?? "base",
+      outline: gl.outline ? { color: gl.outline, alpha: 0.9 } : undefined });
+    ctx.restore();
     return true;
   }
 
@@ -11683,6 +11721,7 @@ export class GhostGame {
   /** v3.7: human enemies as pixel sprites. Yokai, elites' auras and bosses keep their own art. */
   isSpriteEnemy(e: Enemy): boolean {
     if (!this.useSprites || !spritesReady()) return false;
+    if (e.archetype === "final") return hasBody("shogun");
     if (e.isBoss) return e.bossKind === "kitsune" || e.bossKind === "gasha" || e.bossKind === "oni" || e.bossKind === "raijin";
     const yk = YOKAI_SPRITES[e.archetype];
     if (yk) return hasBody(yk.id) && !(e.archetype === "kappa_raid" && e.submerged) && !(e.archetype === "mimic" && (e as Enemy & { disguised?: boolean }).disguised);
@@ -11747,7 +11786,7 @@ export class GhostGame {
     ctx.restore();
   }
 
-  spriteHeightOf(e: Enemy): number { return e.size * (YOKAI_SPRITES[e.archetype]?.h ?? (e.bossKind === "gasha" ? 4.2 : e.bossKind === "oni" || e.bossKind === "raijin" ? 3.6 : e.isBoss ? 3.4 : 4.4)); }
+  spriteHeightOf(e: Enemy): number { return e.size * (YOKAI_SPRITES[e.archetype]?.h ?? (e.archetype === "final" ? 3.8 : e.bossKind === "gasha" ? 4.2 : e.bossKind === "oni" || e.bossKind === "raijin" ? 3.6 : e.isBoss ? 3.4 : 4.4)); }
 
   private drawEnemySprite(e: Enemy, dead: boolean): boolean {
     if (!this.isSpriteEnemy(e)) return false;
@@ -11763,6 +11802,7 @@ export class GhostGame {
       case "shielded": id = undead ? "skwarrior" : "commander"; break;
       default:
         if (YOKAI_SPRITES[e.archetype] && !e.isBoss) { id = YOKAI_SPRITES[e.archetype].id; variant = YOKAI_SPRITES[e.archetype].variant ?? "base"; break; }
+        if (e.archetype === "final") { id = "shogun"; break; }
         if (e.bossKind === "kitsune") { id = "kitsune"; break; }
         if (e.bossKind === "gasha") { id = "skwarrior"; break; }
         if (e.bossKind === "oni") { id = "oni"; break; }
@@ -12000,7 +12040,7 @@ export class GhostGame {
         ctx.arc(0, 0, e.size + 6, 0, Math.PI * 2);
         ctx.fill();
       }
-    } else if (e.archetype === "final") {
+    } else if (e.archetype === "final" && !spriteBody) {
       // Crown of crimson glow + larger blade.
       ctx.save();
       ctx.strokeStyle = "hsl(358, 90%, 55%)";
@@ -12023,8 +12063,8 @@ export class GhostGame {
     ctx.restore();
     if (e.isBoss) this.drawBossTelegraph(e);
 
-    // Final boss extra: a centered kanji 鬼 above the body.
-    if (e.archetype === "final") {
+    // Final boss extra: a centered kanji 鬼 above the body (the sprite has its nameplate instead).
+    if (e.archetype === "final" && !this.isSpriteEnemy(e)) {
       ctx.save();
       ctx.fillStyle = "hsl(355, 90%, 60%)";
       ctx.font = "bold 22px serif";
@@ -12045,7 +12085,7 @@ export class GhostGame {
       ctx.fillStyle = "hsl(42, 95%, 70%)";
       ctx.font = "bold 10px serif";
       ctx.textAlign = "center";
-      ctx.fillText(e.bossKind ? `◈ ${BOSS_INFO[e.bossKind].kanji} ${BOSS_INFO[e.bossKind].name} ◈` : "◈ BOSS ◈", e.pos.x, y - 4);
+      ctx.fillText(e.bossKind ? `◈ ${BOSS_INFO[e.bossKind].kanji} ${BOSS_INFO[e.bossKind].name} ◈` : e.archetype === "final" ? "◈ 将 The Shogun ◈" : "◈ BOSS ◈", e.pos.x, y - 4);
       // Numeric HP — current/max, to the right of the bar.
       const hpNow = fmtNum(e.hp);
       const hpMax = fmtNum(e.maxHp);
@@ -12197,6 +12237,12 @@ export class GhostGame {
     // Decoys — translucent shadow doubles of the player.
     for (const d of this.decoys) {
       const a = Math.min(1, d.life / 0.4);
+      if (this.useSprites && spritesReady()) {   // a dark copy of your sprite
+        this.ghostLook = { variant: "shade" };
+        this.drawPlayerGhost(d.pos.x, d.pos.y, this.player.facing, 0.55 * a, 0, 1);
+        this.ghostLook = null;
+        continue;
+      }
       ctx.save();
       ctx.globalAlpha = 0.4 * a;
       ctx.translate(d.pos.x, d.pos.y);
@@ -12219,6 +12265,18 @@ export class GhostGame {
       ctx.lineWidth = 2; ctx.setLineDash([4, 6]); ctx.lineDashOffset = -this.elapsed * 30;
       ctx.beginPath(); ctx.moveTo(this.player.pos.x, this.player.pos.y); ctx.lineTo(c.pos.x, c.pos.y); ctx.stroke();
       ctx.setLineDash([]);
+      const cloneSpr = this.useSprites && spritesReady();
+      if (cloneSpr) {
+        ctx.fillStyle = `hsla(215, 90%, 75%, ${0.6 + 0.3 * pulse})`;
+        ctx.font = "bold 14px serif"; ctx.textAlign = "center";
+        ctx.fillText("影", c.pos.x, c.pos.y + BASE.PLAYER_RADIUS - BASE.PLAYER_RADIUS * 4.4 - 6);
+        ctx.restore();
+        const spd = Math.hypot(c.vel?.x ?? 0, c.vel?.y ?? 0);
+        this.ghostLook = { variant: "spirit", outline: "hsl(215, 90%, 70%)", moving: spd > 40 };
+        this.drawPlayerGhost(c.pos.x, c.pos.y, c.facing, c.hitFlash > 0 ? 0.6 : 0.9, c.swing ?? 0, c.swingDir ?? 1);
+        this.ghostLook = null;
+        continue;
+      }
       const cg = ctx.createRadialGradient(c.pos.x, c.pos.y, 4, c.pos.x, c.pos.y, BASE.PLAYER_RADIUS + 22);
       cg.addColorStop(0, "hsla(215, 90%, 60%, 0.45)");
       cg.addColorStop(1, "hsla(215, 90%, 50%, 0)");
