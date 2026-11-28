@@ -1,3 +1,5 @@
+import { drawSpritePreview } from "./cosmeticdraw";
+import { classChar } from "./sprites";
 import { loadSprites, spritesAvailable } from "./sprites";
 loadSprites();
 import { drawCrest } from "./cursor";
@@ -347,7 +349,9 @@ function wardrobeLoop() {
   const cv = overlay.querySelector<HTMLCanvasElement>(".wd-prev");
   if (!wardrobeOpen || !cv) { wardrobeRaf = 0; return; }
   const ctx = cv.getContext("2d");
-  if (ctx) drawPreview(ctx, wardrobeLook(), cv.width, performance.now() / 1000);
+  // Pixel-art body wearing the look (your current class's body), else the old drawing.
+  if (ctx && !(settings.sprites !== false && drawSpritePreview(ctx, wardrobeLook(), cv.width, performance.now() / 1000, classChar(currentClass))))
+    drawPreview(ctx, wardrobeLook(), cv.width, performance.now() / 1000);
   wardrobeRaf = requestAnimationFrame(wardrobeLoop);
 }
 function showWardrobeModal() {

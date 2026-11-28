@@ -3,7 +3,7 @@ import { loadSprites, spritesReady, drawChar, classChar, frameCount, hasAnim, ha
 import { drawCrestCursor } from "./cursor";
 import { Fx, hueOf } from "./fx";
 import { updateUltTrail, drawUltUnder, drawUltOver } from "./ultvfx";
-import { drawBack, drawBody } from "./cosmeticdraw";
+import { drawBack, drawBody, lookDye, spriteLayers } from "./cosmeticdraw";
 import { drawPointers, drawMinimap } from "./navui";
 import { startNewClass, castNewUlt, newUltActive, fortuneActive, updateNewClasses, onShotNewClass, onHitNewClass, onDashNewClass, onWaveStartNewClass, drawNewClasses, resetNewClasses } from "./newclasses";
 import { spawnNewEnemy, updateNewEnemy, updateNewHazards, drawNewHazards, drawNewTelegraphs, drawNewEnemy, onNewEnemyKilled, newEnemyWeights, newEnemySlowMul, NEW_ENEMY_LABEL, NEW_ENEMY_TIPS2 } from "./newenemies";
@@ -10607,7 +10607,9 @@ export class GhostGame {
       const st = Math.abs(vy) * 0.06 * Math.sin(now * 22);
       ctx.scale(1 - st * 0.7, 1 + st);
     }
-    drawChar(ctx, id, anim, { frame, loop, flip: sp.face < 0, height: R * 4.4, flash: p.hitFlash > 0 ? 0.6 : 0, variant: "base" });
+    const view = anim === "RunUp" || anim === "IdleUp" ? "back" : anim === "RunDown" || anim === "IdleDown" ? "front" : "side";
+    drawChar(ctx, id, anim, { frame, loop, flip: sp.face < 0, height: R * 4.4, flash: p.hitFlash > 0 ? 0.6 : 0, variant: "base",
+      dye: this.look ? lookDye(this.look) : undefined, layers: this.look ? spriteLayers(this.look, now, sp.mv, view) : undefined });
     ctx.restore();
     // Direction chevron just outside the ring, drawn on top so it never hides behind the body.
     // (Running away from the camera, the back view already says where you're going.)
@@ -13634,7 +13636,8 @@ export class GhostGame {
       ctx.beginPath(); ctx.ellipse(x + 2 * S, y + 13 * S, 15 * S, 5 * S, 0, 0, Math.PI * 2); ctx.fill();
       ctx.translate(x, y + 13 * S);
       drawChar(ctx, id, anim, { frame: fr, loop: false, height: S * 46,
-        outline: { color: `hsl(${hue}, 95%, 66%)`, alpha: 0.35 + f.glow * 0.6, width: 3 } });
+        outline: { color: `hsl(${hue}, 95%, 66%)`, alpha: 0.35 + f.glow * 0.6, width: 3 },
+        dye: this.look ? lookDye(this.look) : undefined, layers: this.look ? spriteLayers(this.look, this.elapsed, 0.4, "side") : undefined });
       ctx.restore();
       return;
     }

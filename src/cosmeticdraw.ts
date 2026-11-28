@@ -1,3 +1,4 @@
+import { drawChar, drawCosmeticFit, hasCosmetic, spritesReady, type CharId } from "./sprites";
 // Cosmetic drawing (no game imports, so the engine can use it without import cycles).
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export type Slot = "attire" | "head" | "blade" | "sash";
@@ -188,4 +189,60 @@ export function drawPreview(ctx: CanvasRenderingContext2D, look: Look, size: num
   ctx.restore();
   drawBody(ctx, look, R, null);
   ctx.restore();
+}
+
+
+// ─── Pixel-art bodies (v3.17) ────────────────────────────────────────────────
+// Outfits become dyes on the sprite; headgear and back items are pixel-art pieces
+// (art/cosmetics/<id>.png) placed on the head / shoulders every frame.
+const HATS = new Set(["h_kasa", "h_jingasa"]);
+const HELMS = new Set(["h_crescent", "h_antler", "h_dragon", "h_mongol", "h_sakai", "h_sarugami", "h_hood", "h_komuso"]);
+const MASKS = new Set(["h_oni", "h_fox", "h_tengu", "h_ghostmask", "h_hannya"]);
+const BANNERS = new Set(["s_sashimono", "s_blossom"]);
+
+/** The outfit as a dye (the starting black outfit keeps the original art). */
+export function lookDye(look: Look): { body: string; trim: string } | undefined {
+  const a = look.attire;
+  if (!a || a.id === "a_wanderer" || !a.body) return undefined;
+  return { body: a.body, trim: a.trim ?? a.accent ?? a.body };
+}
+
+/** Wardrobe pieces to draw with a sprite. `view`: side, front (facing camera) or back.
+ *  `sway` 0..1 = how fast you're moving (capes lift). */
+export function spriteLayers(look: Look, t: number, sway: number, view: "side" | "front" | "back") {
+  const head = look.head?.id, back = look.sash?.id;
+  const hasHead = !!head && head !== "h_none" && hasCosmetic(head);
+  const hasBack = !!back && back !== "s_none" && hasCosmetic(back) && view === "side";
+  return {
+    behind: hasBack ? (hx: number, hy: number, H: number, ctx: CanvasRenderingContext2D) => {
+      const flap = Math.sin(t * (4 + sway * 8)) * (0.04 + sway * 0.08) - sway * 0.25;
+      if (BANNERS.has(back!)) drawCosmeticFit(ctx, back!, hx - H * 0.75, hy + H * 1.9, H * 1.7, "bottom", Math.sin(t * 3) * 0.03 - sway * 0.08);
+      else drawCosmeticFit(ctx, back!, hx - H * 0.05, hy + H * 0.85, H * (back === "s_gold" ? 1.6 : 2.3), "topright", flap);
+    } : undefined,
+    front: hasHead ? (hx: number, hy: number, H: number, ctx: CanvasRenderingContext2D) => {
+      if (MASKS.has(head!)) {
+        if (view === "back") return;   // you can't see a mask from behind
+        const fx = view === "front" ? hx : hx + H * 0.28;
+        drawCosmeticFit(ctx, head!, fx, hy + H * (head === "h_ghostmask" ? 0.72 : 0.55), H * (head === "h_tengu" ? 1.35 : 1.0), "center");
+        return;
+      }
+      const dv = view === "side" ? 0 : H * 0.3;   // front/back art has a taller crest: sit lower
+      if (HATS.has(head!)) drawCosmeticFit(ctx, head!, hx, hy + H * 0.5 + dv, H * 2.3, "bottom");
+      else if (HELMS.has(head!)) drawCosmeticFit(ctx, head!, hx, hy + H * (head === "h_hood" ? 1.15 : 1.0) + dv * 0.6, H * (head === "h_antler" ? 1.8 : 1.5), "bottom");
+      else drawCosmeticFit(ctx, head!, hx - H * 0.1, hy + H * 0.35, H * 1.35, "center");   // headband
+    } : undefined,
+  };
+}
+
+/** Wardrobe preview on a pixel-art body (returns false if the art isn't there). */
+export function drawSpritePreview(ctx: CanvasRenderingContext2D, look: Look, size: number, t: number, body: CharId): boolean {
+  if (!spritesReady()) return false;
+  ctx.clearRect(0, 0, size, size);
+  ctx.save();
+  ctx.fillStyle = "hsla(0, 0%, 0%, 0.45)";
+  ctx.beginPath(); ctx.ellipse(size / 2, size * 0.86, size * 0.18, size * 0.05, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.translate(size / 2, size * 0.86);
+  const ok = drawChar(ctx, body, "Idle", { frame: t * 7, height: size * 0.62, dye: lookDye(look), layers: spriteLayers(look, t, 0.3, "side") });
+  ctx.restore();
+  return ok;
 }

@@ -12,6 +12,19 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.17", date: "2026-11-27", title: "The Ghost's Wardrobe", kanji: "装",
+    summary: "Cosmetics now work on pixel-art characters, and 34 new Tsushima-inspired pieces join the Wardrobe.",
+    lines: [
+      ["new", "Outfits dye your pixel-art character: armor plates take the outfit's colour and the cords and trim take its accent, while skin, steel and the outline stay untouched."],
+      ["new", "Headgear and back pieces have pixel art and follow your head every frame: hats and helmets sit on top, masks cover the face (not from behind), and capes and banners stream behind you as you run."],
+      ["new", "10 new outfits: Sakai Clan, Ronin, Iki Island, Sarugami, Ghost, Kensei, Gosaku's, Mongol Raider, Lord Shimura's and Tadayori's armor."],
+      ["new", "8 new headgear: Ghost Mask, Dragon Kabuto, Mongol Helm, Komusō Basket, Jingasa, Hannya Mask, Sakai Clan Kabuto and Sarugami Helm."],
+      ["new", "5 new sword kits, each with its own slash colour: Sakai Steel, Ghost Kit, Kensei Kit, Iki Tide and Sarugami Fang."],
+      ["new", "11 new back pieces: Sakai Sashimono and Blossom Banner war banners, Straw Mino, Wolf Mantle, Ghost Cloak, Mongol War Cape, Shimura Cape, Bamboo Cape, Ember Scarf, Crane Cloak and Storm Cloak."],
+      ["change", "The Sash slot is now called Back. The Wardrobe preview shows your pixel-art character wearing the look, and so does the ult cutscene."],
+    ],
+  },
+  {
     version: "3.16", date: "2026-11-27", title: "Signature Moves", kanji: "奥",
     summary: "Every class's ultimate is now performed by your pixel-art character.",
     lines: [

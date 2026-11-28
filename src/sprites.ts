@@ -284,6 +284,83 @@ export interface DrawOpts {
   flash?: number;
   /** Elite glow: a coloured edge that traces the sprite's own silhouette. */
   outline?: { color: string; alpha: number; width?: number };
+  /** Wardrobe dye: armour takes `body`, bright trim takes `trim` (shading kept). */
+  dye?: { body: string; trim: string };
+  /** Extra art drawn with the body (already flipped to face right): `behind` before it, `front` after.
+   *  (hx, hy) is the top-centre of the head in local px, `head` the head's height in px. */
+  layers?: { behind?: (hx: number, hy: number, head: number, ctx: CanvasRenderingContext2D) => void; front?: (hx: number, hy: number, head: number, ctx: CanvasRenderingContext2D) => void };
+}
+
+// ── Wardrobe dyes ────────────────────────────────────────────────────────────
+function parseHsl(c: string): [number, number, number] {
+  const m = /hsla?\(\s*([\d.]+)[,\s]+([\d.]+)%[,\s]+([\d.]+)%/.exec(c);
+  return m ? [Number(m[1]), Number(m[2]) / 100, Number(m[3]) / 100] : [0, 0, 0.5];
+}
+function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2;
+  if (mx === mn) return [0, 0, l];
+  const d = mx - mn, s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+  const h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h * 60, s, l];
+}
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  const f = (n: number) => { const k = (n + h / 30) % 12, a = s * Math.min(l, 1 - l); return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); };
+  return [f(0), f(8), f(4)];
+}
+const dyed = new Map<string, HTMLCanvasElement>();
+/** Recolour a sheet: cloth/armour → body colour, bright saturated trim → trim colour. Skin, the
+ *  ink outline, steel and near-whites are left alone, and each pixel keeps its light/dark shading. */
+function dyedSheet(key: string, sh: Sheet, dye: { body: string; trim: string }): HTMLCanvasElement {
+  const ck = `${key}|${dye.body}|${dye.trim}`;
+  let c = dyed.get(ck);
+  if (c) return c;
+  c = document.createElement("canvas");
+  c.width = sh.img.width; c.height = sh.img.height;
+  const g = c.getContext("2d", { willReadFrequently: true })!;
+  g.drawImage(sh.img, 0, 0);
+  const img = g.getImageData(0, 0, c.width, c.height), d = img.data;
+  const [bh, bs, bl] = parseHsl(dye.body), [th, ts, tl] = parseHsl(dye.trim);
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] < 40) continue;
+    const [h, sat, l] = rgbToHsl(d[i], d[i + 1], d[i + 2]);
+    if (l < 0.09) continue;                                                   // ink outline
+    if (h >= 8 && h <= 42 && sat > 0.2 && sat < 0.85 && l > 0.42 && l < 0.9) continue;   // skin
+    if (sat < 0.12 && l > 0.6) continue;                                      // steel / white
+    const trim = sat > 0.45 && l > 0.42;
+    const [nh, ns, nl0, ref] = trim ? [th, ts, tl, 0.55] : [bh, bs, bl, 0.25];
+    const nl = Math.max(0.04, Math.min(0.96, nl0 * (l / ref)));
+    const [r, gg, b] = hslToRgb(nh, Math.max(0.05, ns), nl);
+    d[i] = r; d[i + 1] = gg; d[i + 2] = b;
+  }
+  g.putImageData(img, 0, 0);
+  dyed.set(ck, c);
+  return c;
+}
+
+// ── Head tracking (where hats and masks go) ──────────────────────────────────
+const heads = new WeakMap<Sheet, Map<number, { hx: number; hy: number }>>();
+function headOf(sh: Sheet, f: number, bodyX: number): { hx: number; hy: number } {
+  let m = heads.get(sh);
+  if (!m) { m = new Map(); heads.set(sh, m); }
+  const hit = m.get(f);
+  if (hit) return hit;
+  const c = document.createElement("canvas");
+  c.width = sh.size; c.height = sh.size;
+  const g = c.getContext("2d", { willReadFrequently: true })!;
+  g.drawImage(sh.img, f * sh.size, 0, sh.size, sh.size, 0, 0, sh.size, sh.size);
+  const px = g.getImageData(0, 0, sh.size, sh.size).data;
+  const on = (x: number, y: number) => x >= 0 && x < sh.size && px[(y * sh.size + x) * 4 + 3] > 40;
+  // The head is the highest part of the body just ahead of its centre line — a banner pole or
+  // wings behind the back don't count.
+  const x0 = Math.round(bodyX - 5), x1 = Math.round(bodyX + 12);
+  let top = -1;
+  for (let y = 0; y < sh.size && top < 0; y++) for (let x = x0; x <= x1; x++) if (on(x, y)) { top = y; break; }
+  let sx = 0, n = 0;
+  if (top >= 0) for (let y = top; y < Math.min(sh.size, top + 9); y++) for (let x = x0 - 4; x <= x1 + 4; x++) if (on(x, y)) { sx += x; n++; }
+  const out = { hx: n ? sx / n : bodyX, hy: top < 0 ? 0 : top };
+  m.set(f, out);
+  return out;
 }
 
 /** A sheet recoloured to one flat colour (cached per colour), for outlines. */
@@ -305,9 +382,10 @@ function silhouette(id: CharId, anim: Anim, sh: Sheet, color: string): HTMLCanva
 
 /** Draw a character with its feet at (0, 0) of the current transform. */
 export function drawChar(ctx: CanvasRenderingContext2D, id: CharId, anim: Anim, o: DrawOpts): boolean {
-  const im = imageFor(id, anim, o.variant ?? "base");
-  if (!im) return false;
-  const { sh } = im;
+  const im0 = imageFor(id, anim, o.variant ?? "base");
+  if (!im0) return false;
+  const { sh } = im0;
+  const im = o.dye ? { src: dyedSheet(`${id}/${anim}`, sh, o.dye) as CanvasImageSource, sh } : im0;
   const an = anchorOf(id);
   const n = sh.frames;
   let f = Math.floor(o.frame);
@@ -328,7 +406,14 @@ export function drawChar(ctx: CanvasRenderingContext2D, id: CharId, anim: Anim, 
       ctx.drawImage(sil, f * sh.size, 0, sh.size, sh.size, dx + ox, dy + oy, s, s);
     ctx.globalAlpha = a0;
   }
+  let head: { hx: number; hy: number } | null = null;
+  if (o.layers) {
+    const hd = headOf(sh, f, ax);
+    head = { hx: dx + hd.hx * k, hy: dy + hd.hy * k };
+    o.layers.behind?.(head.hx, head.hy, o.height * 0.2, ctx);
+  }
   ctx.drawImage(im.src, f * sh.size, 0, sh.size, sh.size, dx, dy, s, s);
+  if (head) o.layers!.front?.(head.hx, head.hy, o.height * 0.2, ctx);
   if (o.flash && o.flash > 0) {
     const fl = imageFor(id, anim, "flash");
     if (fl) {
@@ -374,6 +459,54 @@ export function drawItem(ctx: CanvasRenderingContext2D, key: string, x: number, 
     ctx.restore();
   } else ctx.drawImage(sh.img, 0, 0, sh.size, sh.size, x, -length / 2, length, length);
   ctx.globalAlpha = a;
+  ctx.imageSmoothingEnabled = smooth;
+  return true;
+}
+
+/** Draw a cosmetic image (art/cosmetics/<id>.png) into a box. Returns false without art. */
+export function drawCosmetic(ctx: CanvasRenderingContext2D, id: string, x: number, y: number, w: number, h: number, alpha = 1): boolean {
+  const sh = sheets.get(`cosmetics/${id}`);
+  if (!sh) return false;
+  const smooth = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = false;
+  const a = ctx.globalAlpha;
+  ctx.globalAlpha = a * alpha;
+  ctx.drawImage(sh.img, 0, 0, sh.size, sh.size, x, y, w, h);
+  ctx.globalAlpha = a;
+  ctx.imageSmoothingEnabled = smooth;
+  return true;
+}
+export const hasCosmetic = (id: string) => sheets.has(`cosmetics/${id}`);
+
+/** Drawn-pixel bounds of a cosmetic image (cached). */
+const cosBox = new Map<string, { x0: number; y0: number; x1: number; y1: number }>();
+function boxOf(id: string, sh: Sheet) {
+  let b = cosBox.get(id);
+  if (b) return b;
+  const c = document.createElement("canvas");
+  c.width = sh.size; c.height = sh.size;
+  const g = c.getContext("2d", { willReadFrequently: true })!;
+  g.drawImage(sh.img, 0, 0, sh.size, sh.size, 0, 0, sh.size, sh.size);
+  const px = g.getImageData(0, 0, sh.size, sh.size).data;
+  let x0 = sh.size, y0 = sh.size, x1 = 0, y1 = 0;
+  for (let y = 0; y < sh.size; y++) for (let x = 0; x < sh.size; x++) if (px[(y * sh.size + x) * 4 + 3] > 40) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  b = x1 >= x0 ? { x0, y0, x1: x1 + 1, y1: y1 + 1 } : { x0: 0, y0: 0, x1: sh.size, y1: sh.size };
+  cosBox.set(id, b);
+  return b;
+}
+/** Draw a cosmetic `w` px wide so the chosen point of its drawn area lands on (ax, ay):
+ *  "bottom" = bottom-centre, "center", or "topright" (where a cape meets the shoulders). */
+export function drawCosmeticFit(ctx: CanvasRenderingContext2D, id: string, ax: number, ay: number, w: number, align: "bottom" | "center" | "topright", rot = 0, alpha = 1): boolean {
+  const sh = sheets.get(`cosmetics/${id}`);
+  if (!sh) return false;
+  const b = boxOf(id, sh), k = w / (b.x1 - b.x0), h = (b.y1 - b.y0) * k;
+  const px = align === "topright" ? w : w / 2, py = align === "bottom" ? h : align === "center" ? h / 2 : 0;
+  const smooth = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = false;
+  ctx.save();
+  ctx.translate(ax, ay); ctx.rotate(rot); ctx.globalAlpha *= alpha;
+  ctx.drawImage(sh.img, b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0, -px, -py, w, h);
+  ctx.restore();
   ctx.imageSmoothingEnabled = smooth;
   return true;
 }
