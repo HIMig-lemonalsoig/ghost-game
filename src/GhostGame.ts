@@ -11632,16 +11632,19 @@ export class GhostGame {
     for (const e of this.enemies) {
       if (e.state === "dead" || !e.affixes) continue;
       const hue = AFFIXES[e.affixes[0]].hue;
+      const spr = this.isSpriteEnemy(e);   // sprites get a silhouette outline in drawEnemySprite instead of rings
+      if (!spr) {
       ctx.strokeStyle = `hsla(${hue}, 95%, 65%, ${0.55 + Math.sin(t * 5 + e.id) * 0.25})`;
       ctx.lineWidth = 2.5;
       ctx.beginPath(); ctx.arc(e.pos.x, e.pos.y, e.size + 5, 0, Math.PI * 2); ctx.stroke();
-      if (e.affixes[1]) {
+      }
+      if (e.affixes[1] && !spr) {
         ctx.strokeStyle = `hsla(${AFFIXES[e.affixes[1]].hue}, 95%, 65%, 0.6)`;
         ctx.beginPath(); ctx.arc(e.pos.x, e.pos.y, e.size + 9, 0, Math.PI * 2); ctx.stroke();
       }
       if (e.isBoss) continue;   // bosses already have a big name bar
       const label = `${e.affixes.map(a => AFFIXES[a].kanji).join("")} ${this.eliteName(e)}`;
-      const y = e.pos.y - e.size - (e.archetype === "priest" ? 42 : 22);
+      const y = spr ? e.pos.y + e.size - this.spriteHeightOf(e) - 18 : e.pos.y - e.size - (e.archetype === "priest" ? 42 : 22);
       const w = ctx.measureText(label).width + 10;
       ctx.fillStyle = "hsla(0, 0%, 4%, 0.72)";
       ctx.fillRect(e.pos.x - w / 2, y - 8, w, 16);
@@ -11821,7 +11824,10 @@ export class GhostGame {
     }
     if (e.archetype === "tsukumo" || e.archetype === "tsukumo_small") ctx.translate(0, -Math.abs(Math.sin(this.elapsed * 6 + e.id)) * e.size * 0.45);   // hops on one leg
     if (e.archetype === "taiko" && (e.drumT ?? 0) > 0) { const b = 1 + 0.08 * Math.sin(this.elapsed * 40); ctx.scale(b, b); }
-    drawChar(ctx, id, anim, { frame, loop, flip, height: h, variant, flash: fl });
+    const outline = e.affixes?.length
+      ? { color: `hsl(${AFFIXES[e.affixes[0]].hue}, 95%, 62%)`, alpha: 0.7 + Math.sin(this.elapsed * 5 + e.id) * 0.25, width: e.affixes[1] ? 3 : 2 }
+      : undefined;
+    drawChar(ctx, id, anim, { frame, loop, flip, height: h, variant, flash: fl, outline });
     ctx.restore();
     return true;
   }
@@ -11940,7 +11946,9 @@ export class GhostGame {
       // Shield arc — drawn relative to shieldFacing in WORLD space, so undo
       // the local rotation first by rotating into shield space.
       ctx.save();
-      ctx.rotate(-e.facing + e.shieldFacing);
+      if (spriteBody) {   // on the ground under its feet, so it doesn't cut through the sprite
+        ctx.rotate(-e.facing); ctx.translate(0, e.size - 2); ctx.scale(1, 0.45); ctx.rotate(e.shieldFacing);
+      } else ctx.rotate(-e.facing + e.shieldFacing);
       ctx.strokeStyle = "hsl(36, 50%, 35%)";
       ctx.lineWidth = 4;
       ctx.beginPath();
@@ -11953,13 +11961,15 @@ export class GhostGame {
       ctx.fill();
       ctx.restore();
     } else if (e.archetype === "archer") {
-      // Bow — drawn forward.
+      // Bow — drawn forward (sprite archers hold their own bow).
       ctx.save();
+      if (!spriteBody) {
       ctx.strokeStyle = "hsl(36, 60%, 40%)";
       ctx.lineWidth = 1.8;
       ctx.beginPath();
       ctx.arc(e.size + 4, 0, 7, -Math.PI / 2, Math.PI / 2);
       ctx.stroke();
+      }
       // Telegraph aim line during draw
       if (e.attackAnim > 0) {
         ctx.strokeStyle = `hsla(${this.a11y.colorblind ? this.dangerHue : 355}, 90%, 55%, ${0.25 + e.attackAnim * 0.55})`;
@@ -11970,8 +11980,8 @@ export class GhostGame {
         ctx.stroke();
       }
       ctx.restore();
-    } else if (e.archetype === "assassin") {
-      // Twin blades.
+    } else if (e.archetype === "assassin" && !spriteBody) {
+      // Twin blades (sprite assassins hold their own).
       for (const off of [-1, 1]) {
         ctx.save();
         ctx.rotate(off * 0.45);

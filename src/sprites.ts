@@ -272,6 +272,25 @@ export interface DrawOpts {
   variant?: Variant;
   /** 0..1 white hit flash drawn over the body. */
   flash?: number;
+  /** Elite glow: a coloured edge that traces the sprite's own silhouette. */
+  outline?: { color: string; alpha: number; width?: number };
+}
+
+/** A sheet recoloured to one flat colour (cached per colour), for outlines. */
+const silhouettes = new Map<string, HTMLCanvasElement>();
+function silhouette(id: CharId, anim: Anim, sh: Sheet, color: string): HTMLCanvasElement {
+  const key = `${id}/${anim}/${color}`;
+  let c = silhouettes.get(key);
+  if (!c) {
+    c = document.createElement("canvas");
+    c.width = sh.img.width; c.height = sh.img.height;
+    const g = c.getContext("2d")!;
+    g.drawImage(sh.img, 0, 0);
+    g.globalCompositeOperation = "source-in";
+    g.fillStyle = color; g.fillRect(0, 0, c.width, c.height);
+    silhouettes.set(key, c);
+  }
+  return c;
 }
 
 /** Draw a character with its feet at (0, 0) of the current transform. */
@@ -291,6 +310,14 @@ export function drawChar(ctx: CanvasRenderingContext2D, id: CharId, anim: Anim, 
   const own = sh.own?.[f];
   const ax = own?.cx ?? an.cx, af = own?.feet ?? an.feet;
   const dx = -ax * k, dy = -af * k, s = sh.size * k;
+  if (o.outline && o.outline.alpha > 0) {
+    const sil = silhouette(id, anim, sh, o.outline.color);
+    const w = o.outline.width ?? 2, a0 = ctx.globalAlpha;
+    ctx.globalAlpha = a0 * o.outline.alpha;
+    for (const [ox, oy] of [[-w, 0], [w, 0], [0, -w], [0, w], [-w, -w], [w, -w], [-w, w], [w, w]])
+      ctx.drawImage(sil, f * sh.size, 0, sh.size, sh.size, dx + ox, dy + oy, s, s);
+    ctx.globalAlpha = a0;
+  }
   ctx.drawImage(im.src, f * sh.size, 0, sh.size, sh.size, dx, dy, s, s);
   if (o.flash && o.flash > 0) {
     const fl = imageFor(id, anim, "flash");

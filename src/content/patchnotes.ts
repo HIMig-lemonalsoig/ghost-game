@@ -12,6 +12,15 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.13.2", date: "2026-11-27", title: "Clean Edges", kanji: "縁",
+    summary: "Leftovers from the old circle bodies are gone.",
+    lines: [
+      ["change", "Elites now glow with an outline that traces their own pixel-art body in their affix colour (thicker with two affixes), instead of a circle around where the old body was. Their name tag sits above their head."],
+      ["fix", "Assassins no longer show the faint circle and two blade sticks on top of their sprite; archers no longer draw a second little bow."],
+      ["change", "Shield-bearers' blocking arc now lies on the ground at their feet, so it shows which side is guarded without cutting through the sprite."],
+    ],
+  },
+  {
     version: "3.13.1", date: "2026-11-27", title: "Steady Hands", kanji: "定",
     summary: "Characters stay the same size facing any way, and the class rack behaves.",
     lines: [
