@@ -12,6 +12,17 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.8", date: "2026-11-27", title: "Pixel Yokai", kanji: "妖",
+    summary: "The first yokai get pixel-art bodies: the Kitsune boss and two kinds of tengu.",
+    lines: [
+      ["new", "The Nine-Tailed Witch (wave 10 boss) is now a full pixel-art kitsune with all nine tails. Her attack warnings are unchanged."],
+      ["new", "Assassins are now Karasu tengu: crow-headed yokai with wings and a blade."],
+      ["new", "Healer Monks are now Yamabushi tengu: red-faced mountain spirits. Their green healing ring still shows their range."],
+      ["new", "Playing as Kitsune, Tengu or Yamabushi gives you the matching yokai body."],
+      ["change", "Oni Warlord, Gashadokuro, Raijin and the other yokai keep their old look until we find art for them. Art: CraftPix Yokai pack (licensed, offline version only)."],
+    ],
+  },
+  {
     version: "3.7", date: "2026-11-27", title: "Pixel Samurai", kanji: "絵",
     summary: "You and the human enemies are now animated pixel-art samurai instead of circles.",
     lines: [

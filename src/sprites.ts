@@ -8,7 +8,7 @@
 // body flips left/right toward where you aim, while attack arcs, telegraphs
 // and hitboxes stay exactly as they were.
 
-export type CharId = "samurai" | "archer" | "commander";
+export type CharId = "samurai" | "archer" | "commander" | "kitsune" | "karasu" | "ytengu";
 export type Anim = "Idle" | "Walk" | "Run" | "Attack_1" | "Attack_2" | "Attack_3" | "Hurt" | "Dead" | "Protection" | "Protect" | "Shot";
 /** Colour variants, made once with a canvas filter and cached. */
 export type Variant = "base" | "crimson" | "shade" | "flash" | "gold";
@@ -151,7 +151,10 @@ export function drawChar(ctx: CanvasRenderingContext2D, id: CharId, anim: Anim, 
 /** Which body each class wears. */
 export function classChar(classId: string): CharId {
   switch (classId) {
-    case "tetsubo": case "berserker": case "sohei": case "yamabushi": case "rikishi":
+    case "kitsune": return "kitsune";
+    case "tengu": return "karasu";
+    case "yamabushi": return "ytengu";
+    case "tetsubo": case "berserker": case "sohei": case "rikishi":
     case "hatamoto": case "ashigaru": case "dokkaebi":
       return "commander";
     case "takajo": case "teppo":

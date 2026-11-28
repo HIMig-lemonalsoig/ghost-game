@@ -11277,6 +11277,11 @@ export class GhostGame {
         ctx.fillStyle = `hsla(130, 70%, 55%, ${0.05 + charge * 0.1})`;
         ctx.beginPath(); ctx.arc(0, 0, 200, 0, Math.PI * 2); ctx.fill();
         ctx.restore();
+        if (this.drawEnemySprite(e, false)) {
+          ctx.fillStyle = "hsl(130, 70%, 65%)"; ctx.font = "bold 12px serif"; ctx.textAlign = "center";
+          ctx.fillText("癒", 0, -e.size * 4.6);
+          return true;
+        }
         ctx.save();
         ctx.rotate(e.facing);
         ctx.fillStyle = flash ? "hsl(36, 80%, 85%)" : "hsl(45, 25%, 82%)";
@@ -11584,7 +11589,9 @@ export class GhostGame {
 
   /** v3.7: human enemies as pixel sprites. Yokai, elites' auras and bosses keep their own art. */
   isSpriteEnemy(e: Enemy): boolean {
-    return this.useSprites && spritesReady() && !e.isBoss && (e.archetype === "normal" || e.archetype === "assassin" || e.archetype === "archer" || e.archetype === "heavy" || e.archetype === "shielded");
+    if (!this.useSprites || !spritesReady()) return false;
+    if (e.isBoss) return e.bossKind === "kitsune";
+    return e.archetype === "normal" || e.archetype === "assassin" || e.archetype === "archer" || e.archetype === "heavy" || e.archetype === "shielded" || e.archetype === "priest";
   }
 
   private drawEnemySprite(e: Enemy, dead: boolean): boolean {
@@ -11592,13 +11599,14 @@ export class GhostGame {
     let id: CharId, variant: SprVariant = "base";
     switch (e.archetype) {
       case "normal": id = "samurai"; variant = "crimson"; break;
-      case "assassin": id = "samurai"; variant = "shade"; break;
+      case "assassin": id = "karasu"; break;
+      case "priest": id = "ytengu"; break;
       case "archer": id = "archer"; break;
       case "heavy": case "shielded": id = "commander"; break;
-      default: return false;
+      default: if (e.bossKind === "kitsune") { id = "kitsune"; break; } return false;
     }
     const ctx = this.ctx, t = this.elapsed + e.id * 0.37;
-    const h = e.size * 4.4;
+    const h = e.size * (e.isBoss ? 3.4 : 4.4);
     const flip = Math.cos(e.facing) < 0;
     ctx.save();
     ctx.translate(0, e.size - 1);
@@ -11803,7 +11811,7 @@ export class GhostGame {
       ctx.arc(0, 0, e.size * 2.2, 0, Math.PI * 2);
       ctx.fill();
     }
-    if (e.bossKind) this.drawBossOrnament(e);
+    if (e.bossKind && !spriteBody) this.drawBossOrnament(e);
 
     ctx.restore();
     if (e.isBoss) this.drawBossTelegraph(e);
