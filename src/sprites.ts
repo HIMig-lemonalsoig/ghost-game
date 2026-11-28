@@ -411,7 +411,8 @@ export function drawChar(ctx: CanvasRenderingContext2D, id: CharId, anim: Anim, 
   let head: { hx: number; hy: number } | null = null;
   if (o.layers) {
     const hd = headOf(sh, f, ax);
-    head = { hx: dx + hd.hx * k, hy: dy + hd.hy * k };
+    const fix = HEAD_FIX[id], hu = o.height * 0.2;   // some heads have ears/beaks that pull the finder off-centre
+    head = { hx: dx + hd.hx * k + (fix?.dx ?? 0) * hu, hy: dy + hd.hy * k + (fix?.dy ?? 0) * hu };
     o.layers.behind?.(head.hx, head.hy, o.height * 0.2, ctx);
   }
   ctx.drawImage(im.src, f * sh.size, 0, sh.size, sh.size, dx, dy, s, s);
@@ -496,12 +497,17 @@ function boxOf(id: string, sh: Sheet) {
   cosBox.set(id, b);
   return b;
 }
+/** Per-body nudge of the detected head (head units; +x = forward). */
+const HEAD_FIX: Partial<Record<string, { dx: number; dy: number }>> = { kitsune: { dx: -0.18, dy: 0.12 } };
+
 /** Draw a cosmetic `w` px wide so the chosen point of its drawn area lands on (ax, ay):
  *  "bottom" = bottom-centre, "center", or "topright" (where a cape meets the shoulders). */
-export function drawCosmeticFit(ctx: CanvasRenderingContext2D, id: string, ax: number, ay: number, w: number, align: "bottom" | "center" | "topright", rot = 0, alpha = 1): boolean {
+export function drawCosmeticFit(ctx: CanvasRenderingContext2D, id: string, ax: number, ay: number, size: number, align: "bottom" | "center" | "topright", rot = 0, alpha = 1, byHeight = false): boolean {
   const sh = sheets.get(`cosmetics/${id}`);
   if (!sh) return false;
-  const b = boxOf(id, sh), k = w / (b.x1 - b.x0), h = (b.y1 - b.y0) * k;
+  const b = boxOf(id, sh);
+  const k = byHeight ? size / (b.y1 - b.y0) : size / (b.x1 - b.x0);   // `size` is the width, or the height
+  const w = (b.x1 - b.x0) * k, h = (b.y1 - b.y0) * k;
   const px = align === "topright" ? w : w / 2, py = align === "bottom" ? h : align === "center" ? h / 2 : 0;
   const smooth = ctx.imageSmoothingEnabled;
   ctx.imageSmoothingEnabled = false;

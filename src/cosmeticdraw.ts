@@ -199,6 +199,14 @@ const HATS = new Set(["h_kasa", "h_jingasa"]);
 const HELMS = new Set(["h_crescent", "h_antler", "h_dragon", "h_mongol", "h_sakai", "h_sarugami", "h_hood", "h_komuso"]);
 const MASKS = new Set(["h_oni", "h_fox", "h_tengu", "h_ghostmask", "h_hannya"]);
 const BANNERS = new Set(["s_sashimono", "s_blossom"]);
+/** Full capes hang from the shoulders to the knees (sized by height); the rest are scarves. */
+const CAPES = new Set(["s_indigo", "s_mino", "s_wolf", "s_ghostcloak", "s_mongol", "s_purple", "s_bamboo", "s_crane", "s_storm"]);
+/** Per-hat seat (how far below the top of the head its bottom sits, in head units) and width. */
+const HEAD_FIT: Record<string, { y: number; w: number }> = {
+  h_kasa: { y: 1.0, w: 2.3 }, h_jingasa: { y: 0.9, w: 2.1 }, h_komuso: { y: 1.7, w: 1.45 },
+  h_crescent: { y: 1.15, w: 1.75 }, h_antler: { y: 1.1, w: 1.8 }, h_dragon: { y: 1.15, w: 1.65 },
+  h_mongol: { y: 1.1, w: 1.5 }, h_sakai: { y: 1.15, w: 1.75 }, h_sarugami: { y: 1.15, w: 1.4 }, h_hood: { y: 1.15, w: 1.5 },
+};
 
 /** The outfit as a dye (the starting black outfit keeps the original art). */
 export function lookDye(look: Look): { body: string; trim: string } | undefined {
@@ -217,7 +225,8 @@ export function spriteLayers(look: Look, t: number, sway: number, view: "side" |
     behind: hasBack ? (hx: number, hy: number, H: number, ctx: CanvasRenderingContext2D) => {
       const flap = Math.sin(t * (4 + sway * 8)) * (0.04 + sway * 0.08) - sway * 0.25;
       if (BANNERS.has(back!)) drawCosmeticFit(ctx, back!, hx - H * 0.75, hy + H * 1.9, H * 1.7, "bottom", Math.sin(t * 3) * 0.03 - sway * 0.08);
-      else drawCosmeticFit(ctx, back!, hx - H * 0.05, hy + H * 0.85, H * (back === "s_gold" ? 1.6 : 2.3), "topright", flap);
+      else if (CAPES.has(back!)) drawCosmeticFit(ctx, back!, hx + H * 0.15, hy + H * 1.0, H * 3.3, "topright", flap * 0.6, 1, true);
+      else drawCosmeticFit(ctx, back!, hx + H * 0.05, hy + H * 0.9, H * (back === "s_gold" ? 1.6 : 2.7), "topright", flap);
     } : undefined,
     front: hasHead ? (hx: number, hy: number, H: number, ctx: CanvasRenderingContext2D) => {
       if (MASKS.has(head!)) {
@@ -227,8 +236,8 @@ export function spriteLayers(look: Look, t: number, sway: number, view: "side" |
         return;
       }
       const dv = view === "side" ? 0 : H * 0.3;   // front/back art has a taller crest: sit lower
-      if (HATS.has(head!)) drawCosmeticFit(ctx, head!, hx, hy + H * 0.5 + dv, H * 2.3, "bottom");
-      else if (HELMS.has(head!)) drawCosmeticFit(ctx, head!, hx, hy + H * (head === "h_hood" ? 1.15 : 1.0) + dv * 0.6, H * (head === "h_antler" ? 1.8 : 1.5), "bottom");
+      const fit = HEAD_FIT[head!];
+      if (fit) drawCosmeticFit(ctx, head!, hx, hy + H * fit.y + (HATS.has(head!) ? dv : dv * 0.6), H * fit.w, "bottom");
       else drawCosmeticFit(ctx, head!, hx - H * 0.1, hy + H * 0.35, H * 1.35, "center");   // headband
     } : undefined,
   };

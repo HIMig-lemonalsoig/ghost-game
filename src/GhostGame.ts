@@ -2976,6 +2976,9 @@ interface AllyGhost {
   size: number;
   homing?: boolean;
   burn?: boolean;
+  charge?: boolean;          // Dokkaebi horde: a straight stampede that speeds up
+  delay?: number;            // seconds before it sets off (staggered charge)
+  seed?: number;
 }
 
 // Kagemusha clone — mirrors the player and draws aggro.
@@ -12449,6 +12452,7 @@ export class GhostGame {
 
     // Ally ghosts — wispy crimson/teal orbs trailing motion.
     for (const g of this.allyGhosts) {
+      if (g.charge) { this.drawHordeGhost(ctx, g); continue; }
       const a = Math.max(0, g.life / g.maxLife);
       ctx.save();
       ctx.globalAlpha = a * 0.85;
@@ -13359,6 +13363,11 @@ export class GhostGame {
     // Ally ghosts (Dokkaebi passive proc + ult): travel, pierce, curse.
     for (const g of this.allyGhosts) {
       g.life -= dt;
+      if (g.charge) {
+        if ((g.delay ?? 0) > 0) { g.delay! -= dt; g.life += dt; continue; }   // rising, waiting for the charge
+        const sp = Math.hypot(g.vel.x, g.vel.y), ns = Math.min(700, sp + 1500 * dt);
+        g.vel.x *= ns / sp; g.vel.y *= ns / sp;
+      }
       if (g.homing) {
         let best: Enemy | null = null;
         let bestD = 520;
@@ -13529,6 +13538,62 @@ export class GhostGame {
         if (this.ultRoninRemaining === 0) this.ultRoninMul = 1;
       }
     }
+  }
+
+  /** Dokkaebi horde ghost: a horned goblin spirit with a smoky tail, leaning into its charge. */
+  private drawHordeGhost(ctx: CanvasRenderingContext2D, g: AllyGhost) {
+    const t = this.elapsed + (g.seed ?? 0);
+    const rising = Math.max(0, g.delay ?? 0);
+    const fadeIn = 1 - Math.min(1, rising / 0.35);
+    const a = Math.min(1, g.life / 0.4) * (0.35 + 0.65 * fadeIn);
+    const ang = Math.atan2(g.vel.y, g.vel.x);
+    const S = g.size * (0.6 + 0.4 * fadeIn);
+    ctx.save();
+    ctx.translate(g.pos.x, g.pos.y - 6 * (1 - fadeIn));
+    // smoky trail of afterimages behind it
+    ctx.globalCompositeOperation = "lighter";
+    const sp = Math.hypot(g.vel.x, g.vel.y);
+    for (let k = 4; k >= 1; k--) {
+      const d = k * (8 + sp * 0.03);
+      ctx.fillStyle = `hsla(${175 + k * 6}, 80%, 55%, ${a * 0.12 * (5 - k) / 4})`;
+      ctx.beginPath(); ctx.ellipse(-Math.cos(ang) * d, -Math.sin(ang) * d, S * (1 - k * 0.12), S * 0.7 * (1 - k * 0.12), ang, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalCompositeOperation = "source-over";
+    ctx.rotate(ang);
+    const wob = Math.sin(t * 18) * 0.08;
+    // body: a teardrop with a ragged tail
+    const grad = ctx.createRadialGradient(S * 0.25, 0, 0, 0, 0, S * 1.2);
+    grad.addColorStop(0, `hsla(170, 90%, 85%, ${a})`);
+    grad.addColorStop(0.55, `hsla(185, 75%, 50%, ${a * 0.85})`);
+    grad.addColorStop(1, `hsla(205, 70%, 25%, 0)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(S * 0.9, 0);
+    ctx.quadraticCurveTo(S * 0.8, -S * 0.75, 0, -S * 0.7);
+    for (let i = 0; i <= 4; i++) {   // ragged tail flames
+      const tx = -S * (0.9 + 0.55 * ((i % 2) ? 0.6 : 1)) , ty = -S * 0.7 + (S * 1.4 * i) / 4;
+      ctx.lineTo(tx + Math.sin(t * 14 + i) * 3, ty);
+    }
+    ctx.lineTo(0, S * 0.7);
+    ctx.quadraticCurveTo(S * 0.8, S * 0.75, S * 0.9, 0);
+    ctx.fill();
+    // horns
+    ctx.fillStyle = `hsla(45, 70%, 80%, ${a})`;
+    for (const sd of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(S * 0.35, sd * S * 0.45);
+      ctx.quadraticCurveTo(S * 0.55, sd * S * (0.95 + wob), S * 0.05, sd * S * 1.05);
+      ctx.lineTo(S * 0.2, sd * S * 0.5);
+      ctx.fill();
+    }
+    // grinning face: glowing eyes and a jagged mouth
+    ctx.fillStyle = `hsla(50, 100%, 70%, ${a})`;
+    for (const sd of [-1, 1]) { ctx.beginPath(); ctx.ellipse(S * 0.45, sd * S * 0.22, S * 0.11, S * 0.07, 0, 0, Math.PI * 2); ctx.fill(); }
+    ctx.strokeStyle = `hsla(200, 60%, 12%, ${a})`; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(S * 0.68, -S * 0.2);
+    for (let i = 1; i <= 4; i++) ctx.lineTo(S * (0.68 + (i % 2 ? 0.08 : 0)), -S * 0.2 + (S * 0.4 * i) / 4);
+    ctx.stroke();
+    ctx.restore();
   }
 
   spawnFoxfire(x: number, y: number, damage: number, ang = Math.random() * Math.PI * 2, label?: string) {
@@ -14170,20 +14235,28 @@ export class GhostGame {
         break;
       }
       case "dokkaebi": {
-        // Cursed Horde — 5 ghost projectiles fan out, curse on hit.
-        for (let i = 0, n = this.hasUltPerk("ultc_dokkaebi") ? 8 : 5; i < n; i++) {
-          const a = Math.random() * Math.PI * 2;
-          this.allyGhosts.push({
-            pos: { x: this.player.pos.x, y: this.player.pos.y },
-            vel: { x: Math.cos(a) * 360, y: Math.sin(a) * 360 },
-            life: 1.6, maxLife: 1.6,
-            damage: this.ultDmg(10),
-            hitSet: new Set(),
-            curse: true,
-            fromUlt: true,
-            homing: true,     // used to fly off in random directions and miss
-            size: 18,
-          });
+        // Cursed Horde — a rank of goblin ghosts rises behind you in a line across your aim,
+        // then charges straight across the arena, trampling and cursing everything in its path.
+        {
+          const n = this.hasUltPerk("ultc_dokkaebi") ? 8 : 5;
+          const a = this.player.facing, px = -Math.sin(a), py = Math.cos(a);
+          for (let i = 0; i < n; i++) {
+            const off = (i - (n - 1) / 2) * 46;
+            const back = 34 + Math.abs(i - (n - 1) / 2) * 10;   // a shallow V, the middle ghost leads
+            this.allyGhosts.push({
+              pos: { x: this.player.pos.x + px * off - Math.cos(a) * back, y: this.player.pos.y + py * off - Math.sin(a) * back },
+              vel: { x: Math.cos(a) * 90, y: Math.sin(a) * 90 },
+              life: 2.8, maxLife: 2.8,
+              damage: this.ultDmg(10),
+              hitSet: new Set(),
+              curse: true,
+              fromUlt: true,
+              charge: true,
+              delay: 0.35 + Math.abs(i - (n - 1) / 2) * 0.06,
+              seed: Math.random() * 10,
+              size: 26,
+            });
+          }
         }
         this.screenFlashColor = "hsla(180, 50%, 60%, 0.35)";
         this.screenFlashTimer = 0.35;

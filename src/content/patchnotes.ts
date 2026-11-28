@@ -12,6 +12,16 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.18.1", date: "2026-11-28", title: "Fitted Gear", kanji: "整",
+    summary: "Hats sit on heads, capes are full-length, and the Dokkaebi horde really charges.",
+    lines: [
+      ["fix", "Hats and helmets now sit on the head instead of floating above it: each piece has its own fit (kasa and jingasa sit on the brow, the komusō basket covers the head instead of towering over it, kabuto rest down over the head)."],
+      ["fix", "Capes and cloaks hang from the shoulders to the knees instead of stopping at the waist; scarves are a little larger."],
+      ["fix", "Headgear lines up better on the Kitsune, whose ears used to pull hats forward."],
+      ["change", "Cursed Horde: five horned goblin ghosts now rise behind the Dokkaebi in a V and charge straight across the arena, trampling and cursing everything in their path (it used to be homing orbs, much like Nine Tails)."],
+    ],
+  },
+  {
     version: "3.18", date: "2026-11-28", title: "Steel in Hand", kanji: "握",
     summary: "Pixel-art characters now hold and use whatever weapon you have equipped.",
     lines: [
