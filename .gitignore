@@ -2,3 +2,6 @@ node_modules/
 dist/
 offline/
 .DS_Store
+
+# Licensed sprite art (CraftPix) — not redistributable, kept local only
+art/

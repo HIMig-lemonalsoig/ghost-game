@@ -1,4 +1,5 @@
 // Consolidated game engine and supporting systems. No React dependencies.
+import { loadSprites, spritesReady, drawChar, classChar, frameCount, type Anim as SprAnim, type CharId, type Variant as SprVariant } from "./sprites";
 import { drawCrestCursor } from "./cursor";
 import { Fx, hueOf } from "./fx";
 import { updateUltTrail, drawUltUnder, drawUltOver } from "./ultvfx";
@@ -4097,6 +4098,8 @@ export class GhostGame {
   showPointers = true;
   showMinimap = true;
   showCursor = true; cursorInside = true; cursorT = 0; cursorSpin = 0; cursorKick = 0; cursorScale = 1; minimapScale = 1;
+  /** v3.7 pixel sprites: on/off + per-player animation state. */
+  useSprites = true; sprPrev = { x: 0, y: 0, mv: 0, lastAtk: 0, atkIdx: 0 };
   /** WARDROBE: the player's equipped cosmetics (set by the UI before a run; null = classic look). */
   look: Look | null = null;
   private lookPrev = { x: 0, y: 0, sway: 0 };
@@ -10481,6 +10484,39 @@ export class GhostGame {
     drawCrestCursor(this, ctx);
   }
 
+  /** v3.7: draw the player as an animated pixel sprite (feet at the hitbox bottom). */
+  private drawPlayerSprite(): boolean {
+    if (!this.useSprites || !spritesReady()) return false;
+    const p = this.player, ctx = this.ctx, sp = this.sprPrev;
+    const id = classChar(this.stats.classId);
+    const mv = Math.hypot(p.pos.x - sp.x, p.pos.y - sp.y);
+    sp.x = p.pos.x; sp.y = p.pos.y;
+    sp.mv += (Math.min(1, mv / 3) - sp.mv) * 0.3;
+    if (p.attackAnim > sp.lastAtk + 0.25) sp.atkIdx = (sp.atkIdx + 1) % 3;   // new swing → next combo frame set
+    sp.lastAtk = p.attackAnim;
+    const t = this.elapsed;
+    let anim: SprAnim, frame: number, loop = true;
+    if (p.attackAnim > 0) {
+      anim = id === "archer" ? "Shot" : (["Attack_1", "Attack_2", "Attack_3"] as const)[sp.atkIdx];
+      frame = (1 - p.attackAnim) * frameCount(id, anim); loop = false;
+    } else if (p.hitFlash > 0) { anim = "Hurt"; frame = (1 - p.hitFlash) * frameCount(id, "Hurt"); loop = false; }
+    else if (this.isBlocking() || p.deflectTimer > 0) { anim = id === "commander" ? "Protect" : "Protection"; frame = t * 6; loop = false; }
+    else if (p.dashTimer > 0) { anim = "Run"; frame = t * 18; }
+    else if (sp.mv > 0.25) { anim = "Run"; frame = t * 12; }
+    else { anim = "Idle"; frame = t * 8; }
+    // Class-accent ring at your feet so you stand out from human enemies.
+    const R = BASE.PLAYER_RADIUS;
+    ctx.save();
+    ctx.strokeStyle = getClass(this.stats.classId).accent; ctx.globalAlpha *= 0.75; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(0, R - 2, R + 3, (R + 3) * 0.42, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+    ctx.save();
+    ctx.translate(0, R - 1);
+    drawChar(ctx, id, anim, { frame, loop, flip: Math.cos(p.facing) < 0, height: R * 4.4, flash: p.hitFlash > 0 ? 0.6 : 0, variant: "base" });
+    ctx.restore();
+    return true;
+  }
+
   drawPlayer() {
     const p = this.player;
     const ctx = this.ctx;
@@ -10497,10 +10533,12 @@ export class GhostGame {
     ctx.ellipse(0, BASE.PLAYER_RADIUS - 2, BASE.PLAYER_RADIUS, BASE.PLAYER_RADIUS * 0.4, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    const spriteBody = this.drawPlayerSprite();
+
     ctx.rotate(p.facing);
 
     // WARDROBE: sash / cape / headband tails stream behind you (faster when moving).
-    if (this.look) {
+    if (this.look && !spriteBody) {
       const mv = Math.hypot(p.pos.x - this.lookPrev.x, p.pos.y - this.lookPrev.y);
       this.lookPrev.sway += (Math.min(1, mv / 5) - this.lookPrev.sway) * 0.15;
       this.lookPrev.x = p.pos.x; this.lookPrev.y = p.pos.y;
@@ -10603,7 +10641,8 @@ export class GhostGame {
         }
       }
       ctx.rotate(swingAng);
-      this.drawPlayerWeapon(weaponId, p.attackAnim > 0, weaponRange);
+      // Sprite bodies already hold the katana — only draw other weapons.
+      if (!spriteBody || weaponId) this.drawPlayerWeapon(weaponId, p.attackAnim > 0, weaponRange);
     }
     ctx.restore();
 
@@ -10616,6 +10655,7 @@ export class GhostGame {
       this.katanaTrail.push(tipX, tipY);
     }
 
+    if (spriteBody) { ctx.restore(); return; }
     if (this.look) {   // WARDROBE: outfit + headgear
       drawBody(ctx, this.look, BASE.PLAYER_RADIUS, p.hitFlash > 0 ? "hit" : p.invuln > 0 ? "invuln" : null);
       ctx.restore();
@@ -11328,7 +11368,7 @@ export class GhostGame {
     const ratio = Math.max(0, Math.min(1, e.hp / e.maxHp));
     const w = Math.max(18, e.size * 1.6);
     const x = e.pos.x - w / 2;
-    const y = e.pos.y - e.size - (e.archetype === "priest" ? 28 : 9);
+    const y = e.pos.y - e.size - (e.archetype === "priest" ? 28 : this.isSpriteEnemy(e) ? e.size * 3.6 : 9);
     ctx.fillStyle = "hsla(0, 0%, 4%, 0.7)";
     ctx.fillRect(x - 1, y - 1, w + 2, 4);
     ctx.fillStyle = `hsl(358, 75%, ${30 + ratio * 22}%)`;
@@ -11542,6 +11582,45 @@ export class GhostGame {
     ctx.restore();
   }
 
+  /** v3.7: human enemies as pixel sprites. Yokai, elites' auras and bosses keep their own art. */
+  isSpriteEnemy(e: Enemy): boolean {
+    return this.useSprites && spritesReady() && !e.isBoss && (e.archetype === "normal" || e.archetype === "assassin" || e.archetype === "archer" || e.archetype === "heavy" || e.archetype === "shielded");
+  }
+
+  private drawEnemySprite(e: Enemy, dead: boolean): boolean {
+    if (!this.isSpriteEnemy(e)) return false;
+    let id: CharId, variant: SprVariant = "base";
+    switch (e.archetype) {
+      case "normal": id = "samurai"; variant = "crimson"; break;
+      case "assassin": id = "samurai"; variant = "shade"; break;
+      case "archer": id = "archer"; break;
+      case "heavy": case "shielded": id = "commander"; break;
+      default: return false;
+    }
+    const ctx = this.ctx, t = this.elapsed + e.id * 0.37;
+    const h = e.size * 4.4;
+    const flip = Math.cos(e.facing) < 0;
+    ctx.save();
+    ctx.translate(0, e.size - 1);
+    if (dead) {
+      ctx.globalAlpha *= Math.max(0, Math.min(1, e.deathTimer * 1.5));
+      drawChar(ctx, id, "Dead", { frame: (1 - Math.min(1, e.deathTimer)) * frameCount(id, "Dead") * 1.6, loop: false, flip, height: h, variant });
+      ctx.restore();
+      return true;
+    }
+    let anim: SprAnim, frame: number, loop = true;
+    if (e.state === "attacking") {
+      anim = id === "archer" ? "Shot" : e.id % 3 === 0 ? "Attack_2" : "Attack_1";
+      frame = Math.max(0, Math.min(1, e.attackAnim)) * frameCount(id, anim); loop = false;
+    } else if (e.hitFlash > 0.5) { anim = "Hurt"; frame = (1 - e.hitFlash) * frameCount(id, "Hurt") * 2; loop = false; }
+    else if (e.archetype === "shielded" && e.shieldHp > 0 && e.state === "alert") { anim = id === "commander" ? "Protect" : "Protection"; frame = 99; loop = false; }
+    else if (e.state !== "stunned" && e.speed > 0.5) { anim = e.archetype === "assassin" ? "Run" : "Walk"; frame = t * (e.archetype === "assassin" ? 14 : 10); }
+    else { anim = "Idle"; frame = t * 7; }
+    drawChar(ctx, id, anim, { frame, loop, flip, height: h, variant, flash: e.hitFlash > 0 ? Math.min(0.8, e.hitFlash) : 0 });
+    ctx.restore();
+    return true;
+  }
+
   drawEnemy(e: Enemy, dead: boolean) {
     const ctx = this.ctx;
     ctx.save();
@@ -11549,6 +11628,7 @@ export class GhostGame {
     const yOff = e.launched ? -e.launchHeight : 0;
     ctx.translate(e.pos.x, e.pos.y + yOff);
 
+    if (dead && this.drawEnemySprite(e, true)) { ctx.restore(); return; }
     if (dead) {
       ctx.globalAlpha = Math.max(0, Math.min(1, e.deathTimer));
       ctx.rotate(e.facing + Math.PI / 2);
@@ -11575,6 +11655,7 @@ export class GhostGame {
       return;
     }
 
+    const spriteBody = this.drawEnemySprite(e, false);
     ctx.rotate(e.facing);
 
     const isAttacking = e.state === "attacking";
@@ -11605,7 +11686,7 @@ export class GhostGame {
       ctx.lineTo(e.size + (e.isBoss ? 50 : 28), 0);
       ctx.stroke();
       ctx.restore();
-    } else {
+    } else if (!spriteBody) {
       ctx.save();
       ctx.rotate(0.5);
       ctx.strokeStyle = e.isBoss ? "hsl(42, 60%, 40%)" : "hsl(0, 0%, 50%)";
@@ -11618,6 +11699,7 @@ export class GhostGame {
       ctx.restore();
     }
 
+    if (!spriteBody) {
     let bodyColor: string;
     if (e.hitFlash > 0) bodyColor = "hsl(36, 80%, 80%)";
     else if (e.isBoss) bodyColor = "hsl(0, 60%, 18%)";
@@ -11634,9 +11716,10 @@ export class GhostGame {
     ctx.beginPath();
     ctx.arc(e.size * 0.4, 0, e.isBoss ? 5 : 3, 0, Math.PI * 2);
     ctx.fill();
+    }
 
     // Shinobi poison-on-hit — sickly green tint pulse over the body.
-    if (e.poisonRemaining > 0) {
+    if (e.poisonRemaining > 0 && !spriteBody) {
       const pulse = 0.32 + Math.sin(this.elapsed * 8) * 0.08;
       ctx.fillStyle = `hsla(95, 75%, 45%, ${pulse})`;
       ctx.beginPath();

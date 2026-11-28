@@ -12,6 +12,17 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.7", date: "2026-11-27", title: "Pixel Samurai", kanji: "絵",
+    summary: "You and the human enemies are now animated pixel-art samurai instead of circles.",
+    lines: [
+      ["new", "Your character is a pixel-art samurai that idles, runs, swings through a 3-hit combo, raises a guard and flinches when hit. Heavy classes (Tetsu-bo, Berserker, Sōhei, Yamabushi, Rikishi, Hatamoto, Ashigaru, Dokkaebi) wear the banner commander; Takajō and Teppō use the archer."],
+      ["new", "Enemies: foot soldiers are red ronin, assassins are violet shinobi, archers draw real bows, and heavies / shield-bearers are banner commanders. They walk, attack, flinch and play a death animation."],
+      ["change", "Bodies face left or right toward where they're aiming. Swing arcs, attack warnings and hitboxes are exactly the same as before."],
+      ["change", "A ring in your class colour sits under your feet so you stand out. Yokai, bosses and Wardrobe outfits keep their old look for now."],
+      ["new", "Settings → Pixel-art characters switches back to the old look. Art: CraftPix Samurai pack (licensed)."],
+    ],
+  },
+  {
     version: "3.6", date: "2026-11-27", title: "A Real Map", kanji: "図",
     summary: "The minimap now shows the actual arena, and you can make it bigger or smaller.",
     lines: [
