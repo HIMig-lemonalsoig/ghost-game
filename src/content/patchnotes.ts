@@ -12,6 +12,16 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.11", date: "2026-11-27", title: "Every Direction", kanji: "四",
+    summary: "The samurai can now be seen from behind and from the front.",
+    lines: [
+      ["new", "Running up shows the samurai from behind, with the gold crest on his back plate; running down shows him walking toward the camera. Left and right still use the side view."],
+      ["new", "Standing still while aiming straight up, the samurai turns to face away from you."],
+      ["change", "The direction arrow at your feet hides while you run up, since the back view already shows the way you're going."],
+      ["change", "New poses made with PixelLab from the CraftPix samurai (offline version only). Other bodies keep the side view with lean and dust."],
+    ],
+  },
+  {
     version: "3.10.2", date: "2026-11-27", title: "Feel the Run", kanji: "走",
     summary: "Running up and down now looks and feels like it, even though the art is side-on.",
     lines: [

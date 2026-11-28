@@ -1,5 +1,5 @@
 // Consolidated game engine and supporting systems. No React dependencies.
-import { loadSprites, spritesReady, drawChar, classChar, frameCount, type Anim as SprAnim, type CharId, type Variant as SprVariant } from "./sprites";
+import { loadSprites, spritesReady, drawChar, classChar, frameCount, hasAnim, type Anim as SprAnim, type CharId, type Variant as SprVariant } from "./sprites";
 import { drawCrestCursor } from "./cursor";
 import { Fx, hueOf } from "./fx";
 import { updateUltTrail, drawUltUnder, drawUltOver } from "./ultvfx";
@@ -10550,9 +10550,17 @@ export class GhostGame {
     const aimFace = Math.cos(p.facing) < 0 ? -1 : 1;
     if (!running) sp.face = aimFace;
     else if (Math.abs(dx) > 0.4) sp.face = dx < 0 ? -1 : 1;
+    // Mostly-vertical running uses real back / front views when this body has them.
+    let vert = false;
+    if (running && sv > 0.4 && Math.abs(sp.vy) > Math.abs(sp.vx) * 1.2) {
+      const va: SprAnim = sp.vy < 0 ? "RunUp" : "RunDown";
+      if (hasAnim(id, va)) { anim = va; frame = now * (p.dashTimer > 0 ? 18 : 12); loop = true; vert = true; }
+    } else if (anim === "Idle" && Math.sin(p.facing) < -0.75 && hasAnim(id, "IdleUp")) {
+      anim = "IdleUp"; frame = 0;                       // aiming straight up: stand facing away
+    }
     // Lean into the run (more when heading up, a touch back when heading down)
     // and squash/stretch with each stride when moving vertically.
-    if (running && sv > 0.3) {
+    if (running && sv > 0.3 && !vert) {
       const vy = Math.max(-1, Math.min(1, sp.vy / Math.max(0.001, sv)));
       ctx.rotate(sp.face * (0.07 + 0.11 * Math.max(0, -vy) - 0.06 * Math.max(0, vy)));
       const st = Math.abs(vy) * 0.06 * Math.sin(now * 22);
@@ -10561,7 +10569,8 @@ export class GhostGame {
     drawChar(ctx, id, anim, { frame, loop, flip: sp.face < 0, height: R * 4.4, flash: p.hitFlash > 0 ? 0.6 : 0, variant: "base" });
     ctx.restore();
     // Direction chevron just outside the ring, drawn on top so it never hides behind the body.
-    if (running && sv > 0.4) {
+    // (Running away from the camera, the back view already says where you're going.)
+    if (running && sv > 0.4 && !(vert && sp.vy < 0)) {
       const rr = R + 11;
       const ex = Math.cos(dirA) * rr, ey = R - 2 + Math.sin(dirA) * rr * 0.55;
       const pa = Math.atan2(Math.sin(dirA) * 0.55, Math.cos(dirA));

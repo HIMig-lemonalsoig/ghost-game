@@ -11,7 +11,7 @@
 import { buildSheets, ONI_LOOK, RAIJIN_LOOK } from "./pixelart";
 
 export type CharId = "samurai" | "archer" | "commander" | "kitsune" | "karasu" | "ytengu" | "skwarrior" | "skspear" | "skarcher" | "oni" | "raijin";
-export type Anim = "Idle" | "Walk" | "Run" | "Attack_1" | "Attack_2" | "Attack_3" | "Hurt" | "Dead" | "Protection" | "Protect" | "Shot" | "Shot_1";
+export type Anim = "Idle" | "Walk" | "Run" | "Attack_1" | "Attack_2" | "Attack_3" | "Hurt" | "Dead" | "Protection" | "Protect" | "Shot" | "Shot_1" | "RunUp" | "RunDown" | "IdleUp";
 /** Colour variants, made once with a canvas filter and cached. */
 export type Variant = "base" | "crimson" | "shade" | "flash" | "gold";
 
@@ -23,7 +23,45 @@ const FILTERS: Record<Variant, string> = {
   gold: "sepia(1) saturate(2.2) hue-rotate(-12deg) brightness(1.05)",
 };
 
-interface Sheet { img: HTMLImageElement | HTMLCanvasElement; frames: number; size: number; }
+interface Sheet { img: HTMLImageElement | HTMLCanvasElement; frames: number; size: number; own?: { cx: number; feet: number }[]; }
+
+/** PixelLab exports come as square grids (3×3 = 9 frames, read left→right, top→bottom).
+ *  `skip` drops leading frames that are still side-on. */
+const GRIDS: Record<string, { cols: number; rows: number; skip: number }> = {
+  "samurai/RunUp": { cols: 3, rows: 3, skip: 1 },     // back view, running away from the camera
+  "samurai/RunDown": { cols: 3, rows: 3, skip: 2 },   // 3/4 front view, walking toward the camera
+};
+/** Sheets drawn by a different artist/tool: centre them on their own body, not the idle pose's. */
+const OWN_ANCHOR = new Set(["samurai/RunUp", "samurai/RunDown", "samurai/IdleUp"]);
+
+function gridToStrip(img: HTMLImageElement, gd: { cols: number; rows: number; skip: number }): HTMLCanvasElement {
+  const cell = img.width / gd.cols, n = gd.cols * gd.rows - gd.skip;
+  const c = document.createElement("canvas");
+  c.width = cell * n; c.height = cell;
+  const g = c.getContext("2d")!;
+  for (let i = 0; i < n; i++) {
+    const k = i + gd.skip, col = k % gd.cols, row = Math.floor(k / gd.cols);
+    g.drawImage(img, col * cell, row * cell, cell, cell, i * cell, 0, cell, cell);
+  }
+  return c;
+}
+
+/** Per frame: centre of mass (x) and lowest pixel. AI-generated frames drift around their cells. */
+function ownAnchors(src: HTMLCanvasElement | HTMLImageElement, size: number, frames: number): { cx: number; feet: number }[] {
+  const c = document.createElement("canvas");
+  c.width = size; c.height = size;
+  const g = c.getContext("2d", { willReadFrequently: true })!;
+  const out: { cx: number; feet: number }[] = [];
+  for (let f = 0; f < frames; f++) {
+    g.clearRect(0, 0, size, size);
+    g.drawImage(src, f * size, 0, size, size, 0, 0, size, size);
+    const px = g.getImageData(0, 0, size, size).data;
+    let sx = 0, n = 0, feet = 0;
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (px[(y * size + x) * 4 + 3] > 40) { sx += x; n++; if (y > feet) feet = y; }
+    out.push(n ? { cx: sx / n, feet } : { cx: size / 2, feet: size - 1 });
+  }
+  return out;
+}
 interface Anchor { cx: number; top: number; feet: number; }
 
 const sheets = new Map<string, Sheet>();
@@ -56,7 +94,12 @@ export function loadSprites() {
     total++;
     const img = new Image();
     img.onload = () => {
-      sheets.set(key, { img, size: img.height, frames: Math.max(1, Math.round(img.width / img.height)) });
+      const gd = GRIDS[key];
+      const src = gd ? gridToStrip(img, gd) : img;
+      const size = src.height;
+      const sh: Sheet = { img: src, size, frames: Math.max(1, Math.round(src.width / size)) };
+      if (OWN_ANCHOR.has(key)) sh.own = ownAnchors(src, size, sh.frames);
+      sheets.set(key, sh);
       loaded++;
     };
     img.src = url;
@@ -116,6 +159,8 @@ function imageFor(id: CharId, anim: Anim, v: Variant): { src: CanvasImageSource;
 }
 
 export function frameCount(id: CharId, anim: Anim): number { return sheetFor(id, anim)?.frames ?? 1; }
+/** True only if this character has its own sheet for the animation (no fallback). */
+export function hasAnim(id: CharId, anim: Anim): boolean { return sheets.has(`${id}/${anim}`); }
 
 export interface DrawOpts {
   /** Frame index (wrapped for loops, clamped otherwise). */
@@ -144,7 +189,9 @@ export function drawChar(ctx: CanvasRenderingContext2D, id: CharId, anim: Anim, 
   ctx.imageSmoothingEnabled = false;
   ctx.save();
   if (o.flip) ctx.scale(-1, 1);
-  const dx = -an.cx * k, dy = -an.feet * k, s = sh.size * k;
+  const own = sh.own?.[f];
+  const ax = own?.cx ?? an.cx, af = own?.feet ?? an.feet;
+  const dx = -ax * k, dy = -af * k, s = sh.size * k;
   ctx.drawImage(im.src, f * sh.size, 0, sh.size, sh.size, dx, dy, s, s);
   if (o.flash && o.flash > 0) {
     const fl = imageFor(id, anim, "flash");
