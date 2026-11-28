@@ -29,44 +29,72 @@ interface Sheet { img: HTMLImageElement | HTMLCanvasElement; frames: number; siz
  *  Any square RunUp / RunDown sheet is treated as a grid. `SKIP` drops leading frames that
  *  are still side-on or just standing (default: RunUp 1, RunDown 0). */
 const VIEW_ANIMS = new Set(["RunUp", "RunDown", "IdleUp"]);
-const SKIP: Record<string, number> = { "samurai/RunUp": 1, "samurai/RunDown": 2 };
-function gridFor(key: string, img: HTMLImageElement): { cols: number; rows: number; skip: number } | null {
+const SKIP: Record<string, number> = { "samurai/RunUp": 1, "samurai/RunDown": 3, "samurai/Run": 1 };
+/** Trailing frames to drop, and sheets that don't loop cleanly (play 1→n→1 instead of snapping back). */
+const DROP_END: Record<string, number> = { "samurai/RunDown": 1 };
+const PINGPONG = new Set(["samurai/RunDown"]);
+/** Any square sheet bigger than one frame is a PixelLab grid (CraftPix sheets are long strips). */
+function gridFor(key: string, img: HTMLImageElement): { cols: number; rows: number; skip: number; end: number; pingpong: boolean } | null {
+  if (img.width !== img.height || img.width < 200) return null;
   const anim = key.split("/")[1];
-  if ((anim !== "RunUp" && anim !== "RunDown") || img.width !== img.height || img.width < 200) return null;
   const cols = img.width % 3 === 0 && img.width / 3 >= 48 ? 3 : img.width % 4 === 0 ? 4 : 3;
-  return { cols, rows: cols, skip: SKIP[key] ?? (anim === "RunUp" ? 1 : 0) };
+  return { cols, rows: cols, skip: SKIP[key] ?? (anim === "RunUp" ? 1 : 0), end: DROP_END[key] ?? 0, pingpong: PINGPONG.has(key) };
 }
 /** Sheets from a different tool: anchor each frame on its own body, not the idle pose's. */
-const ownAnchored = (key: string) => VIEW_ANIMS.has(key.split("/")[1]);
+const ownAnchored = (key: string, fromGrid: boolean) => fromGrid || VIEW_ANIMS.has(key.split("/")[1]);
 
-function gridToStrip(img: HTMLImageElement, gd: { cols: number; rows: number; skip: number }): HTMLCanvasElement {
-  const cell = img.width / gd.cols, n = gd.cols * gd.rows - gd.skip;
+function gridToStrip(img: HTMLImageElement, gd: { cols: number; rows: number; skip: number; end: number; pingpong: boolean }): HTMLCanvasElement {
+  const cell = img.width / gd.cols;
+  const idx: number[] = [];
+  for (let k = gd.skip; k < gd.cols * gd.rows - gd.end; k++) idx.push(k);
+  if (gd.pingpong) for (let k = idx.length - 2; k > 0; k--) idx.push(idx[k]);
   const c = document.createElement("canvas");
-  c.width = cell * n; c.height = cell;
+  c.width = cell * idx.length; c.height = cell;
   const g = c.getContext("2d")!;
-  for (let i = 0; i < n; i++) {
-    const k = i + gd.skip, col = k % gd.cols, row = Math.floor(k / gd.cols);
+  idx.forEach((k, i) => {
+    const col = k % gd.cols, row = Math.floor(k / gd.cols);
     g.drawImage(img, col * cell, row * cell, cell, cell, i * cell, 0, cell, cell);
-  }
+  });
   return c;
 }
 
-/** Per frame: centre of mass (x) and lowest pixel. AI-generated frames drift around their cells. */
+/** Per frame anchors for AI-generated frames, which drift around their cells.
+ *  Lock onto the head (stable) rather than the whole body (the sword and legs swing the
+ *  centre of mass around and make the sprite shiver), then keep the body a fixed height. */
 function ownAnchors(src: HTMLCanvasElement | HTMLImageElement, size: number, frames: number): { cx: number; feet: number }[] {
   const c = document.createElement("canvas");
   c.width = size; c.height = size;
   const g = c.getContext("2d", { willReadFrequently: true })!;
-  const out: { cx: number; feet: number }[] = [];
+  const raw: { cx: number; top: number; feet: number }[] = [];
   for (let f = 0; f < frames; f++) {
     g.clearRect(0, 0, size, size);
     g.drawImage(src, f * size, 0, size, size, 0, 0, size, size);
     const px = g.getImageData(0, 0, size, size).data;
-    let sx = 0, n = 0, feet = 0;
-    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (px[(y * size + x) * 4 + 3] > 40) { sx += x; n++; if (y > feet) feet = y; }
-    out.push(n ? { cx: sx / n, feet } : { cx: size / 2, feet: size - 1 });
+    const on = (x: number, y: number) => px[(y * size + x) * 4 + 3] > 40;
+    let top = -1;
+    for (let y = 0; y < size && top < 0; y++) for (let x = 0; x < size; x++) if (on(x, y)) { top = y; break; }
+    if (top < 0) { raw.push({ cx: size / 2, top: 0, feet: size - 1 }); continue; }
+    // head x first, to find the feet under the body (not the sword tip)
+    let sx = 0, n = 0;
+    for (let y = top; y < Math.min(size, top + 16); y++) for (let x = 0; x < size; x++) if (on(x, y)) { sx += x; n++; }
+    const hx = n ? sx / n : size / 2;
+    let feet = top;
+    for (let y = size - 1; y > top; y--) { let hit = false; for (let x = Math.max(0, Math.floor(hx - 16)); x < Math.min(size, hx + 16); x++) if (on(x, y)) { hit = true; break; } if (hit) { feet = y; break; } }
+    // then the chest band, same as the idle anchor
+    const bh = feet - top;
+    let cxs = 0, cn = 0;
+    for (let y = top + Math.floor(bh * 0.22); y < top + Math.floor(bh * 0.45); y++) for (let x = 0; x < size; x++) if (on(x, y)) { cxs += x; cn++; }
+    raw.push({ cx: cn ? cxs / cn : hx, top, feet });
   }
-  return out;
+  const hs = raw.map(r => r.feet - r.top).sort((a, b) => a - b);
+  const h = hs[Math.floor(hs.length / 2)];
+  // Smooth x a little so frame-to-frame noise doesn't read as shaking.
+  return raw.map((r, i) => {
+    const prev = raw[(i - 1 + raw.length) % raw.length], next = raw[(i + 1) % raw.length];
+    return { cx: (prev.cx + 2 * r.cx + next.cx) / 4, feet: r.top + h };
+  });
 }
+
 interface Anchor { cx: number; top: number; feet: number; }
 
 const sheets = new Map<string, Sheet>();
@@ -103,7 +131,7 @@ export function loadSprites() {
       const src = gd ? gridToStrip(img, gd) : img;
       const size = src.height;
       const sh: Sheet = { img: src, size, frames: Math.max(1, Math.round(src.width / size)) };
-      if (ownAnchored(key)) sh.own = ownAnchors(src, size, sh.frames);
+      if (ownAnchored(key, !!gd)) sh.own = ownAnchors(src, size, sh.frames);
       sheets.set(key, sh);
       loaded++;
     };
@@ -126,11 +154,16 @@ function anchorOf(id: CharId): Anchor {
   if (!g) return fallback;
   g.drawImage(sh.img, 0, 0, sh.size, sh.size, 0, 0, sh.size, sh.size);
   const px = g.getImageData(0, 0, sh.size, sh.size).data;
-  let sx = 0, n = 0, top = sh.size, feet = 0;
+  let n = 0, top = sh.size, feet = 0;
   for (let y = 0; y < sh.size; y++) for (let x = 0; x < sh.size; x++) {
-    if (px[(y * sh.size + x) * 4 + 3] > 40) { sx += x; n++; if (y < top) top = y; if (y > feet) feet = y; }
+    if (px[(y * sh.size + x) * 4 + 3] > 40) { n++; if (y < top) top = y; if (y > feet) feet = y; }
   }
-  const out = n ? { cx: sx / n, top, feet } : fallback;
+  // Centre on the chest band (22–45% down the body) so every sheet — CraftPix or PixelLab —
+  // lines up the same way; heads can carry banners/tails and the sword swings below.
+  let hx = 0, hn = 0;
+  const bh = feet - top;
+  for (let y = top + Math.floor(bh * 0.22); y < Math.min(sh.size, top + Math.floor(bh * 0.45)); y++) for (let x = 0; x < sh.size; x++) if (px[(y * sh.size + x) * 4 + 3] > 40) { hx += x; hn++; }
+  const out = n ? { cx: hn ? hx / hn : sh.size / 2, top, feet } : fallback;
   anchors.set(id, out);
   return out;
 }

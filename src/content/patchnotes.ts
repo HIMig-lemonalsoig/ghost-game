@@ -12,6 +12,16 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.11.1", date: "2026-11-27", title: "Smoother Strides", kanji: "歩",
+    summary: "New walk and sprint for the samurai, and no more shaking when you run down.",
+    lines: [
+      ["new", "The samurai has a new walk and a much faster-looking sprint (made in PixelLab), replacing the old run."],
+      ["fix", "Running down no longer jitters: frames line up on the chest instead of the swinging sword, the half-turned frames are gone, and the animation plays back and forth instead of snapping."],
+      ["fix", "Moving diagonally no longer flickers between the side view and the front/back view."],
+      ["fix", "Every body now centres on its chest, so switching between idle, walk, run and attack doesn't nudge the character sideways."],
+    ],
+  },
+  {
     version: "3.11", date: "2026-11-27", title: "Every Direction", kanji: "四",
     summary: "The samurai can now be seen from behind and from the front.",
     lines: [

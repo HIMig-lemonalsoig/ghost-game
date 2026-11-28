@@ -4099,7 +4099,7 @@ export class GhostGame {
   showMinimap = true;
   showCursor = true; cursorInside = true; cursorT = 0; cursorSpin = 0; cursorKick = 0; cursorScale = 1; minimapScale = 1;
   /** v3.7 pixel sprites: on/off + per-player animation state. */
-  useSprites = true; sprPrev = { x: 0, y: 0, mv: 0, lastAtk: 0, atkIdx: 0, face: 1, vx: 0, vy: 0, lastT: 0, dustT: 0, dust: [] as { x: number; y: number; vx: number; vy: number; age: number; life: number; r: number }[] };
+  useSprites = true; sprPrev = { x: 0, y: 0, mv: 0, lastAtk: 0, atkIdx: 0, face: 1, vert: false, vx: 0, vy: 0, lastT: 0, dustT: 0, dust: [] as { x: number; y: number; vx: number; vy: number; age: number; life: number; r: number }[] };
   /** WARDROBE: the player's equipped cosmetics (set by the UI before a run; null = classic look). */
   look: Look | null = null;
   private lookPrev = { x: 0, y: 0, sway: 0 };
@@ -10551,8 +10551,12 @@ export class GhostGame {
     if (!running) sp.face = aimFace;
     else if (Math.abs(dx) > 0.4) sp.face = dx < 0 ? -1 : 1;
     // Mostly-vertical running uses real back / front views when this body has them.
+    // Hysteresis: switch to front/back past ~50° from horizontal, back to side below ~39°,
+    // so diagonal movement doesn't flicker between views.
+    const avx = Math.abs(sp.vx), avy = Math.abs(sp.vy);
+    sp.vert = running && sv > 0.4 && (sp.vert ? avy > avx * 0.8 : avy > avx * 1.2);
     let vert = false;
-    if (running && sv > 0.4 && Math.abs(sp.vy) > Math.abs(sp.vx) * 1.2) {
+    if (sp.vert) {
       const va: SprAnim = sp.vy < 0 ? "RunUp" : "RunDown";
       if (hasAnim(id, va)) { anim = va; frame = now * (p.dashTimer > 0 ? 18 : 12); loop = true; vert = true; }
     } else if (anim === "Idle" && Math.sin(p.facing) < -0.75 && hasAnim(id, "IdleUp")) {
