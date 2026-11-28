@@ -11591,11 +11591,11 @@ export class GhostGame {
   /** v3.7: human enemies as pixel sprites. Yokai, elites' auras and bosses keep their own art. */
   isSpriteEnemy(e: Enemy): boolean {
     if (!this.useSprites || !spritesReady()) return false;
-    if (e.isBoss) return e.bossKind === "kitsune" || e.bossKind === "gasha";
+    if (e.isBoss) return e.bossKind === "kitsune" || e.bossKind === "gasha" || e.bossKind === "oni" || e.bossKind === "raijin";
     return e.archetype === "normal" || e.archetype === "assassin" || e.archetype === "archer" || e.archetype === "heavy" || e.archetype === "shielded" || e.archetype === "priest";
   }
 
-  spriteHeightOf(e: Enemy): number { return e.size * (e.bossKind === "gasha" ? 4.2 : e.isBoss ? 3.4 : 4.4); }
+  spriteHeightOf(e: Enemy): number { return e.size * (e.bossKind === "gasha" ? 4.2 : e.bossKind === "oni" || e.bossKind === "raijin" ? 3.6 : e.isBoss ? 3.4 : 4.4); }
 
   private drawEnemySprite(e: Enemy, dead: boolean): boolean {
     if (!this.isSpriteEnemy(e)) return false;
@@ -11612,6 +11612,8 @@ export class GhostGame {
       default:
         if (e.bossKind === "kitsune") { id = "kitsune"; break; }
         if (e.bossKind === "gasha") { id = "skwarrior"; break; }
+        if (e.bossKind === "oni") { id = "oni"; break; }
+        if (e.bossKind === "raijin") { id = "raijin"; break; }
         return false;
     }
     const ctx = this.ctx, t = this.elapsed + e.id * 0.37;
@@ -11626,7 +11628,13 @@ export class GhostGame {
       return true;
     }
     let anim: SprAnim, frame: number, loop = true;
-    if (e.state === "attacking") {
+    if (e.isBoss && e.bossPatternTimer > 0) {
+      // Boss patterns: raise the weapon for slams, sweep for volleys.
+      anim = e.bossPattern === 1 ? "Attack_1" : "Attack_2";
+      const n = frameCount(id, anim);
+      frame = e.bossPattern === 1 ? Math.min(n - 1, (1 - Math.min(1, e.bossPatternTimer / 1.4)) * n * 1.1) : t * 9;
+      loop = e.bossPattern !== 1;
+    } else if (e.state === "attacking") {
       anim = id === "archer" || id === "skarcher" ? "Shot" : e.id % 3 === 0 ? "Attack_2" : "Attack_1";
       frame = Math.max(0, Math.min(1, e.attackAnim)) * frameCount(id, anim); loop = false;
     } else if (e.hitFlash > 0.5) { anim = "Hurt"; frame = (1 - e.hitFlash) * frameCount(id, "Hurt") * 2; loop = false; }

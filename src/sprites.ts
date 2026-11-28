@@ -8,7 +8,9 @@
 // body flips left/right toward where you aim, while attack arcs, telegraphs
 // and hitboxes stay exactly as they were.
 
-export type CharId = "samurai" | "archer" | "commander" | "kitsune" | "karasu" | "ytengu" | "skwarrior" | "skspear" | "skarcher";
+import { buildSheets, ONI_LOOK, RAIJIN_LOOK } from "./pixelart";
+
+export type CharId = "samurai" | "archer" | "commander" | "kitsune" | "karasu" | "ytengu" | "skwarrior" | "skspear" | "skarcher" | "oni" | "raijin";
 export type Anim = "Idle" | "Walk" | "Run" | "Attack_1" | "Attack_2" | "Attack_3" | "Hurt" | "Dead" | "Protection" | "Protect" | "Shot" | "Shot_1";
 /** Colour variants, made once with a canvas filter and cached. */
 export type Variant = "base" | "crimson" | "shade" | "flash" | "gold";
@@ -21,7 +23,7 @@ const FILTERS: Record<Variant, string> = {
   gold: "sepia(1) saturate(2.2) hue-rotate(-12deg) brightness(1.05)",
 };
 
-interface Sheet { img: HTMLImageElement; frames: number; size: number; }
+interface Sheet { img: HTMLImageElement | HTMLCanvasElement; frames: number; size: number; }
 interface Anchor { cx: number; top: number; feet: number; }
 
 const sheets = new Map<string, Sheet>();
@@ -43,6 +45,13 @@ export function loadSprites() {
   started = true;
   const d = data();
   if (!d || typeof Image === "undefined") return;
+  // Hand-made bosses (src/pixelart.ts) are painted in code at start-up.
+  try {
+    for (const [id, look] of [["oni", ONI_LOOK], ["raijin", RAIJIN_LOOK]] as const) {
+      const sh = buildSheets(look);
+      for (const [anim, c] of Object.entries(sh)) sheets.set(`${id}/${anim}`, { img: c, size: c.height, frames: Math.round(c.width / c.height) });
+    }
+  } catch { /* canvas unavailable: bosses keep their old art */ }
   for (const [key, url] of Object.entries(d)) {
     total++;
     const img = new Image();

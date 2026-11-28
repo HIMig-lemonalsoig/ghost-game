@@ -12,6 +12,15 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.10", date: "2026-11-27", title: "Oni and Thunder", kanji: "雷",
+    summary: "The last two bosses get pixel-art bodies, hand-drawn for Yūken.",
+    lines: [
+      ["new", "Oni Warlord (wave 5): a hulking red oni with horns, a wild mane, a tiger-skin loincloth and a studded iron kanabō. He raises it overhead while the slam warning fills, then smashes it down."],
+      ["new", "Raijin, the Thunder General (wave 20): a blue thunder god inside a ring of eight war drums with a drumstick. The drums light up while he charges a volley."],
+      ["change", "Both are drawn in-game in the same pixel style as the other characters, so the offline file doesn't get any bigger. Their attacks and warnings are unchanged."],
+    ],
+  },
+  {
     version: "3.9", date: "2026-11-27", title: "Rise of the Bones", kanji: "骸",
     summary: "The Gashadokuro is now a towering pixel-art skeleton, and skeletons join the enemy ranks.",
     lines: [
