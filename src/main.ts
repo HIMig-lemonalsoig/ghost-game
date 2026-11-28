@@ -863,7 +863,7 @@ function detailHTML(saved: ReturnType<typeof loadRun> | null = hasSavedRun() ? l
     const on = idx >= 0;
     const wl = !weaponUsable(currentClass, id);
     return `<button class="weapon-chip glow${on ? " on" : ""}${wl ? " locked" : ""}" data-weapon="${id}" aria-pressed="${on}" ${wl ? "aria-disabled=\"true\"" : ""}>
-      <span class="kanji">${wl ? "🔒" : w.kanji}</span>
+      <span class="kanji">${wl ? "🔒" : weaponIcon(id)}</span>
       <span><div class="wn">${w.name}</div><div class="wd">${wl ? `<b class="lock-req">Locked:</b> ${reqText(WEAPON_REQS[id])}` : w.desc}</div></span>
       ${on ? `<span class="wbadge">${idx === 0 ? "MAIN" : "ALT"}</span>` : ""}
     </button>`;
@@ -1193,6 +1193,15 @@ function ensureCells(group: HTMLElement | null, n: number): Cell[] {
   return Array.from(cells).slice(0, n).map(root => ({ root, slot: root.querySelector<HTMLElement>(".slot")! }));
 }
 
+/** Pixel-art weapon icon (when the art shipped and pixel art is on), else its kanji. */
+function weaponIcon(id: string, evolved = false): string {
+  const d = (window as unknown as { __YUKEN_SPRITES?: Record<string, string> }).__YUKEN_SPRITES;
+  const src = settings.sprites !== false ? d?.[`weapons/${id}${evolved ? "_evo" : ""}`] : undefined;
+  if (src) return `<img class="wicon${evolved ? " evo" : ""}" src="${src}" alt="" draggable="false">`;
+  const evo = (EVOLUTIONS as Record<string, { kanji: string }>)[id];
+  return evolved && evo ? evo.kanji : SECONDARIES[id as SecondaryId].kanji;
+}
+
 function setCell(c: Cell, key: string, kanji: string, name: string, hue: number, kb: string, empty: boolean) {
   if (c.root.dataset.k === key) return;
   c.root.dataset.k = key;
@@ -1310,7 +1319,7 @@ function updateHud(s: GameStats) {
     const w = SECONDARIES[id];
     const evo = game?.evoStatus(id);
     const evolved = evo?.state === "evolved";
-    setCell(c, `w${i}${id}${evolved ? "E" : ""}`, evolved ? EVOLUTIONS[id].kanji : w.kanji, evolved ? EVOLUTIONS[id].name : w.name, SLASH_HUE[id] ?? 40, i === 0 ? "1st" : "2nd", false);
+    setCell(c, `w${i}${id}${evolved ? "E" : ""}`, weaponIcon(id, evolved), evolved ? EVOLUTIONS[id].name : w.name, SLASH_HUE[id] ?? 40, i === 0 ? "1st" : "2nd", false);
     toggle(c.slot, "evo-ready", evo?.state === "ready");
     toggle(c.slot, "evolved", evolved);
     const reloading = s.secondaryReloadMax[i] > 0 && s.secondaryReload[i] > 0;
@@ -1546,9 +1555,9 @@ function evoRows(s: GameStats): string {
   if (!game || !ids.length) return "";
   return ids.map(id => {
     const st = game!.evoStatus(id), evo = EVOLUTIONS[id];
-    if (st.state === "evolved") return `<div class="evo-row done"><span class="kanji">${evo.kanji}</span><b>${evo.name}</b><span>${evo.desc}</span></div>`;
+    if (st.state === "evolved") return `<div class="evo-row done"><span class="kanji">${weaponIcon(id, true)}</span><b>${evo.name}</b><span>${evo.desc}</span></div>`;
     const m = Math.min(EVO_MASTERY, st.mastery);
-    return `<div class="evo-row${st.state === "ready" ? " ready" : ""}"><span class="kanji">${SECONDARIES[id].kanji}</span>
+    return `<div class="evo-row${st.state === "ready" ? " ready" : ""}"><span class="kanji">${weaponIcon(id)}</span>
       <b>${SECONDARIES[id].name} → ${evo.name}</b>
       <span>${m >= EVO_MASTERY ? "✓" : "○"} Mastery ${m}/${EVO_MASTERY} <i>(buy "${id === "katana" ? "Whetstone" : SECONDARIES[id].name + " Mastery/Honed/Forged"}" in the shop)</i></span>
       <span>${st.catalyst ? "✓" : "○"} Catalyst: ${evo.catalystLabel}</span>

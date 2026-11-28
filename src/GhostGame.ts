@@ -1,5 +1,5 @@
 // Consolidated game engine and supporting systems. No React dependencies.
-import { loadSprites, spritesReady, drawChar, classChar, frameCount, hasAnim, hasBody, type Anim as SprAnim, type CharId, type Variant as SprVariant } from "./sprites";
+import { loadSprites, spritesReady, drawChar, classChar, frameCount, hasAnim, hasBody, drawItem, type Anim as SprAnim, type CharId, type Variant as SprVariant } from "./sprites";
 import { drawCrestCursor } from "./cursor";
 import { Fx, hueOf } from "./fx";
 import { updateUltTrail, drawUltUnder, drawUltOver } from "./ultvfx";
@@ -10619,6 +10619,12 @@ export class GhostGame {
     return true;
   }
 
+  /** Pixel-art weapon along the current swing / aim axis (the evolved art once evolved). */
+  private drawWeaponArt(id: SecondaryId, length: number, x = 4): boolean {
+    if (!this.useSprites || !spritesReady()) return false;
+    return drawItem(this.ctx, `${id}${this.isEvolved(id) ? "_evo" : ""}`, x, length) || drawItem(this.ctx, id, x, length);
+  }
+
   /** A copy of your character (phantom / clone / decoy): same body, its own tint and outline,
    *  no ring, dust or arrow, and it never touches your own movement tracking. */
   private drawGhostSprite(id: CharId): boolean {
@@ -10743,14 +10749,17 @@ export class GhostGame {
       if (weaponId === "twin_sai") this.drawSai(0); else if (weaponId === "flame_spear") this.drawSpear(0);
       else this.drawPlayerWeapon(rangedHeld ? null : weaponId, false, weaponRange);
     } else if (rangedHeld) {
-      this.drawRangedWeapon(rangedHeld);
+      // Pixel-art bodies hold the real item, pointed where you aim, with a little kick when it fires.
+      if (!(spriteBody && this.drawWeaponArt(rangedHeld, rangedHeld === "yumi" ? 44 : 34, 8 - this.fireAnim * 6))) this.drawRangedWeapon(rangedHeld);
     } else if (weaponId === "twin_sai") {
-      if (!spriteBody || swingingNow) this.drawTwinSai();
+      if (spriteBody && swingingNow && this.drawWeaponArt("twin_sai", 34)) { /* pixel-art sai */ }
+      else if (!spriteBody || swingingNow) this.drawTwinSai();
     } else if (weaponId === "flame_spear") {
       const ph = 1 - p.attackAnim;
       const ext = p.attackAnim > 0 ? (ph < 0.25 ? ph / 0.25 : 1 - (ph - 0.25) / 0.75) : 0;
       ctx.rotate(p.attackAnim > 0 ? 0 : 0.18 * swingDir);
-      if (!spriteBody || swingingNow) this.drawSpear(ext * 46);
+      if (spriteBody && swingingNow && this.drawWeaponArt("flame_spear", 60, ext * 46 - 6)) { /* pixel-art spear thrust */ }
+      else if (!spriteBody || swingingNow) this.drawSpear(ext * 46);
     } else {
       if (this.barrageActive && swingingNow) {
         for (const off of [-0.35, -0.7]) {
@@ -10764,7 +10773,8 @@ export class GhostGame {
       ctx.rotate(swingAng);
       // Sprite bodies already hold a blade: only show the weapon model mid-swing (so the arc
       // still reads), never at rest — at rest it spun with the cursor across the body.
-      if (!spriteBody || (weaponId && swingingNow)) this.drawPlayerWeapon(weaponId, p.attackAnim > 0, weaponRange);
+      if (spriteBody && weaponId && swingingNow && this.drawWeaponArt(weaponId, Math.max(34, Math.min(weaponId === "odachi" ? 110 : 60, weaponRange * 0.85)))) { /* pixel-art weapon */ }
+      else if (!spriteBody || (weaponId && swingingNow)) this.drawPlayerWeapon(weaponId, p.attackAnim > 0, weaponRange);
     }
     ctx.restore();
 

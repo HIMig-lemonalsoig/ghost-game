@@ -351,6 +351,25 @@ export function drawPartRot(ctx: CanvasRenderingContext2D, id: CharId, anim: Ani
   return true;
 }
 
+/** Draw a weapon / item image (art/weapons/<key>.png, drawn lying flat, tip to the right)
+ *  from x along the current +x axis, `length` px long. Returns false if there's no art. */
+export function drawItem(ctx: CanvasRenderingContext2D, key: string, x: number, length: number, alpha = 1): boolean {
+  const sh = sheets.get(`weapons/${key}`);
+  if (!sh) return false;
+  const smooth = ctx.imageSmoothingEnabled;
+  ctx.imageSmoothingEnabled = false;
+  const a = ctx.globalAlpha;
+  ctx.globalAlpha = a * alpha;
+  if (key.endsWith("_evo")) {   // evolved art is drawn diagonally (tip up-right): turn it onto the axis
+    ctx.save(); ctx.translate(x + length / 2, 0); ctx.rotate(Math.PI / 4);
+    ctx.drawImage(sh.img, 0, 0, sh.size, sh.size, -length / 2, -length / 2, length, length);
+    ctx.restore();
+  } else ctx.drawImage(sh.img, 0, 0, sh.size, sh.size, x, -length / 2, length, length);
+  ctx.globalAlpha = a;
+  ctx.imageSmoothingEnabled = smooth;
+  return true;
+}
+
 /** Which body each class wears. */
 export function classChar(classId: string): CharId {
   switch (classId) {

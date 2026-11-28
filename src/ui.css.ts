@@ -352,6 +352,14 @@ kbd {
 @keyframes evoReady { 50% { box-shadow: 0 0 0 2px hsl(45 95% 65%), 0 0 22px hsl(45 95% 60%); } }
 .slot.evolved { background: linear-gradient(160deg, rgba(240,199,94,.22), rgba(0,0,0,.4)); border-color: hsl(45 85% 60%); }
 .slot.evolved .k-base, .slot.evolved .k-fill { color: hsl(45 95% 70%); }
+/* Pixel-art weapon icons: tilted like a weapon on a rack, crisp pixels. On cooldown the base
+   copy goes dark and the bright copy fills back in, the same as the kanji did. */
+.wicon { width: 1.9em; height: 1.9em; object-fit: contain; image-rendering: pixelated; transform: rotate(-35deg) scale(1.25); pointer-events: none; display: block; margin: auto; }
+.slot .kanji .wicon { width: 100%; height: 100%; max-width: 46px; max-height: 46px; }
+.slot.cooling .k-base .wicon { filter: grayscale(1) brightness(.35); }
+.slot.empty .wicon { opacity: .4; }
+.weapon-chip .kanji .wicon, .evo-row .kanji .wicon { width: 44px; height: 44px; }
+.wicon.evo { transform: scale(1.1); }   /* evolved art is already drawn on a diagonal */
 .evo-list { display: grid; gap: 8px; }
 .evo-row { display: grid; grid-template-columns: 28px 1fr; column-gap: 8px; font-size: 13px; color: var(--muted); }
 .evo-row .kanji { grid-row: span 4; font-size: 22px; color: var(--dim); }

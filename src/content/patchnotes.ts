@@ -12,6 +12,16 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.15", date: "2026-11-27", title: "The Armoury", kanji: "武",
+    summary: "Every weapon and every evolution has pixel art.",
+    lines: [
+      ["new", "All 16 weapons have pixel-art icons: katana, yumi, kunai, smoke bomb, caltrops, kusarigama, crossbow, war fan, jutte, ono, shuriken, flame spear, twin sai, ōdachi, blowgun and tate shield. They replace the kanji in the hotbar, the class weapon picker and the evolution list."],
+      ["new", "All 16 evolutions have their own art: the jade Kusanagi, lightning Raiden Bow, phoenix-winged lance, crescent Moon Cleaver, castle-crest Fortress Wall and the rest. The icon changes the moment a weapon evolves."],
+      ["new", "In a fight, pixel-art bodies swing the real weapon along the slash arc, and hold bows, crossbows and blowguns pointed where you aim (they kick back when they fire)."],
+      ["change", "Hotbar icons dim and refill on cooldown just like the kanji did. Turning off Pixel-art characters brings the kanji back."],
+    ],
+  },
+  {
     version: "3.14", date: "2026-11-27", title: "The Shogun Rises", kanji: "将",
     summary: "The final boss, your summons and the last old-style enemy get pixel art.",
     lines: [
