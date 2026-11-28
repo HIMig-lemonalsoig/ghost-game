@@ -12,6 +12,15 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.18.2", date: "2026-11-28", title: "The Full Tempest", kanji: "霊",
+    summary: "Spirit Tempest's vortex now lasts as long as the ult does.",
+    lines: [
+      ["fix", "Onmyoji: the Spirit Tempest swirl used to disappear about halfway through the 5s pull. It now spins for the whole ult (longer with Lingering Power) and covers the real pull radius, including the bigger one from its ult perk."],
+      ["change", "The vortex is bolder: four spiral arms that read on any ground, a dashed edge showing how far it pulls, a ring that drains as the ult runs out, and spirit motes drifting into the centre."],
+      ["fix", "The spirit orb left at the cast site now lasts as long as the ult, too."],
+    ],
+  },
+  {
     version: "3.18.1", date: "2026-11-28", title: "Fitted Gear", kanji: "整",
     summary: "Hats sit on heads, capes are full-length, and the Dokkaebi horde really charges.",
     lines: [

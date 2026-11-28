@@ -3888,6 +3888,7 @@ export class GhostGame {
   prevAbilityCd: Record<string, number> = {};
   // ===== Phase C — ultimate state =====
   ultSpiritTempestTimer = 0;    // Onmyoji
+  ultSpiritTempestMax = 0;      // its full length this cast (visuals pace themselves on it)
   ultSpiritTempestTick = 0;
   ultBannerActive = false;      // Hatamoto Shogun's Decree
   ultBannerTimer = 0;
@@ -12684,26 +12685,46 @@ export class GhostGame {
       ctx.beginPath(); ctx.arc(a.x, a.y, 110, 0, Math.PI * 2); ctx.stroke();
       ctx.restore();
     }
-    // Spirit Tempest vortex (Onmyoji)
+    // Spirit Tempest vortex (Onmyoji): spins in place for the whole ult at the real pull radius.
+    // (It used to grow outward and was gone after ~2.5s of a 5s pull.)
     if (this.ultSpiritTempestTimer > 0) {
+      if (this.ultSpiritTempestTimer > this.ultSpiritTempestMax) this.ultSpiritTempestMax = this.ultSpiritTempestTimer;
+      const left = this.ultSpiritTempestTimer, full = this.ultSpiritTempestMax || 5;
+      const R = this.hasUltPerk("ultc_onmyoji") ? 380 : 280;
+      const fade = Math.min(1, left / 0.35) * Math.min(1, (full - left) / 0.25 + 0.2);
+      const spin = this.elapsed * 3.2, cx = this.player.pos.x, cy = this.player.pos.y;
       ctx.save();
-      ctx.globalAlpha = 0.35;
-      ctx.strokeStyle = "hsl(280, 80%, 70%)";
-      ctx.lineWidth = 4;
-      const t = (5 - this.ultSpiritTempestTimer) * 4;
-      for (let i = 0; i < 3; i++) {
+      ctx.lineCap = "round";
+      // spiral arms sweeping inward
+      for (let i = 0; i < 4; i++) {
         ctx.beginPath();
-        for (let a = 0; a < Math.PI * 2; a += 0.1) {
-          const r = 60 + (a + t + i * 2) * 22;
-          if (r > 280) continue;
-          const x = this.player.pos.x + Math.cos(a + t) * r;
-          const y = this.player.pos.y + Math.sin(a + t) * r;
-          if (a === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        for (let s2 = 0; s2 <= 1.0001; s2 += 0.04) {
+          const r = 28 + (R - 28) * s2, a = spin + i * (Math.PI / 2) + s2 * 3.4;
+          const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
+          if (s2 === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
         }
+        ctx.strokeStyle = `hsla(270, 60%, 12%, ${0.35 * fade})`; ctx.lineWidth = 11;   // dark underlay reads on any ground
+        ctx.stroke();
+        ctx.strokeStyle = `hsla(${280 + i * 8}, 90%, ${70 + i * 3}%, ${0.75 * fade})`; ctx.lineWidth = 5;
         ctx.stroke();
       }
+      // the edge of the pull, and a time ring that drains as the ult runs out
+      ctx.strokeStyle = `hsla(280, 70%, 75%, ${0.45 * fade})`; ctx.lineWidth = 2.5;
+      ctx.setLineDash([10, 8]); ctx.lineDashOffset = -this.elapsed * 40;
+      ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.strokeStyle = `hsla(290, 90%, 80%, ${0.85 * fade})`; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(cx, cy, R + 6, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (left / full)); ctx.stroke();
+      // spirit motes drifting into the centre
+      ctx.globalCompositeOperation = "lighter";
+      for (let i = 0; i < 22; i++) {
+        const ph = (this.elapsed * 0.6 + i * 0.137) % 1, r = R * (1 - ph) + 20;
+        const a = i * 2.4 + spin * 0.6 + ph * 2.5;
+        ctx.fillStyle = `hsla(${280 + (i % 3) * 20}, 90%, 75%, ${0.6 * fade * Math.min(1, ph * 4)})`;
+        ctx.beginPath(); ctx.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r, 2.2 + 1.5 * ph, 0, Math.PI * 2); ctx.fill();
+      }
       ctx.restore();
-    }
+    } else this.ultSpiritTempestMax = 0;
     // Kagebushi shadow clone
     if (this.shadowClone) {
       // A violet silhouette that echoes your moves half a second late, sword and all.
@@ -13182,6 +13203,8 @@ export class GhostGame {
     // Onmyoji: Spirit Tempest (5s)
     if (this.ultSpiritTempestTimer > 0) {
       this.ultSpiritTempestTimer = Math.max(0, this.ultSpiritTempestTimer - dt);
+      const castOrb = this.spiritOrbs[this.spiritOrbs.length - 1];   // keep the cast-site orb alive for the whole ult
+      if (castOrb && castOrb.maxLife === 5.01 && castOrb.life < this.ultSpiritTempestTimer) castOrb.life = this.ultSpiritTempestTimer;
       this.ultSpiritTempestTick += dt;
       const cx = this.player.pos.x;
       const cy = this.player.pos.y;
@@ -14317,7 +14340,7 @@ export class GhostGame {
         // Drop a spirit orb at ultimate cast site too.
         this.spiritOrbs.push({
           pos: { x: this.player.pos.x, y: this.player.pos.y },
-          life: 5, maxLife: 5, hitSet: new Set(), tickAccum: 0,
+          life: 5, maxLife: 5.01, hitSet: new Set(), tickAccum: 0,   // 5.01 marks the ult's own orb
         });
         break;
       }
