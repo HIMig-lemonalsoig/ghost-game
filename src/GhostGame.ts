@@ -820,6 +820,16 @@ const MELEE_SECONDARY_IDS: SecondaryId[] = [
 export const isMeleeSecondary = (id: SecondaryId): boolean =>
   MELEE_SECONDARY_IDS.includes(id);
 
+/** Pixel bodies: which weapons are thrown from the hand, aimed from the shoulder or thrust. */
+const THROWN = new Set<SecondaryId>(["kunai", "shuriken_wheel", "smoke_bomb", "tetsubishi", "kusarigama"]);
+const AIMED = new Set<SecondaryId>(["yumi", "crossbow", "blowgun"]);
+const THRUSTS = new Set<SecondaryId>(["flame_spear", "twin_sai"]);
+/** On-body length of each weapon's art when held by a pixel body. */
+const BARE_LEN: Partial<Record<SecondaryId, number>> = {
+  yumi: 46, crossbow: 34, blowgun: 40, kunai: 20, shuriken_wheel: 18, smoke_bomb: 16, tetsubishi: 16, kusarigama: 28,
+  tessen: 28, jutte: 30, ono: 42, twin_sai: 30, odachi: 64, tate: 30, flame_spear: 66,
+};
+
 export const isRangedSecondary = (id: SecondaryId): boolean =>
   !MELEE_SECONDARY_IDS.includes(id);
 
@@ -3851,6 +3861,7 @@ export class GhostGame {
   pendingStartingWeapons: SecondaryId[] = [];
   // Ultimate visual / control state
   ultThousandCutsTimer = 0;
+  spriteBodyDrawn = false;   // last frame drew the pixel-art body (ult VFX adapt to it)
   kitsuneTailsT = 0;           // ult visual pass 2: Nine Tails fan-out on cast   // Onna ult — spinning AoE active duration
   ultThousandTickAccum = 0;
   ultBloodRageTimer = 0;      // Berserker ult duration
@@ -4112,9 +4123,10 @@ export class GhostGame {
   useSprites = true;
   /** True for the frame the sprite body itself is playing the ult move (code pose is skipped). */
   sprUltPose = false;
+  sprBare = false;   // the pixel body is the weaponless version this frame (a non-katana weapon is in hand)
   /** Ghost copies of the player (phantoms, clones, decoys) drawn through drawPlayer. */
   ghostLook: { variant?: SprVariant; outline?: string; moving?: boolean } | null = null;
-  sprPrev = { x: 0, y: 0, mv: 0, lastAtk: 0, atkIdx: 0, face: 1, vert: false, vx: 0, vy: 0, lastT: 0, dustT: 0, dust: [] as { x: number; y: number; vx: number; vy: number; age: number; life: number; r: number }[] };
+  sprPrev = { x: 0, y: 0, mv: 0, lastAtk: 0, atkIdx: 0, face: 1, vert: false, vx: 0, vy: 0, lastT: 0, throwT: 0, lastFire: 0, dustT: 0, dust: [] as { x: number; y: number; vx: number; vy: number; age: number; life: number; r: number }[] };
   /** WARDROBE: the player's equipped cosmetics (set by the UI before a run; null = classic look). */
   look: Look | null = null;
   private lookPrev = { x: 0, y: 0, sway: 0 };
@@ -10532,6 +10544,14 @@ export class GhostGame {
     let anim: SprAnim, frame: number, loop = true;
     const ultAnim = `Ult_${ULT_STYLES[this.stats.classId].pose}` as SprAnim;
     this.sprUltPose = !!this.ultPose && hasAnim(id, ultAnim);
+    // Holding anything but the katana: use the weaponless body and draw the real weapon in its hand.
+    const heldNow = this.stats.secondaryIds[this.stats.secondaryActiveSlot];
+    const bareW = p.attackAnim > 0 ? p.swingWeaponId : (heldNow && heldNow !== "katana" ? heldNow : null);
+    const bare = !!bareW && !this.sprUltPose && hasAnim(id, "Bare_Idle");
+    this.sprBare = bare;
+    if (this.fireAnim > sp.lastFire + 0.3 && heldNow && THROWN.has(heldNow)) sp.throwT = 0.3;
+    sp.lastFire = this.fireAnim;
+    sp.throwT = Math.max(0, sp.throwT - fdt);
     if (this.sprUltPose) {   // the class's ult move, played once over the 0.9s pose
       anim = ultAnim; frame = (this.ultPose!.t / this.ultPose!.dur) * frameCount(id, ultAnim) * 1.05; loop = false;
     } else if (p.attackAnim > 0) {
@@ -10608,7 +10628,29 @@ export class GhostGame {
       ctx.scale(1 - st * 0.7, 1 + st);
     }
     const view = anim === "RunUp" || anim === "IdleUp" ? "back" : anim === "RunDown" || anim === "IdleDown" ? "front" : "side";
+    if (bare) {
+      if (p.attackAnim > 0 && p.swingWeaponId) {
+        anim = THRUSTS.has(p.swingWeaponId) ? "Bare_Thrust" : "Bare_Swing";
+        frame = (1 - p.attackAnim) * frameCount(id, anim); loop = false;
+      } else if (sp.throwT > 0 && hasAnim(id, "Bare_Throw")) {
+        anim = "Bare_Throw"; frame = (1 - sp.throwT / 0.3) * frameCount(id, anim); loop = false;
+      } else if (anim === "Run" || anim === "RunUp" || anim === "RunDown" || anim === "IdleUp" || anim === "IdleDown") {
+        if (hasAnim(id, `Bare_${anim}`)) anim = `Bare_${anim}`;   // else keep the armed view (the back view hides the hands)
+      } else { anim = "Bare_Idle"; frame = t * 8; loop = true; }
+    }
+    // Nine Tails: the pixel tails catch foxfire — a pulsing orange-gold glow and a burning outline.
+    const fox = this.kitsuneTailsT > 0 ? this.kitsuneTailsT / 1.6 : 0;
+    if (fox > 0) {
+      const gl = ctx.createRadialGradient(0, -R * 1.6, 0, 0, -R * 1.6, R * 4.2);
+      const pulse = 0.75 + 0.25 * Math.sin(now * 14);
+      gl.addColorStop(0, `hsla(38, 100%, 70%, ${0.55 * fox * pulse})`);
+      gl.addColorStop(0.5, `hsla(22, 100%, 55%, ${0.3 * fox * pulse})`);
+      gl.addColorStop(1, "hsla(15, 100%, 50%, 0)");
+      ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = gl;
+      ctx.beginPath(); ctx.arc(0, -R * 1.6, R * 4.2, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    }
     drawChar(ctx, id, anim, { frame, loop, flip: sp.face < 0, height: R * 4.4, flash: p.hitFlash > 0 ? 0.6 : 0, variant: "base",
+      outline: fox > 0 ? { color: `hsl(${30 + 12 * Math.sin(now * 9)}, 100%, 60%)`, alpha: Math.min(1, fox * 1.6), width: 1.6 + Math.sin(now * 16) } : undefined,
       dye: this.look ? lookDye(this.look) : undefined, layers: this.look ? spriteLayers(this.look, now, sp.mv, view) : undefined });
     ctx.restore();
     // Direction chevron just outside the ring, drawn on top so it never hides behind the body.
@@ -10625,6 +10667,68 @@ export class GhostGame {
       ctx.restore();
     }
     return true;
+  }
+
+  /** The weaponless pixel body's hand-held weapon: held at rest, swung from the shoulder,
+   *  aimed from the shoulder (bows, crossbow, blowgun), or wound up and thrown (kunai, shuriken…).
+   *  Called with the canvas at the player's centre, unrotated. */
+  private drawBareWeapon(swinging: SecondaryId | null, swingAng: number, range: number) {
+    const ctx = this.ctx, p = this.player, sp = this.sprPrev, R = BASE.PLAYER_RADIUS;
+    const face = sp.face < 0 ? -1 : 1;
+    const held = swinging ?? this.stats.secondaryIds[this.stats.secondaryActiveSlot];
+    if (!held || held === "katana") return;
+    const len = BARE_LEN[held] ?? 34;
+    ctx.save();
+    if (swinging) {
+      // Swung from the shoulder along the real hit arc.
+      ctx.translate(face * R * 0.15, -R * 1.25);
+      ctx.rotate(p.facing + swingAng);
+      if (THRUSTS.has(swinging)) {
+        const ph = 1 - p.attackAnim, ext = ph < 0.3 ? ph / 0.3 : 1 - (ph - 0.3) / 0.7;
+        if (swinging === "twin_sai") { this.drawWeaponArt("twin_sai", len, ext * 18 - 2); }
+        else this.drawWeaponArt(swinging, len, -len * 0.38 + ext * 20);   // gripped mid-shaft, driven forward
+      } else {
+        const swingLen = held === "odachi" ? Math.max(len, Math.min(110, range * 0.8)) : held === "ono" ? 54 : len + 6;
+        if (this.barrageActive) for (const off of [-0.35, -0.7]) {
+          ctx.save(); ctx.globalAlpha *= off === -0.35 ? 0.4 : 0.2; ctx.rotate(off * p.swingDir);
+          this.drawWeaponArt(swinging, swingLen, R * 0.2); ctx.restore();
+        }
+        this.drawWeaponArt(swinging, swingLen, R * 0.2);
+      }
+    } else if (AIMED.has(held)) {
+      // Raised to the shoulder and pointed where you aim; kicks back when it fires.
+      ctx.translate(face * R * 0.3, -R * 1.15);
+      ctx.rotate(p.facing);
+      if (held === "yumi") {   // a bow stands across the shot, limbs curving back toward you
+        ctx.translate(R * 0.55 - this.fireAnim * 4, 0); ctx.rotate(Math.PI / 2);
+        this.drawWeaponArt(held, len, -len / 2);
+      } else {
+        if (Math.cos(p.facing) < 0) ctx.scale(1, -1);   // keep the art upright when aiming left
+        this.drawWeaponArt(held, len, -len * 0.25 - this.fireAnim * 6);
+      }
+    } else if (THROWN.has(held)) {
+      if (sp.throwT > 0) {
+        // Wind up behind the head, whip forward; the item leaves the hand at release.
+        const pr = 1 - sp.throwT / 0.3;
+        if (pr < 0.5) {
+          const k = pr / 0.5;
+          ctx.translate(face * R * (-0.55 + 1.3 * k), -R * (2.3 - 0.9 * k));
+          ctx.scale(face, 1); ctx.rotate(-1.9 + 1.9 * k);
+          this.drawWeaponArt(held, len, -len * 0.3);
+        }
+      } else {
+        ctx.translate(face * R * 0.55, -R * 1.2);
+        ctx.scale(face, 1); ctx.rotate(held === "kusarigama" ? -1.2 : -0.5);
+        this.drawWeaponArt(held, len, -len * 0.3);
+      }
+    } else {
+      // Melee weapon held at rest in the leading hand, tip up and forward.
+      ctx.translate(face * R * (held === "flame_spear" ? 0.8 : 0.55), -R * 1.25);
+      ctx.scale(face, 1);
+      if (held === "tate") { ctx.rotate(0); this.drawWeaponArt(held, len, -len * 0.45); }
+      else { ctx.rotate(held === "flame_spear" ? -1.25 : held === "odachi" ? -1.05 : -0.95); this.drawWeaponArt(held, len, -len * (held === "flame_spear" ? 0.4 : 0.12)); }
+    }
+    ctx.restore();
   }
 
   /** Pixel-art weapon along the current swing / aim axis (the evolved art once evolved). */
@@ -10669,6 +10773,7 @@ export class GhostGame {
     ctx.fill();
 
     const spriteBody = this.drawPlayerSprite();
+    this.spriteBodyDrawn = spriteBody;
 
     ctx.rotate(p.facing);
 
@@ -10729,6 +10834,9 @@ export class GhostGame {
       if (spinWeapon === "twin_sai") { this.drawSai(1); ctx.rotate(Math.PI); this.drawSai(1); }
       else if (spinWeapon === "flame_spear") this.drawSpear(18);
       else this.drawPlayerWeapon(spinWeapon, true, weaponRange * 0.85);
+    } else if (spriteBody && this.sprBare && !pose && !(this.ultPose && !swingingNow) && !(this.player.deflectTimer > 0 && !swingingNow)) {
+      ctx.rotate(-p.facing);
+      this.drawBareWeapon(swingingNow ? weaponId : null, swingAng, weaponRange);
     } else if (this.ultPose && !swingingNow && spriteBody && this.sprUltPose) {
       // The sprite is playing its own ult move — nothing to draw on top.
     } else if (this.ultPose && !swingingNow) {

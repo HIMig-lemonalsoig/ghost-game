@@ -290,7 +290,23 @@ export function drawUltOver(g: any, ctx: Ctx) {
   }
 
   // ── Kitsune: nine fire tails fanning out behind you on cast.
-  if (g.kitsuneTailsT > 0) {
+  if (g.kitsuneTailsT > 0 && g.spriteBodyDrawn) {
+    // Pixel-art kitsune already has nine tails: they catch fire instead (glow is drawn
+    // with the sprite) and shed rising foxfire embers here.
+    const k = g.kitsuneTailsT / 1.6;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (let i = 0; i < 14; i++) {
+      const ph = ((t * 0.9 + i * 0.137) % 1);
+      const ang = (i / 14) * TAU + t * 0.4;
+      const ex = p.x + Math.cos(ang) * (20 + 12 * Math.sin(i * 7.1)) + Math.sin(t * 3 + i) * 3;
+      const ey = p.y - 14 + Math.sin(ang) * 12 - ph * 40;
+      const r = 1.8 * (1 - ph) + 0.5;
+      ctx.fillStyle = `hsla(${18 + 16 * Math.sin(i)}, 100%, ${48 + 14 * (1 - ph)}%, ${(1 - ph) * (0.3 + 0.5 * k)})`;
+      ctx.beginPath(); ctx.arc(ex, ey, r, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+  } else if (g.kitsuneTailsT > 0) {
     const k = g.kitsuneTailsT / 1.6;   // 1 → 0
     const spread = Math.min(1, (1 - k) * 6);
     const back = g.player.facing + Math.PI;

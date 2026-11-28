@@ -12,6 +12,18 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.18", date: "2026-11-28", title: "Steel in Hand", kanji: "握",
+    summary: "Pixel-art characters now hold and use whatever weapon you have equipped.",
+    lines: [
+      ["new", "Every pixel-art body has a weaponless version. With anything but the katana in hand, your character puts the katana away and holds the real weapon instead."],
+      ["new", "Melee weapons are swung from the shoulder along the real hit arc with a full-body slash; the flame spear and twin sai thrust with a lunge."],
+      ["new", "Kunai, shuriken, smoke bombs, caltrops and the kusarigama sit in your hand, then get wound up behind the head and thrown with an overhand throw."],
+      ["new", "Bows, the crossbow and the blowgun are raised to the shoulder and aimed where you point; the bow stands upright across the shot."],
+      ["change", "Nine Tails on the pixel-art Kitsune no longer draws a second set of tails: her own tails catch foxfire, with a burning outline, a pulsing glow and rising embers."],
+      ["fix", "The Kitsune's tails no longer melt into a single blob when running up the screen: the back view was redrawn with nine separate, swaying tails."],
+    ],
+  },
+  {
     version: "3.17", date: "2026-11-27", title: "The Ghost's Wardrobe", kanji: "装",
     summary: "Cosmetics now work on pixel-art characters, and 34 new Tsushima-inspired pieces join the Wardrobe.",
     lines: [
