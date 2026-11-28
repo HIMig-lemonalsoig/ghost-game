@@ -12,6 +12,16 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.11.2", date: "2026-11-27", title: "Banner Bearer", kanji: "旗",
+    summary: "The banner commander gets a back view, a new sprint and a new walk.",
+    lines: [
+      ["new", "Commander body (Tetsu-bo, Berserker, Sōhei, Rikishi, Hatamoto, Ashigaru, Dokkaebi, and heavy/shield enemies): running up shows him from behind with the banner on his back, and he faces away when you aim straight up."],
+      ["new", "New sprint with the banner streaming behind him, and a new walk (made in PixelLab)."],
+      ["fix", "Characters now line up on their hips and legs, so big banners, tails and swords no longer push the body off its ring."],
+      ["change", "No front view for the commander yet. Running down still uses the side view with lean and dust."],
+    ],
+  },
+  {
     version: "3.11.1", date: "2026-11-27", title: "Smoother Strides", kanji: "歩",
     summary: "New walk and sprint for the samurai, and no more shaking when you run down.",
     lines: [

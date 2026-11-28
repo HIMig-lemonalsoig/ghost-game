@@ -29,7 +29,7 @@ interface Sheet { img: HTMLImageElement | HTMLCanvasElement; frames: number; siz
  *  Any square RunUp / RunDown sheet is treated as a grid. `SKIP` drops leading frames that
  *  are still side-on or just standing (default: RunUp 1, RunDown 0). */
 const VIEW_ANIMS = new Set(["RunUp", "RunDown", "IdleUp"]);
-const SKIP: Record<string, number> = { "samurai/RunUp": 1, "samurai/RunDown": 3, "samurai/Run": 1 };
+const SKIP: Record<string, number> = { "samurai/RunUp": 1, "samurai/RunDown": 3, "samurai/Run": 1, "commander/Run": 1, "commander/RunUp": 1 };
 /** Trailing frames to drop, and sheets that don't loop cleanly (play 1→n→1 instead of snapping back). */
 const DROP_END: Record<string, number> = {};
 /** Hand-picked frames (grid order) when only some of an AI sheet are consistent with each other. */
@@ -61,6 +61,18 @@ function gridToStrip(img: HTMLImageElement, gd: { cols: number; rows: number; sk
   return c;
 }
 
+/** Median x of opaque pixels between `a` and `b` (fractions of body height below the top).
+ *  The median ignores thin things sticking out (banner poles, sheathed swords, flags). */
+function bandMedianX(px: Uint8ClampedArray, size: number, top: number, feet: number, a: number, b: number): number | null {
+  const xs: number[] = [];
+  const h = feet - top;
+  for (let y = top + Math.floor(h * a); y < Math.min(size, top + Math.floor(h * b)); y++)
+    for (let x = 0; x < size; x++) if (px[(y * size + x) * 4 + 3] > 40) xs.push(x);
+  if (!xs.length) return null;
+  xs.sort((m, n) => m - n);
+  return xs[xs.length >> 1];
+}
+
 /** Per frame anchors for AI-generated frames, which drift around their cells.
  *  Lock onto the head (stable) rather than the whole body (the sword and legs swing the
  *  centre of mass around and make the sprite shiver), then keep the body a fixed height. */
@@ -83,11 +95,8 @@ function ownAnchors(src: HTMLCanvasElement | HTMLImageElement, size: number, fra
     const hx = n ? sx / n : size / 2;
     let feet = top;
     for (let y = size - 1; y > top; y--) { let hit = false; for (let x = Math.max(0, Math.floor(hx - 16)); x < Math.min(size, hx + 16); x++) if (on(x, y)) { hit = true; break; } if (hit) { feet = y; break; } }
-    // then the chest band, same as the idle anchor
-    const bh = feet - top;
-    let cxs = 0, cn = 0;
-    for (let y = top + Math.floor(bh * 0.22); y < top + Math.floor(bh * 0.45); y++) for (let x = 0; x < size; x++) if (on(x, y)) { cxs += x; cn++; }
-    raw.push({ cx: cn ? cxs / cn : hx, top, feet });
+    // then the hips/legs band, same as the idle anchor
+    raw.push({ cx: bandMedianX(px, size, top, feet, 0.5, 0.85) ?? hx, top, feet });
   }
   const hs = raw.map(r => r.feet - r.top).sort((a, b) => a - b);
   const h = hs[Math.floor(hs.length / 2)];
@@ -161,12 +170,11 @@ function anchorOf(id: CharId): Anchor {
   for (let y = 0; y < sh.size; y++) for (let x = 0; x < sh.size; x++) {
     if (px[(y * sh.size + x) * 4 + 3] > 40) { n++; if (y < top) top = y; if (y > feet) feet = y; }
   }
-  // Centre on the chest band (22–45% down the body) so every sheet — CraftPix or PixelLab —
-  // lines up the same way; heads can carry banners/tails and the sword swings below.
-  let hx = 0, hn = 0;
-  const bh = feet - top;
-  for (let y = top + Math.floor(bh * 0.22); y < Math.min(sh.size, top + Math.floor(bh * 0.45)); y++) for (let x = 0; x < sh.size; x++) if (px[(y * sh.size + x) * 4 + 3] > 40) { hx += x; hn++; }
-  const out = n ? { cx: hn ? hx / hn : sh.size / 2, top, feet } : fallback;
+  // Centre on the hips/legs (median, 50–85% down the body) so every sheet — CraftPix or
+  // PixelLab — lines up the same way; banners, tails and swords don't pull it sideways.
+  const hx = bandMedianX(px, sh.size, top, feet, 0.5, 0.85);
+  const hn = hx === null ? 0 : 1;
+  const out = n ? { cx: hn ? (hx as number) : sh.size / 2, top, feet } : fallback;
   anchors.set(id, out);
   return out;
 }
