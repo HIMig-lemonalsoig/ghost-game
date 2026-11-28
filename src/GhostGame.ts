@@ -11373,7 +11373,8 @@ export class GhostGame {
     const ratio = Math.max(0, Math.min(1, e.hp / e.maxHp));
     const w = Math.max(18, e.size * 1.6);
     const x = e.pos.x - w / 2;
-    const y = e.pos.y - e.size - (e.archetype === "priest" ? 28 : this.isSpriteEnemy(e) ? e.size * 3.6 : 9);
+    const y = this.isSpriteEnemy(e) ? e.pos.y + e.size - this.spriteHeightOf(e) - 4
+      : e.pos.y - e.size - (e.archetype === "priest" ? 28 : 9);
     ctx.fillStyle = "hsla(0, 0%, 4%, 0.7)";
     ctx.fillRect(x - 1, y - 1, w + 2, 4);
     ctx.fillStyle = `hsl(358, 75%, ${30 + ratio * 22}%)`;
@@ -11590,23 +11591,31 @@ export class GhostGame {
   /** v3.7: human enemies as pixel sprites. Yokai, elites' auras and bosses keep their own art. */
   isSpriteEnemy(e: Enemy): boolean {
     if (!this.useSprites || !spritesReady()) return false;
-    if (e.isBoss) return e.bossKind === "kitsune";
+    if (e.isBoss) return e.bossKind === "kitsune" || e.bossKind === "gasha";
     return e.archetype === "normal" || e.archetype === "assassin" || e.archetype === "archer" || e.archetype === "heavy" || e.archetype === "shielded" || e.archetype === "priest";
   }
+
+  spriteHeightOf(e: Enemy): number { return e.size * (e.bossKind === "gasha" ? 4.2 : e.isBoss ? 3.4 : 4.4); }
 
   private drawEnemySprite(e: Enemy, dead: boolean): boolean {
     if (!this.isSpriteEnemy(e)) return false;
     let id: CharId, variant: SprVariant = "base";
+    // From the Gashadokuro's wave on, about a third of the rank-and-file rise as skeletons (looks only).
+    const undead = this.stats.wave >= 15 && (e.id * 7) % 3 === 0;
     switch (e.archetype) {
-      case "normal": id = "samurai"; variant = "crimson"; break;
+      case "normal": if (undead) { id = "skspear"; break; } id = "samurai"; variant = "crimson"; break;
       case "assassin": id = "karasu"; break;
       case "priest": id = "ytengu"; break;
-      case "archer": id = "archer"; break;
-      case "heavy": case "shielded": id = "commander"; break;
-      default: if (e.bossKind === "kitsune") { id = "kitsune"; break; } return false;
+      case "archer": id = undead ? "skarcher" : "archer"; break;
+      case "heavy": id = "commander"; break;
+      case "shielded": id = undead ? "skwarrior" : "commander"; break;
+      default:
+        if (e.bossKind === "kitsune") { id = "kitsune"; break; }
+        if (e.bossKind === "gasha") { id = "skwarrior"; break; }
+        return false;
     }
     const ctx = this.ctx, t = this.elapsed + e.id * 0.37;
-    const h = e.size * (e.isBoss ? 3.4 : 4.4);
+    const h = this.spriteHeightOf(e);
     const flip = Math.cos(e.facing) < 0;
     ctx.save();
     ctx.translate(0, e.size - 1);
@@ -11618,10 +11627,10 @@ export class GhostGame {
     }
     let anim: SprAnim, frame: number, loop = true;
     if (e.state === "attacking") {
-      anim = id === "archer" ? "Shot" : e.id % 3 === 0 ? "Attack_2" : "Attack_1";
+      anim = id === "archer" || id === "skarcher" ? "Shot" : e.id % 3 === 0 ? "Attack_2" : "Attack_1";
       frame = Math.max(0, Math.min(1, e.attackAnim)) * frameCount(id, anim); loop = false;
     } else if (e.hitFlash > 0.5) { anim = "Hurt"; frame = (1 - e.hitFlash) * frameCount(id, "Hurt") * 2; loop = false; }
-    else if (e.archetype === "shielded" && e.shieldHp > 0 && e.state === "alert") { anim = id === "commander" ? "Protect" : "Protection"; frame = 99; loop = false; }
+    else if (e.archetype === "shielded" && e.shieldHp > 0 && e.state === "alert") { anim = "Protect"; frame = 99; loop = false; }
     else if (e.state !== "stunned" && e.speed > 0.5) { anim = e.archetype === "assassin" ? "Run" : "Walk"; frame = t * (e.archetype === "assassin" ? 14 : 10); }
     else { anim = "Idle"; frame = t * 7; }
     drawChar(ctx, id, anim, { frame, loop, flip, height: h, variant, flash: e.hitFlash > 0 ? Math.min(0.8, e.hitFlash) : 0 });
@@ -11830,7 +11839,7 @@ export class GhostGame {
     if (e.isBoss) {
       const w = 90;
       const x = e.pos.x - w / 2;
-      const y = e.pos.y - e.size - 18;
+      const y = this.isSpriteEnemy(e) ? e.pos.y + e.size - this.spriteHeightOf(e) - 14 : e.pos.y - e.size - 18;
       ctx.fillStyle = "hsla(0, 0%, 0%, 0.6)";
       ctx.fillRect(x - 1, y - 1, w + 2, 6);
       ctx.fillStyle = "hsl(358, 78%, 48%)";

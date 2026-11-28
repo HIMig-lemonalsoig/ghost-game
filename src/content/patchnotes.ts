@@ -12,6 +12,16 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.9", date: "2026-11-27", title: "Rise of the Bones", kanji: "骸",
+    summary: "The Gashadokuro is now a towering pixel-art skeleton, and skeletons join the enemy ranks.",
+    lines: [
+      ["new", "Gashadokuro (wave 15 boss) is now a giant skeleton warrior with a sword and shield. Its fist-slam warnings are unchanged."],
+      ["new", "From wave 15 on, about a third of foot soldiers, archers and shield-bearers rise as skeletons: spearmen, bone archers and shield warriors. Looks only: same stats as before."],
+      ["fix", "Health bars and boss nameplates now sit above pixel-art characters' heads instead of over their bodies."],
+      ["change", "Art: CraftPix Skeleton pack (licensed, offline version only)."],
+    ],
+  },
+  {
     version: "3.8", date: "2026-11-27", title: "Pixel Yokai", kanji: "妖",
     summary: "The first yokai get pixel-art bodies: the Kitsune boss and two kinds of tengu.",
     lines: [

@@ -8,8 +8,8 @@
 // body flips left/right toward where you aim, while attack arcs, telegraphs
 // and hitboxes stay exactly as they were.
 
-export type CharId = "samurai" | "archer" | "commander" | "kitsune" | "karasu" | "ytengu";
-export type Anim = "Idle" | "Walk" | "Run" | "Attack_1" | "Attack_2" | "Attack_3" | "Hurt" | "Dead" | "Protection" | "Protect" | "Shot";
+export type CharId = "samurai" | "archer" | "commander" | "kitsune" | "karasu" | "ytengu" | "skwarrior" | "skspear" | "skarcher";
+export type Anim = "Idle" | "Walk" | "Run" | "Attack_1" | "Attack_2" | "Attack_3" | "Hurt" | "Dead" | "Protection" | "Protect" | "Shot" | "Shot_1";
 /** Colour variants, made once with a canvas filter and cached. */
 export type Variant = "base" | "crimson" | "shade" | "flash" | "gold";
 
@@ -79,10 +79,13 @@ function anchorOf(id: CharId): Anchor {
 }
 
 function sheetFor(id: CharId, anim: Anim): Sheet | undefined {
-  return sheets.get(`${id}/${anim}`)
-    ?? (anim === "Protection" ? sheets.get(`${id}/Protect`) : anim === "Protect" ? sheets.get(`${id}/Protection`) : undefined)
-    ?? (anim === "Shot" ? sheets.get(`${id}/Attack_1`) : undefined)
-    ?? sheets.get(`${id}/Idle`);
+  const g = (n: string) => sheets.get(`${id}/${n}`);
+  return g(anim)
+    ?? (anim === "Protection" ? g("Protect") : anim === "Protect" ? g("Protection") : undefined)
+    ?? (anim === "Shot" ? g("Shot_1") : anim === "Shot_1" ? g("Shot") : undefined)
+    ?? (anim === "Run" ? g("Walk") : undefined)
+    ?? (anim.startsWith("Attack") || anim.startsWith("Shot") ? g("Attack_1") : undefined)
+    ?? g("Idle");
 }
 
 function imageFor(id: CharId, anim: Anim, v: Variant): { src: CanvasImageSource; sh: Sheet } | null {
