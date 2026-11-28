@@ -4099,7 +4099,7 @@ export class GhostGame {
   showMinimap = true;
   showCursor = true; cursorInside = true; cursorT = 0; cursorSpin = 0; cursorKick = 0; cursorScale = 1; minimapScale = 1;
   /** v3.7 pixel sprites: on/off + per-player animation state. */
-  useSprites = true; sprPrev = { x: 0, y: 0, mv: 0, lastAtk: 0, atkIdx: 0, face: 1 };
+  useSprites = true; sprPrev = { x: 0, y: 0, mv: 0, lastAtk: 0, atkIdx: 0, face: 1, vx: 0, vy: 0, lastT: 0, dustT: 0, dust: [] as { x: number; y: number; vx: number; vy: number; age: number; life: number; r: number }[] };
   /** WARDROBE: the player's equipped cosmetics (set by the UI before a run; null = classic look). */
   look: Look | null = null;
   private lookPrev = { x: 0, y: 0, sway: 0 };
@@ -10489,9 +10489,11 @@ export class GhostGame {
     if (!this.useSprites || !spritesReady()) return false;
     const p = this.player, ctx = this.ctx, sp = this.sprPrev;
     const id = classChar(this.stats.classId);
-    const dx = p.pos.x - sp.x;
-    const mv = Math.hypot(dx, p.pos.y - sp.y);
+    const dx = p.pos.x - sp.x, dy = p.pos.y - sp.y;
+    const mv = Math.hypot(dx, dy);
     sp.x = p.pos.x; sp.y = p.pos.y;
+    sp.vx += (dx - sp.vx) * 0.35; sp.vy += (dy - sp.vy) * 0.35;      // smoothed per-frame motion
+    const now = this.elapsed, fdt = Math.max(0, Math.min(0.1, now - sp.lastT)); sp.lastT = now;
     sp.mv += (Math.min(1, mv / 3) - sp.mv) * 0.3;
     if (p.attackAnim > sp.lastAtk + 0.25) sp.atkIdx = (sp.atkIdx + 1) % 3;   // new swing → next combo frame set
     sp.lastAtk = p.attackAnim;
@@ -10505,21 +10507,71 @@ export class GhostGame {
     else if (p.dashTimer > 0) { anim = "Run"; frame = t * 18; }
     else if (sp.mv > 0.25) { anim = "Run"; frame = t * 12; }
     else { anim = "Idle"; frame = t * 8; }
-    // Class-accent ring at your feet so you stand out from human enemies.
     const R = BASE.PLAYER_RADIUS;
+    const running = anim === "Run";
+    const sv = Math.hypot(sp.vx, sp.vy);
+    const dirA = Math.atan2(sp.vy, sp.vx);
+    const accent = getClass(this.stats.classId).accent;
+
+    // Dust puffs kicked up behind you while running (world space, under the body).
+    sp.dustT -= fdt;
+    if (running && sv > 0.6 && sp.dustT <= 0) {
+      sp.dustT = p.dashTimer > 0 ? 0.03 : 0.08;
+      const back = dirA + Math.PI;
+      for (let i = 0; i < (p.dashTimer > 0 ? 2 : 1); i++) {
+        sp.dust.push({ x: p.pos.x + Math.cos(back) * 5 + (Math.random() - 0.5) * 6, y: p.pos.y + R - 1 + (Math.random() - 0.5) * 3,
+          vx: Math.cos(back) * (18 + Math.random() * 14), vy: Math.sin(back) * 10 - 8 - Math.random() * 8, age: 0, life: 0.38 + Math.random() * 0.15, r: 2 + Math.random() * 1.5 });
+      }
+      if (sp.dust.length > 40) sp.dust.splice(0, sp.dust.length - 40);
+    }
     ctx.save();
-    ctx.strokeStyle = getClass(this.stats.classId).accent; ctx.globalAlpha *= 0.75; ctx.lineWidth = 2;
+    ctx.translate(-p.pos.x, -p.pos.y);
+    for (const d of sp.dust) {
+      d.age += fdt; d.x += d.vx * fdt; d.y += d.vy * fdt; d.vx *= 0.9; d.vy *= 0.9;
+      const k = d.age / d.life;
+      if (k >= 1) continue;
+      const r = Math.round(d.r * (1 + k * 1.6));
+      ctx.fillStyle = `rgba(226, 210, 172, ${0.7 * (1 - k)})`;
+      ctx.fillRect(Math.round(d.x - r), Math.round(d.y - r), r * 2, r * 2);   // square puffs read as pixels
+    }
+    sp.dust = sp.dust.filter(d => d.age < d.life);
+    ctx.restore();
+
+    // Class-accent ring at your feet; while moving, a chevron on it points the way you're going.
+    ctx.save();
+    ctx.strokeStyle = accent; ctx.globalAlpha *= 0.75; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.ellipse(0, R - 2, R + 3, (R + 3) * 0.42, 0, 0, Math.PI * 2); ctx.stroke();
     ctx.restore();
+
     ctx.save();
     ctx.translate(0, R - 1);
     // Face where you're going while running; face your aim when attacking,
     // guarding or standing still. Straight up/down keeps the last side.
     const aimFace = Math.cos(p.facing) < 0 ? -1 : 1;
-    if (anim !== "Run") sp.face = aimFace;
+    if (!running) sp.face = aimFace;
     else if (Math.abs(dx) > 0.4) sp.face = dx < 0 ? -1 : 1;
+    // Lean into the run (more when heading up, a touch back when heading down)
+    // and squash/stretch with each stride when moving vertically.
+    if (running && sv > 0.3) {
+      const vy = Math.max(-1, Math.min(1, sp.vy / Math.max(0.001, sv)));
+      ctx.rotate(sp.face * (0.07 + 0.11 * Math.max(0, -vy) - 0.06 * Math.max(0, vy)));
+      const st = Math.abs(vy) * 0.06 * Math.sin(now * 22);
+      ctx.scale(1 - st * 0.7, 1 + st);
+    }
     drawChar(ctx, id, anim, { frame, loop, flip: sp.face < 0, height: R * 4.4, flash: p.hitFlash > 0 ? 0.6 : 0, variant: "base" });
     ctx.restore();
+    // Direction chevron just outside the ring, drawn on top so it never hides behind the body.
+    if (running && sv > 0.4) {
+      const rr = R + 11;
+      const ex = Math.cos(dirA) * rr, ey = R - 2 + Math.sin(dirA) * rr * 0.55;
+      const pa = Math.atan2(Math.sin(dirA) * 0.55, Math.cos(dirA));
+      ctx.save();
+      ctx.translate(ex, ey); ctx.rotate(pa);
+      ctx.beginPath(); ctx.moveTo(7, 0); ctx.lineTo(-3, -6); ctx.lineTo(-1, 0); ctx.lineTo(-3, 6); ctx.closePath();
+      ctx.lineWidth = 3; ctx.lineJoin = "round"; ctx.strokeStyle = "#140c0a"; ctx.stroke();
+      ctx.fillStyle = accent; ctx.fill();
+      ctx.restore();
+    }
     return true;
   }
 
@@ -11633,6 +11685,10 @@ export class GhostGame {
     else if (attackingNow || Math.abs(edx) < 0.25) tr._face = Math.cos(e.facing) < 0 ? -1 : 1;
     else tr._face = edx < 0 ? -1 : 1;
     const flip = (tr._face ?? (Math.cos(e.facing) < 0 ? -1 : 1)) < 0;
+    const tr2 = e as Enemy & { _sy?: number };
+    const edy = tr2._sy === undefined ? 0 : e.pos.y - tr2._sy;
+    tr2._sy = e.pos.y;
+    const emv = Math.hypot(edx, edy);
     ctx.save();
     ctx.translate(0, e.size - 1);
     if (dead) {
@@ -11655,6 +11711,10 @@ export class GhostGame {
     else if (e.archetype === "shielded" && e.shieldHp > 0 && e.state === "alert") { anim = "Protect"; frame = 99; loop = false; }
     else if (e.state !== "stunned" && e.speed > 0.5) { anim = e.archetype === "assassin" ? "Run" : "Walk"; frame = t * (e.archetype === "assassin" ? 14 : 10); }
     else { anim = "Idle"; frame = t * 7; }
+    if (!attackingNow && emv > 0.25 && (anim === "Walk" || anim === "Run")) {
+      const vy = Math.max(-1, Math.min(1, edy / emv));
+      ctx.rotate((flip ? -1 : 1) * (0.05 + 0.08 * Math.max(0, -vy) - 0.04 * Math.max(0, vy)));
+    }
     drawChar(ctx, id, anim, { frame, loop, flip, height: h, variant, flash: e.hitFlash > 0 ? Math.min(0.8, e.hitFlash) : 0 });
     ctx.restore();
     return true;

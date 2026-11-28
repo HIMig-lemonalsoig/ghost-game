@@ -12,6 +12,16 @@ export interface PatchNote { version: string; date: string; title: string; kanji
 
 export const PATCH_NOTES: PatchNote[] = [
   {
+    version: "3.10.2", date: "2026-11-27", title: "Feel the Run", kanji: "走",
+    summary: "Running up and down now looks and feels like it, even though the art is side-on.",
+    lines: [
+      ["new", "Your character leans into the run: further forward when heading up, slightly back when heading down, with a little squash and stretch on each stride."],
+      ["new", "Dust puffs kick up behind your feet while running, and more during a dash."],
+      ["new", "While moving, a chevron in your class colour beside the ring at your feet points the way you're going."],
+      ["change", "Enemies lean into their walk the same way."],
+    ],
+  },
+  {
     version: "3.10.1", date: "2026-11-27", title: "Face Forward", kanji: "向",
     summary: "Pixel-art characters now face the way they're moving.",
     lines: [
